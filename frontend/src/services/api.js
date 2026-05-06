@@ -117,6 +117,7 @@ export const getComplianceDeadlines = () => api.get('/compliance/deadlines');
 export const getSettings = () => api.get('/settings');
 export const updateSettings = (data) => api.put('/settings', data);
 export const getAuditLog = (params) => api.get('/settings/audit-log', { params });
+export const resetDemoData = () => api.post('/settings/reset-demo-data');
 
 // AI Agent
 export const chatWithAgent = (data) => api.post('/ai-agent/chat', data);

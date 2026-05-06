@@ -63,12 +63,14 @@ def fmt(doc):
 
 
 @router.get("")
-async def list_employees(request: Request, lifecycle_state: Optional[str] = None, department: Optional[str] = None, search: Optional[str] = None):
+async def list_employees(request: Request, lifecycle_state: Optional[str] = None, department: Optional[str] = None, search: Optional[str] = None, include_exited: bool = False):
     user = await get_current_user(request)
     db = get_db()
     query = {"tenant_id": "solvit"}
     if lifecycle_state:
         query["lifecycle_state"] = lifecycle_state
+    elif not include_exited:
+        query["lifecycle_state"] = {"$ne": "Exited"}
     if department:
         query["department"] = department
     if search:

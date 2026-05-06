@@ -49,6 +49,77 @@ export default function Performance() {
 
   const NINE_BOX_LABELS = { Stars: '#22C55E', Core_Contributor: '#3B82F6', Culture_Risk: '#F59E0B', Realignment_Needed: '#F97316', Exit_Track: '#EF4444' };
 
+  // 9-box grid layout (rows = Potential High→Low, cols = Performance Low→High)
+  const NINE_BOX_GRID = [
+    // Top row (High potential)
+    [{ key: 'Realignment_Needed', label: 'Inconsistent Star', sub: 'High potential / low perf' },
+     { key: 'Stars', label: 'Future Leader', sub: 'High potential / met perf', main: true },
+     { key: 'Stars', label: 'Star', sub: 'Promote / retain', main: true }],
+    // Middle row (Medium potential)
+    [{ key: 'Realignment_Needed', label: 'Up or Out', sub: 'Develop or exit' },
+     { key: 'Core_Contributor', label: 'Core Player', sub: 'Solid contributor', main: true },
+     { key: 'Core_Contributor', label: 'High Performer', sub: 'Stretch role', main: true }],
+    // Bottom row (Low potential)
+    [{ key: 'Exit_Track', label: 'Exit Track', sub: 'Low / low — manage out' },
+     { key: 'Culture_Risk', label: 'Effective', sub: 'Low pot / met perf' },
+     { key: 'Culture_Risk', label: 'Trusted Pro', sub: 'Strong perf, capped potential' }],
+  ];
+
+  const renderNineBoxGrid = () => {
+    const placementCells = {};
+    Object.keys(NINE_BOX_LABELS).forEach(p => placementCells[p] = (nineBox?.[p] || []));
+    return (
+      <div style={{ display: 'flex', gap: '24px' }}>
+        {/* Y-axis label */}
+        <div style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', display: 'flex', alignItems: 'center', justifyContent: 'space-around', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#525252', minHeight: '420px' }}>
+          <span>Low</span><span>POTENTIAL →</span><span>High</span>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+            {NINE_BOX_GRID.map((row, ri) => (
+              row.map((cell, ci) => {
+                const employees = placementCells[cell.key] || [];
+                // Distribute employees by index across cells of same key
+                const cellsOfKey = NINE_BOX_GRID.flat().filter(c => c.key === cell.key);
+                const idx = cellsOfKey.findIndex((c, i) => c === cell);
+                const totalCellsOfKey = cellsOfKey.length;
+                const myEmps = employees.filter((_, i) => i % totalCellsOfKey === idx);
+                const color = NINE_BOX_LABELS[cell.key];
+                return (
+                  <div key={`${ri}-${ci}`} data-testid={`ninebox-${cell.key}-${ri}-${ci}`}
+                    style={{
+                      border: `2px solid ${color}`,
+                      backgroundColor: cell.main ? `${color}15` : `${color}08`,
+                      padding: '12px',
+                      minHeight: '130px',
+                      display: 'flex',
+                      flexDirection: 'column'
+                    }}>
+                    <div style={{ fontSize: '11px', fontWeight: 900, color, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{cell.label}</div>
+                    <div style={{ fontSize: '10px', color: '#525252', marginBottom: '8px' }}>{cell.sub}</div>
+                    <div style={{ flex: 1 }}>
+                      {myEmps.map(e => (
+                        <div key={e.employee_id} style={{ fontSize: '11px', padding: '3px 0', borderTop: '1px solid rgba(25,25,25,0.06)' }}>
+                          <strong style={{ color: '#191919' }}>{e.name}</strong>
+                          <span style={{ color: '#525252', marginLeft: '4px' }}>· {e.score}</span>
+                        </div>
+                      ))}
+                      {myEmps.length === 0 && <div style={{ fontSize: '10px', color: '#9CA3AF', fontStyle: 'italic' }}>No employees</div>}
+                    </div>
+                  </div>
+                );
+              })
+            ))}
+          </div>
+          {/* X-axis label */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#525252' }}>
+            <span>Below</span><span>← PERFORMANCE →</span><span>Exceeded</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div data-testid="performance-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '24px' }}>
@@ -104,22 +175,25 @@ export default function Performance() {
         </div>
       ) : (
         <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '24px' }}>
-          <h3 style={{ fontWeight: 900, fontSize: '16px', marginBottom: '16px', color: '#191919' }}>9-Box Talent Matrix — {cycle?.cycle_year}</h3>
-          {nineBox ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-              {Object.entries(NINE_BOX_LABELS).map(([placement, color]) => (
-                <div key={placement} style={{ border: `2px solid ${color}`, padding: '16px', backgroundColor: `${color}10` }}>
-                  <div style={{ fontWeight: 700, fontSize: '12px', color, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>{placement.replace('_', ' ')}</div>
-                  {(nineBox[placement] || []).map(e => (
-                    <div key={e.employee_id} style={{ fontSize: '12px', color: '#191919', padding: '4px 0', borderTop: '1px solid rgba(25,25,25,0.06)' }}>
-                      <strong>{e.name}</strong> · {e.score}
-                    </div>
-                  ))}
-                  {!(nineBox[placement]?.length) && <div style={{ fontSize: '11px', color: '#9CA3AF' }}>No employees</div>}
-                </div>
-              ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '20px' }}>
+            <div>
+              <h3 style={{ fontWeight: 900, fontSize: '16px', margin: 0, color: '#191919' }}>9-Box Talent Matrix — {cycle?.cycle_year}</h3>
+              <p style={{ fontSize: '11px', color: '#525252', margin: '2px 0 0' }}>Performance × Potential — placements based on completed reviews</p>
             </div>
-          ) : <div style={{ textAlign: 'center', color: '#9CA3AF', padding: '32px' }}>Click "9-Box Matrix" to load data</div>}
+            {nineBox && (
+              <div style={{ display: 'flex', gap: '12px', fontSize: '11px' }}>
+                {Object.entries(NINE_BOX_LABELS).map(([k, c]) => {
+                  const count = (nineBox[k] || []).length;
+                  return <div key={k} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ width: '10px', height: '10px', backgroundColor: c, display: 'inline-block' }} />
+                    <span style={{ fontWeight: 700, color: c }}>{count}</span>
+                    <span style={{ color: '#525252' }}>{k.replace('_', ' ')}</span>
+                  </div>;
+                })}
+              </div>
+            )}
+          </div>
+          {nineBox ? renderNineBoxGrid() : <div style={{ textAlign: 'center', color: '#9CA3AF', padding: '32px' }}>Click "9-Box Matrix" to load data</div>}
         </div>
       )}
 

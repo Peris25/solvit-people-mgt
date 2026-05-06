@@ -33,12 +33,27 @@ export default function Settings() {
   };
 
   const LLM_PROVIDERS = [
-    { value: 'openai', label: 'OpenAI (GPT-4o)', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'] },
+    { value: 'openai', label: 'OpenAI (GPT-5.2 default)', models: ['gpt-5.2', 'gpt-4o', 'gpt-4o-mini'] },
     { value: 'anthropic', label: 'Anthropic (Claude)', models: ['claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-opus-4-5'] },
-    { value: 'gemini', label: 'Google Gemini', models: ['gemini-2.0-flash', 'gemini-1.5-pro'] },
+    { value: 'gemini', label: 'Google Gemini', models: ['gemini-3-flash', 'gemini-3-pro'] },
   ];
 
   const selectedProvider = LLM_PROVIDERS.find(p => p.value === form.llm_provider);
+
+  const [resetting, setResetting] = useState(false);
+  const [resetMsg, setResetMsg] = useState('');
+  const handleReset = async () => {
+    if (!window.confirm('This will WIPE all transactional data (employees, reviews, leave, recognitions, projects etc.) and re-seed fresh demo data. User accounts and policies will be preserved. Continue?')) return;
+    setResetting(true);
+    setResetMsg('');
+    try {
+      const res = await api.resetDemoData();
+      setResetMsg(res.data.message);
+      setTimeout(() => setResetMsg(''), 5000);
+    } catch (err) {
+      setResetMsg('Reset failed: ' + (err.response?.data?.detail || err.message));
+    } finally { setResetting(false); }
+  };
 
   return (
     <div data-testid="settings-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
@@ -135,6 +150,18 @@ export default function Settings() {
               </div>
               <div style={{ fontSize: '12px', color: '#525252', padding: '12px', backgroundColor: '#DCFCE7', border: '1px solid #86EFAC' }}>
                 ✅ Automation engine is running. 47 rules loaded. View and manage rules in the platform configuration.
+              </div>
+
+              {/* Demo Data Reset */}
+              <div style={{ marginTop: '24px', padding: '20px', border: '2px solid #FCA5A5', backgroundColor: '#FEF2F2' }}>
+                <h4 style={{ margin: '0 0 8px', fontWeight: 900, fontSize: '14px', color: '#991B1B', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Reset Demo Data</h4>
+                <p style={{ fontSize: '12px', color: '#7F1D1D', margin: '0 0 14px', lineHeight: 1.5 }}>
+                  Wipes all transactional data (employees, performance reviews, leave requests, recognitions, projects, tasks, notifications) and re-seeds clean demo data. <strong>User accounts are preserved</strong>. Ideal for sales walkthroughs and demo resets.
+                </p>
+                <button data-testid="reset-demo-btn" type="button" onClick={handleReset} disabled={resetting} style={{ padding: '10px 24px', backgroundColor: '#991B1B', color: '#fff', border: 'none', cursor: resetting ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Arial', textTransform: 'uppercase', letterSpacing: '0.1em', opacity: resetting ? 0.6 : 1 }}>
+                  {resetting ? 'Resetting...' : 'Reset Demo Data'}
+                </button>
+                {resetMsg && <span style={{ marginLeft: '12px', fontSize: '12px', fontWeight: 700, color: resetMsg.startsWith('Reset failed') ? '#FF353F' : '#22C55E' }}>{resetMsg}</span>}
               </div>
             </div>
           )}

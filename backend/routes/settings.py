@@ -100,6 +100,18 @@ async def get_raw_settings(request: Request):
     return settings
 
 
+@router.post("/reset-demo-data")
+async def reset_demo_data_endpoint(request: Request):
+    """Wipe all transactional demo data and re-seed (keeps user accounts intact)"""
+    user = await get_current_user(request)
+    if user["role"] not in ["hr_admin"]:
+        raise HTTPException(status_code=403, detail="Only HR Admin can reset demo data")
+    db = get_db()
+    from automation.seed_data import reset_demo_data
+    await reset_demo_data(db)
+    return {"status": "success", "message": "Demo data has been reset and re-seeded", "reset_at": datetime.now(timezone.utc).isoformat()}
+
+
 @router.get("/audit-log")
 async def get_audit_log(request: Request, limit: int = 50, entity: Optional[str] = None):
     user = await get_current_user(request)

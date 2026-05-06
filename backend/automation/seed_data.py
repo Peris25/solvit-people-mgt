@@ -154,7 +154,32 @@ async def seed_all(db):
     await seed_demo_employees(db)
     await seed_exit_interview(db)
     await seed_pay_band_alerts(db)
+    await seed_performance_reviews(db)
     print("✅ All seed data loaded successfully")
+
+
+async def reset_demo_data(db):
+    """Reset all demo data (keeps users intact)"""
+    collections_to_reset = [
+        "employees", "solvers", "candidates", "performance_reviews",
+        "leave_requests", "training_requests", "idps", "skills_matrix",
+        "policies", "policy_acknowledgements", "disciplinary_cases",
+        "case_documents", "projects", "recognitions", "solver_awards",
+        "exit_interviews", "pay_band_alerts", "tasks", "notifications",
+        "calendar_events", "form_submissions", "salary_reviews",
+        "gp_records", "gp_gate", "ai_conversations", "onboarding_tasks",
+        "stay_interviews", "flight_risk_history"
+    ]
+    for col in collections_to_reset:
+        await db[col].delete_many({"tenant_id": "solvit"})
+    # Re-seed everything except users (users already exist and we keep them)
+    await seed_pay_bands(db)
+    await seed_holidays(db)
+    await seed_demo_employees(db)
+    await seed_exit_interview(db)
+    await seed_pay_band_alerts(db)
+    await seed_performance_reviews(db)
+    print("✅ Demo data reset completed")
 
 
 async def seed_users(db):
@@ -323,3 +348,68 @@ async def seed_pay_band_alerts(db):
     docs = [{**a, "id": str(uuid.uuid4()), "tenant_id": "solvit", "status": "Active", "created_at": datetime.now(timezone.utc).isoformat()} for a in PAY_BAND_ALERTS]
     await db.pay_band_alerts.insert_many(docs)
     print("✅ Pay band alerts seeded")
+
+
+async def seed_performance_reviews(db):
+    """Seed completed performance reviews so 9-box matrix has data"""
+    existing = await db.performance_reviews.count_documents({"tenant_id": "solvit"})
+    if existing > 0:
+        return
+    employees = await db.employees.find({"tenant_id": "solvit", "lifecycle_state": "Active"}).to_list(50)
+    # Sample 9-box placements distributed across employees
+    placements = [
+        ("Stars", 1.2, "Exceeded", 95.0),
+        ("Stars", 1.3, "Exceeded", 92.0),
+        ("Core_Contributor", 1.7, "Met", 78.0),
+        ("Core_Contributor", 1.8, "Met", 76.0),
+        ("Core_Contributor", 1.9, "Met", 74.0),
+        ("Culture_Risk", 1.6, "Met", 65.0),
+        ("Realignment_Needed", 2.2, "Below", 55.0),
+        ("Exit_Track", 2.6, "Forfeited", 35.0),
+    ]
+    docs = []
+    employee_score_updates = []
+    for i, emp in enumerate(employees[:len(placements)]):
+        placement, score, rating, density = placements[i]
+        emp_id = str(emp.get("id", str(emp["_id"])))
+        rev = {
+            "id": str(uuid.uuid4()),
+            "tenant_id": "solvit",
+            "employee_id": emp_id,
+            "cycle_type": "Year_End",
+            "cycle_year": datetime.now(timezone.utc).year,
+            "section_a_score": score - 0.1,
+            "section_b_score": score,
+            "section_c_score": score + 0.1,
+            "overall_score": score,
+            "rating": rating,
+            "nine_box_placement": placement,
+            "talent_density_pct": density,
+            "consequence_workflow": None,
+            "form_data_json": {},
+            "employee_signature": "Auto-seeded",
+            "manager_signature": "Auto-seeded",
+            "hr_signature": "Auto-seeded",
+            "employee_signature_at": datetime.now(timezone.utc).isoformat(),
+            "manager_signature_at": datetime.now(timezone.utc).isoformat(),
+            "hr_signature_at": datetime.now(timezone.utc).isoformat(),
+            "status": "Completed",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        docs.append(rev)
+        employee_score_updates.append((emp_id, score, placement == "Stars"))
+
+    if docs:
+        await db.performance_reviews.insert_many(docs)
+    # Update employee records with last performance score
+    for emp_id, score, eligible in employee_score_updates:
+        await db.employees.update_one(
+            {"id": emp_id},
+            {"$set": {
+                "last_performance_score": score,
+                "last_review_date": datetime.now(timezone.utc).isoformat()[:10],
+                "project_ownership_eligible": eligible
+            }}
+        )
+    print(f"✅ {len(docs)} demo performance reviews seeded")
