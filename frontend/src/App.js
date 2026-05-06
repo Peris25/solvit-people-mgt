@@ -24,6 +24,7 @@ import Compliance from './pages/Compliance';
 import Settings from './pages/Settings';
 import Forms from './pages/Forms';
 import EmployeeProfile from './pages/EmployeeProfile';
+import MyTasks from './pages/MyTasks';
 import ErrorToast from './components/ErrorToast';
 
 export default function App() {
@@ -56,6 +57,7 @@ export default function App() {
             <Route path="compliance" element={<Compliance />} />
             <Route path="settings" element={<Settings />} />
             <Route path="forms" element={<Forms />} />
+            <Route path="my-tasks" element={<MyTasks />} />
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

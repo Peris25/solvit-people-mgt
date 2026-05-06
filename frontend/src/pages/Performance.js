@@ -16,8 +16,9 @@ export default function Performance() {
   const [showCreate, setShowCreate] = useState(false);
   const [newReview, setNewReview] = useState({ employee_id: '', cycle_type: 'Year_End', cycle_year: new Date().getFullYear() });
   const [saving, setSaving] = useState(false);
+  const [talentDensity, setTalentDensity] = useState(null);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); if (['hr_admin', 'hr_manager', 'executive'].includes(user?.role)) api.getTalentDensity().then(r => setTalentDensity(r.data)).catch(() => {}); }, []);
 
   const load = async () => {
     setLoading(true);
@@ -49,20 +50,21 @@ export default function Performance() {
 
   const NINE_BOX_LABELS = { Stars: '#22C55E', Core_Contributor: '#3B82F6', Culture_Risk: '#F59E0B', Realignment_Needed: '#F97316', Exit_Track: '#EF4444' };
 
-  // 9-box grid layout (rows = Potential High→Low, cols = Performance Low→High)
+  // 9-box grid layout (rows = Values High→Low, cols = Performance Low→High)
+  // Per FRD §2 correction: axes are Performance vs Values (NOT Potential)
   const NINE_BOX_GRID = [
-    // Top row (High potential)
-    [{ key: 'Realignment_Needed', label: 'Inconsistent Star', sub: 'High potential / low perf' },
-     { key: 'Stars', label: 'Future Leader', sub: 'High potential / met perf', main: true },
-     { key: 'Stars', label: 'Star', sub: 'Promote / retain', main: true }],
-    // Middle row (Medium potential)
-    [{ key: 'Realignment_Needed', label: 'Up or Out', sub: 'Develop or exit' },
-     { key: 'Core_Contributor', label: 'Core Player', sub: 'Solid contributor', main: true },
-     { key: 'Core_Contributor', label: 'High Performer', sub: 'Stretch role', main: true }],
-    // Bottom row (Low potential)
-    [{ key: 'Exit_Track', label: 'Exit Track', sub: 'Low / low — manage out' },
-     { key: 'Culture_Risk', label: 'Effective', sub: 'Low pot / met perf' },
-     { key: 'Culture_Risk', label: 'Trusted Pro', sub: 'Strong perf, capped potential' }],
+    // Top row (High Values alignment)
+    [{ key: 'Realignment_Needed', label: 'Realignment', sub: 'Strong values · low KPI — supportive intervention' },
+     { key: 'Core_Contributor', label: 'Core Contributor', sub: 'Solid values · solid KPI', main: true },
+     { key: 'Stars', label: 'Star', sub: 'High values · high KPI — promote / retain', main: true }],
+    // Middle row (Solid Values)
+    [{ key: 'Realignment_Needed', label: 'Realignment', sub: 'Solid values · low KPI' },
+     { key: 'Core_Contributor', label: 'Core Player', sub: 'Solid values · solid KPI', main: true },
+     { key: 'Core_Contributor', label: 'High Performer', sub: 'Solid values · high KPI', main: true }],
+    // Bottom row (Low Values — values failure is non-negotiable)
+    [{ key: 'Exit_Track', label: 'Exit Track', sub: 'Low values · low KPI — PIP or exit' },
+     { key: 'Culture_Risk', label: 'Culture Risk', sub: 'Low values · solid KPI — values enforcement' },
+     { key: 'Culture_Risk', label: 'Culture Risk', sub: 'Low values · high KPI — values overrule performance' }],
   ];
 
   const [draggedEmp, setDraggedEmp] = useState(null);
@@ -97,7 +99,7 @@ export default function Performance() {
     return (
       <div style={{ display: 'flex', gap: '24px' }}>
         <div style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', display: 'flex', alignItems: 'center', justifyContent: 'space-around', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#525252', minHeight: '420px' }}>
-          <span>Low</span><span>POTENTIAL →</span><span>High</span>
+          <span>Low</span><span>VALUES (Section B) →</span><span>High</span>
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
@@ -149,10 +151,10 @@ export default function Performance() {
             ))}
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#525252' }}>
-            <span>Below</span><span>← PERFORMANCE →</span><span>Exceeded</span>
+            <span>Low (2.0+)</span><span>← KPI PERFORMANCE (Section A) →</span><span>High (1.0-1.49)</span>
           </div>
           <div style={{ marginTop: '12px', padding: '10px 14px', backgroundColor: '#FEF3C7', border: '1px solid #FCD34D', fontSize: '11px', color: '#78350F' }}>
-            💡 Drag an employee card between cells to reassign their 9-box placement. Changes save instantly and are audit-logged.
+            💡 Drag an employee card between cells to reassign their 9-box placement. Y-axis = Section B values alignment (peer scores 7-10/4-7/&lt;4). X-axis = Section A KPI score. Values failure is non-negotiable — high KPI does NOT override low values.
           </div>
         </div>
       </div>
@@ -170,6 +172,36 @@ export default function Performance() {
           <button data-testid="create-review-btn" onClick={() => setShowCreate(true)} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>+ Create Review</button>
         )}
       </div>
+
+      {/* Talent Density Score banner (correction §3) */}
+      {talentDensity && (
+        <div data-testid="talent-density-card" style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '18px 22px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap' }}>
+          <div style={{ flex: '0 0 auto' }}>
+            <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.18em', color: '#525252' }}>Talent Density</div>
+            <div style={{ fontSize: '40px', fontWeight: 900, letterSpacing: '-0.04em', color: talentDensity.status === 'Healthy' ? '#22C55E' : talentDensity.status === 'Below Target' ? '#F97316' : '#FF353F' }}>
+              {talentDensity.score_pct}%
+            </div>
+            <div style={{ fontSize: '11px', color: '#525252' }}>Target: {talentDensity.target_pct}% · <strong style={{ color: talentDensity.status === 'Healthy' ? '#22C55E' : talentDensity.status === 'Below Target' ? '#F97316' : '#FF353F' }}>{talentDensity.status}</strong></div>
+          </div>
+          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px' }}>
+            <div style={{ padding: '10px 12px', backgroundColor: '#F9FAFB', border: '1px solid rgba(25,25,25,0.06)' }}>
+              <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252' }}>Stars + Core %</div>
+              <div style={{ fontSize: '20px', fontWeight: 900, color: '#191919' }}>{talentDensity.components.primary_stars_core_pct}%</div>
+              <div style={{ fontSize: '10px', color: '#9CA3AF' }}>weight 60%</div>
+            </div>
+            <div style={{ padding: '10px 12px', backgroundColor: '#F9FAFB', border: '1px solid rgba(25,25,25,0.06)' }}>
+              <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252' }}>Section B Values</div>
+              <div style={{ fontSize: '20px', fontWeight: 900, color: '#191919' }}>{talentDensity.components.secondary_values_avg_pct}%</div>
+              <div style={{ fontSize: '10px', color: '#9CA3AF' }}>weight 25%</div>
+            </div>
+            <div style={{ padding: '10px 12px', backgroundColor: '#F9FAFB', border: '1px solid rgba(25,25,25,0.06)' }}>
+              <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252' }}>Alignment Survey</div>
+              <div style={{ fontSize: '20px', fontWeight: 900, color: '#191919' }}>{talentDensity.components.tertiary_alignment_pct}%</div>
+              <div style={{ fontSize: '10px', color: '#9CA3AF' }}>weight 15%</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid rgba(25,25,25,0.1)', marginBottom: '20px' }}>
@@ -217,7 +249,7 @@ export default function Performance() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '20px' }}>
             <div>
               <h3 style={{ fontWeight: 900, fontSize: '16px', margin: 0, color: '#191919' }}>9-Box Talent Matrix — {cycle?.cycle_year}</h3>
-              <p style={{ fontSize: '11px', color: '#525252', margin: '2px 0 0' }}>Performance × Potential — placements based on completed reviews</p>
+              <p style={{ fontSize: '11px', color: '#525252', margin: '2px 0 0' }}>Performance × Values (per FRD Correction §1) — placements based on completed reviews</p>
             </div>
             {nineBox && (
               <div style={{ display: 'flex', gap: '12px', fontSize: '11px' }}>

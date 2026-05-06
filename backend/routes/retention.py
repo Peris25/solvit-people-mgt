@@ -183,6 +183,62 @@ async def get_exit_insights(request: Request):
     return [fmt(i) for i in interviews]
 
 
+@router.get("/voluntary-attrition")
+async def voluntary_attrition_kpi(request: Request):
+    """Voluntary attrition % over rolling 12 months. Target: ≤10%.
+    Excludes probation exits (Month 3 fail). Classified Regrettable / Non-Regrettable."""
+    user = await get_current_user(request)
+    if user["role"] not in ["hr_admin", "hr_manager", "executive"]:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    db = get_db()
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=365)).isoformat()
+
+    # Average headcount = simple mean of current Active + Active 12 months ago (use current as approx)
+    current_active = await db.employees.count_documents({"tenant_id": "solvit", "lifecycle_state": "Active"})
+    avg_headcount = current_active or 1
+
+    # Voluntary exits = employees with lifecycle_state Exited + exit_type Voluntary in last 12 months
+    exits = await db.employees.find({
+        "tenant_id": "solvit",
+        "lifecycle_state": "Exited",
+        "exit_date": {"$gte": cutoff[:10]}
+    }).to_list(200)
+    # Also pull from exit_interviews
+    exit_interviews = await db.exit_interviews.find({
+        "tenant_id": "solvit",
+        "exit_date": {"$gte": cutoff[:10]}
+    }).to_list(200)
+
+    voluntary_count = 0
+    regrettable = 0
+    non_regrettable = 0
+    probation_exits = 0
+    for e in exit_interviews:
+        if e.get("probation_exit"):
+            probation_exits += 1
+            continue
+        if (e.get("exit_type") or "Voluntary").lower() == "voluntary":
+            voluntary_count += 1
+            if e.get("is_regrettable") or e.get("regrettable_classification") == "Regrettable":
+                regrettable += 1
+            else:
+                non_regrettable += 1
+
+    pct = round((voluntary_count / avg_headcount) * 100, 1)
+    return {
+        "voluntary_count_12mo": voluntary_count,
+        "avg_headcount": avg_headcount,
+        "pct": pct,
+        "target_pct": 10,
+        "status": "Healthy" if pct <= 10 else "Concerning" if pct <= 15 else "Critical",
+        "regrettable": regrettable,
+        "non_regrettable": non_regrettable,
+        "probation_exits_excluded": probation_exits,
+    }
+
+
 @router.get("/risk-summary")
 async def get_risk_summary(request: Request):
     user = await get_current_user(request)

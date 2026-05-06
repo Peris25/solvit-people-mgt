@@ -1,0 +1,46 @@
+{
+  "summary": "Iteration 3 verified — workflow matrix enforcement on /api/forms (32 forms enriched with module/module_name/workflow_trigger/completing_users_sequence/required_signatures/outcome_rule), full 3-step sequential signing on form-15 employee → line_manager → hr_admin → Completed, missing-signature 400 with 'Missing required signatures: [...]', GET /api/forms/my-tasks routes to caller's role, Talent Density (70% / target 85% / 3 components, 403 for employee role) and Voluntary Attrition (14.3% / target 10% / Concerning) endpoints. Frontend: Sidebar 'My Tasks' menu item works → /my-tasks renders empty state with 🎉; Performance page Talent Density card with 3 KPI components; 9-Box tab subtitle reads 'Performance × Values (per FRD Correction §1)'; Y-axis = 'VALUES (Section B)'; X-axis = 'KPI PERFORMANCE (Section A)'; POTENTIAL keyword absent. Retention page Voluntary Attrition card shows 14.3% / Target ≤ 10% / Concerning. Forms tiles display module badges (M01-M19) and sequence chips (employee → line_manager → hr_admin). 13/13 new pytest cases passing on /app/backend/tests/test_iteration_3.py.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/forms/my-tasks", "issue": "Initially returned MongoDB ObjectId in 'id' field (overwriting stored UUID id) due to fmt() helper bug carried over from iteration 1/2 — fixed in this run by preserving existing UUID id and stripping _id."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "9-Box Talent Matrix", "issues": ["Bottom-middle and bottom-right cells both labeled 'CULTURE RISK' (intentional per FRD: low values overrides high KPI), and top-left + middle-left both labeled 'REALIGNMENT'. Cell labels are duplicated which is semantically correct but may confuse new users — consider distinct sub-labels (e.g., 'CULTURE RISK — High KPI' vs 'CULTURE RISK — Mid KPI')."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_3.py",
+    "/app/test_reports/pytest/iteration_3.xml"
+  ],
+  "action_items": [
+    "(Optional) The fmt() helper in routes/forms.py was patched here to stop overwriting UUID id with Mongo _id. Audit other routes that still call fmt() patterns (this was flagged in iteration_2 review) — search 'doc[\"id\"] = str(doc.get(\"_id\"' across /app/backend/routes/ and apply the same fix. Endpoints currently exposing Mongo ObjectId instead of stored UUID id will fail downstream sign/update calls.",
+    "(Optional) Differentiate duplicate 9-Box cell labels (CULTURE RISK x2, REALIGNMENT x2) with KPI band suffix to improve UX clarity.",
+    "(Optional) Per-section visibility for multi-step forms (form-08, form-13) is not yet wired — only form-06 and form-23 carry accessible_by_role tags. Sequential routing + signature gating works, but UI cannot hide/show sections per role."
+  ],
+  "critical_code_review_comments": [
+    "routes/forms.py fmt() pre-fix overwrote UUID id with Mongo _id — every list/get on form_submissions returned non-functional ids breaking the sign workflow chain. Fix applied. Same anti-pattern likely persists in other route modules (settings, leave, retention, etc) — needs a sweep.",
+    "routes/forms.py sign_form_step() role_match logic: 'hr_admin' can sign any step (line 413). This is intentional override per spec but should be audit-logged. Currently only writes signed_by user_id — no 'on_behalf_of' marker indicating hr_admin acted as another role.",
+    "routes/forms.py /submissions/{entity_id} (line 561) uses entity_id ambiguously — same path collides semantically with /submissions/{submission_id}/sign. Consider /submissions/by-entity/{entity_id} for clarity.",
+    "routes/forms_workflow.py review_panel_for() helper is defined but I did not see it called from any route — dead code or upcoming feature?",
+    "Frontend Performance.js 9-Box: cell label set has 5 categories (Stars/Core_Contributor/Culture_Risk/Realignment_Needed/Exit_Track) but visual grid renders 9 cells, so duplicate labels are unavoidable without sub-band distinction."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_3.py (created — 13 tests, 13 passing)",
+    "/app/backend/routes/forms.py (patched fmt() to preserve UUID id and exclude _id)"
+  ],
+  "success_rate": {
+    "backend": "100% (13/13 iteration-3 tests passing). Regression: 79/81 across iterations 1+2+3 (2 pre-existing failures in iteration_2 unrelated to this iteration: TestSettingsEmail::test_put_sendgrid_settings_masks_key and TestEmployees::test_list expects >=10 employees got 9 — both noted in iteration_2 minor issues).",
+    "frontend": "100% of iteration-3 critical flows validated (My Tasks sidebar+page, Talent Density card, Voluntary Attrition card, 9-Box Performance × Values labels, Forms module badges + sequence chips)."
+  },
+  "test_credentials": "Used jessica@solvit.co.ke / Solvit@2026 (HR Admin), manager@solvit.co.ke / Solvit@2026 (Line Manager), employee@solvit.co.ke / Solvit@2026 (Employee). All from /app/memory/test_credentials.md.",
+  "seed_data_creation": "Created 2 form-15 submissions during sign workflow + my-tasks tests (TEST data — IDs persist in form_submissions until next reset-demo-data). No employee/user seed records added.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Regression files: /app/backend/tests/test_solvit_platform.py (iteration 1, 46 tests, 1 pre-existing fail on employee count >=10 — only 9 seeded), /app/backend/tests/test_iteration_2.py (iteration 2, 22 tests, 1 pre-existing fail on email_api_key mask format), /app/backend/tests/test_iteration_3.py (this iteration, 13 tests, all passing). Run all: pytest /app/backend/tests/ -v. Key new endpoints: GET /api/forms (now enriched with workflow metadata), POST /api/forms/{id}/start, POST /api/forms/submissions/{id}/sign, GET /api/forms/my-tasks, GET /api/performance/talent-density, GET /api/retention/voluntary-attrition. Key new testids: data-testid='talent-density-card' on Performance page. fmt() bug fix: /app/backend/routes/forms.py — same pattern likely exists in other route files calling helpers that overwrite id with _id; audit before next iteration.",
+  "rca_of_the_issue": "RCA of fmt() bug: Original implementation `doc['id'] = str(doc.get('_id', ''))` blindly copied Mongo ObjectId into id, clobbering the UUID stored at insert time. Reproduction: POST /api/forms/form-15/start returned UUID id; subsequent GET /api/forms/my-tasks returned the same submission with a different (Mongo ObjectId) id, breaking any frontend client that tried to use the my-tasks id to call /sign. Mitigation: changed fmt() to only set id from _id when no UUID id exists, and to strip _id from response. All other forms.py endpoints using fmt() (get_submissions) are now correct."
+}

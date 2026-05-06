@@ -118,10 +118,23 @@ export default function Forms() {
               onMouseEnter={e => e.currentTarget.style.borderColor = '#FF353F'}
               onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(25,25,25,0.08)'}
             >
-              <div style={{ fontSize: '10px', fontWeight: 700, color: '#FF353F', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '4px' }}>{f.id}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: '#FF353F', textTransform: 'uppercase', letterSpacing: '0.15em' }}>{f.id}</div>
+                {f.module && <span style={{ fontSize: '9px', backgroundColor: '#191919', color: '#fff', padding: '1px 6px', fontWeight: 700, letterSpacing: '0.05em' }}>{f.module}</span>}
+              </div>
               <div style={{ fontSize: '13px', fontWeight: 900, color: '#191919', marginBottom: '6px', letterSpacing: '-0.02em' }}>{f.title}</div>
               <div style={{ fontSize: '11px', color: '#525252', lineHeight: 1.5 }}>{f.description}</div>
-              {f.target_role && <div style={{ marginTop: '8px', fontSize: '10px', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.1em' }}>For: {f.target_role}</div>}
+              {f.module_name && <div style={{ marginTop: '6px', fontSize: '10px', color: '#9CA3AF' }}>{f.module_name}</div>}
+              {f.completing_users_sequence && f.completing_users_sequence.length > 0 && (
+                <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                  {f.completing_users_sequence.map((r, idx) => (
+                    <React.Fragment key={idx}>
+                      {idx > 0 && <span style={{ fontSize: '11px', color: '#9CA3AF' }}>→</span>}
+                      <span style={{ fontSize: '9px', backgroundColor: '#F5F5F5', color: '#525252', padding: '1px 6px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{r.replace('_', ' ')}</span>
+                    </React.Fragment>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>

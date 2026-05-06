@@ -185,6 +185,15 @@ export const getConversations = () => api.get('/ai-agent/conversations');
 export const getForms = () => api.get('/forms');
 export const getFormSchema = (id) => api.get(`/forms/${id}`);
 export const submitForm = (id, data) => api.post(`/forms/${id}/submit`, data);
+export const startFormSubmission = (id, data) => api.post(`/forms/${id}/start`, data);
+export const signFormStep = (subId, data) => api.post(`/forms/submissions/${subId}/sign`, data);
+export const getMyFormTasks = () => api.get('/forms/my-tasks');
+
+// Retention KPIs
+export const getVoluntaryAttrition = () => api.get('/retention/voluntary-attrition');
+
+// Performance KPIs
+export const getTalentDensity = (cycle_year) => api.get('/performance/talent-density', { params: { cycle_year } });
 
 // Automation
 export const getAutomationRules = () => api.get('/automation');

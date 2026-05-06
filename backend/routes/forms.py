@@ -285,18 +285,192 @@ for form_num in ["form-04", "form-07", "form-08", "form-09", "form-10", "form-11
         }
 
 
+# Tag form sections with accessible_by_role for sequential workflows.
+# When a form has multi-step routing, each section can specify which roles can fill it.
+# Frontend uses this to show only the relevant section to the current user.
+SECTION_ROLE_ASSIGNMENTS = {
+    "form-06": {  # Performance Review: Employee → Line Manager → HR Admin
+        # Apply role to schema sections — handled in get_form_schema
+    },
+    "form-08": {},
+    "form-13": {},
+    "form-15": {},
+    "form-23": {},  # Exit Clearance: 4 sections each with own role
+}
+
+# Apply role tagging to known multi-step forms
+if "form-23" in FORM_SCHEMAS and FORM_SCHEMAS["form-23"].get("sections"):
+    role_for_section = {"it": "employee", "admin": "line_manager", "finance": "finance", "hr": "hr_admin"}
+    for sec in FORM_SCHEMAS["form-23"]["sections"]:
+        sec["accessible_by_role"] = role_for_section.get(sec["id"], "hr_admin")
+
+if "form-06" in FORM_SCHEMAS and FORM_SCHEMAS["form-06"].get("sections"):
+    # Self section → employee, manager scoring → line_manager, calibration → hr_admin
+    role_map = {"section_a": "line_manager", "section_b": "line_manager", "section_c": "line_manager",
+                "self_review": "employee", "calibration": "hr_admin", "consequence": "hr_admin"}
+    for sec in FORM_SCHEMAS["form-06"].get("sections", []):
+        sec["accessible_by_role"] = role_map.get(sec.get("id", ""), "line_manager")
+
+
 def fmt(doc):
     if not doc:
         return None
-    doc["id"] = str(doc.get("_id", ""))
-    doc["_id"] = str(doc.get("_id", ""))
+    # Preserve UUID id if present; only fall back to _id when no id field exists
+    if not doc.get("id"):
+        doc["id"] = str(doc.get("_id", ""))
+    doc.pop("_id", None)
     return doc
 
 
 @router.get("")
 async def list_forms(request: Request):
     user = await get_current_user(request)
-    return [{"id": k, "title": v["title"], "description": v.get("description", ""), "target_role": v.get("target_role")} for k, v in FORM_SCHEMAS.items()]
+    from routes.forms_workflow import FORM_WORKFLOW_MATRIX
+    return [{
+        "id": k,
+        "title": v["title"],
+        "description": v.get("description", ""),
+        "target_role": v.get("target_role"),
+        "module": FORM_WORKFLOW_MATRIX.get(k, {}).get("module"),
+        "module_name": FORM_WORKFLOW_MATRIX.get(k, {}).get("module_name"),
+        "workflow_trigger": FORM_WORKFLOW_MATRIX.get(k, {}).get("workflow_trigger"),
+        "completing_users_sequence": FORM_WORKFLOW_MATRIX.get(k, {}).get("completing_users_sequence", []),
+        "required_signatures": FORM_WORKFLOW_MATRIX.get(k, {}).get("required_signatures", []),
+        "outcome_rule": FORM_WORKFLOW_MATRIX.get(k, {}).get("outcome_rule"),
+    } for k, v in FORM_SCHEMAS.items()]
+
+
+@router.get("/my-tasks")
+async def my_form_tasks(request: Request):
+    """Return form submissions currently routed to the calling user."""
+    user = await get_current_user(request)
+    db = get_db()
+    role = user.get("role")
+    user_id = user.get("id")
+    # Submissions where current_step expects this role and not yet signed by them
+    query = {
+        "tenant_id": "solvit",
+        "status": "InProgress",
+        "next_required_role": role,
+    }
+    subs = await db.form_submissions.find(query).sort("created_at", -1).to_list(100)
+    return [fmt(s) for s in subs]
+
+
+@router.post("/{form_id}/start")
+async def start_form_submission(form_id: str, request: Request):
+    """Initialize a multi-step form submission. Routes to the first user in the sequence."""
+    user = await get_current_user(request)
+    from routes.forms_workflow import FORM_WORKFLOW_MATRIX
+    if form_id not in FORM_SCHEMAS:
+        raise HTTPException(status_code=404, detail=f"Form {form_id} not found")
+    matrix = FORM_WORKFLOW_MATRIX.get(form_id, {})
+    sequence = matrix.get("completing_users_sequence", [])
+    if not sequence:
+        raise HTTPException(status_code=400, detail="No workflow defined for this form")
+
+    body = await request.json()
+    db = get_db()
+    schema = FORM_SCHEMAS[form_id]
+    doc = {
+        "id": str(uuid.uuid4()),
+        "tenant_id": "solvit",
+        "form_id": form_id,
+        "form_title": schema["title"],
+        "subject_employee_id": body.get("employee_id"),
+        "subject_employee_name": body.get("employee_name"),
+        "data": body.get("data", {}) or {},
+        "signatures": {},
+        "completed_steps": [],
+        "current_step_index": 0,
+        "next_required_role": sequence[0],
+        "completing_users_sequence": sequence,
+        "required_signatures": matrix.get("required_signatures", []),
+        "outcome_rule": matrix.get("outcome_rule"),
+        "status": "InProgress",
+        "started_by": user["id"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.form_submissions.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@router.post("/submissions/{submission_id}/sign")
+async def sign_form_step(submission_id: str, request: Request):
+    """Current user signs their step. Form advances to next user or completes."""
+    user = await get_current_user(request)
+    db = get_db()
+    body = await request.json()
+    sub = await db.form_submissions.find_one({"id": submission_id, "tenant_id": "solvit"})
+    if not sub:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    if sub.get("status") != "InProgress":
+        raise HTTPException(status_code=400, detail=f"Submission is {sub.get('status')}, not in progress")
+
+    expected_role = sub.get("next_required_role")
+    user_role = user.get("role")
+    # Allow hr_admin to act on any role except where the role is the subject employee themselves
+    role_match = (expected_role == user_role) or (expected_role == "employee" and sub.get("subject_employee_id") == user.get("employee_id"))
+    if not role_match and user_role != "hr_admin":
+        raise HTTPException(status_code=403, detail=f"This step requires role: {expected_role}, you are: {user_role}")
+
+    signature = body.get("signature") or user.get("full_name") or user.get("email")
+    if not signature:
+        raise HTTPException(status_code=400, detail="Signature required")
+
+    # Merge new data
+    new_data = {**sub.get("data", {}), **(body.get("data") or {})}
+    new_sigs = {**sub.get("signatures", {}), expected_role: {"name": signature, "signed_by": user["id"], "signed_at": datetime.now(timezone.utc).isoformat()}}
+    completed = sub.get("completed_steps", []) + [{"role": expected_role, "user_id": user["id"], "at": datetime.now(timezone.utc).isoformat()}]
+    seq = sub.get("completing_users_sequence", [])
+    next_idx = sub.get("current_step_index", 0) + 1
+
+    update = {"data": new_data, "signatures": new_sigs, "completed_steps": completed, "current_step_index": next_idx, "updated_at": datetime.now(timezone.utc).isoformat()}
+
+    if next_idx >= len(seq):
+        # Workflow complete — verify all required signatures present
+        required_sigs = sub.get("required_signatures", [])
+        missing = [r for r in required_sigs if r not in new_sigs]
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Missing required signatures: {missing}")
+        update["status"] = "Completed"
+        update["next_required_role"] = None
+        update["completed_at"] = datetime.now(timezone.utc).isoformat()
+        # Fire outcome rule
+        if sub.get("outcome_rule"):
+            try:
+                from automation.engine import automation_engine
+                await automation_engine.fire_event(sub["outcome_rule"], {
+                    "form_id": sub["form_id"],
+                    "submission_id": submission_id,
+                    "subject_employee_id": sub.get("subject_employee_id"),
+                    "data": new_data
+                })
+            except Exception as ex:
+                print(f"Outcome rule fire failed: {ex}")
+    else:
+        update["next_required_role"] = seq[next_idx]
+        # Notify next user
+        try:
+            await db.notifications.insert_one({
+                "id": str(uuid.uuid4()),
+                "tenant_id": "solvit",
+                "recipient_role": seq[next_idx],
+                "category": "Form",
+                "title": f"[{sub['form_id']}] {sub['form_title']} awaits your sign-off",
+                "message": f"Step {next_idx + 1} of {len(seq)} ready for your input.",
+                "data": {"submission_id": submission_id, "form_id": sub["form_id"]},
+                "is_read": False,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+        except Exception:
+            pass
+
+    await db.form_submissions.update_one({"id": submission_id}, {"$set": update})
+    sub.update(update)
+    sub.pop("_id", None)
+    return sub
 
 
 @router.get("/{form_id}")
@@ -305,7 +479,10 @@ async def get_form_schema(form_id: str, request: Request):
     schema = FORM_SCHEMAS.get(form_id)
     if not schema:
         raise HTTPException(status_code=404, detail=f"Form {form_id} not found")
-    return schema
+    from routes.forms_workflow import FORM_WORKFLOW_MATRIX
+    matrix = FORM_WORKFLOW_MATRIX.get(form_id, {})
+    enriched = {**schema, **matrix}
+    return enriched
 
 
 @router.post("/{form_id}/submit")
@@ -318,6 +495,15 @@ async def submit_form(form_id: str, request: Request):
     if not schema:
         raise HTTPException(status_code=404, detail=f"Form {form_id} not found")
 
+    # Enforce required signatures for single-step forms
+    from routes.forms_workflow import FORM_WORKFLOW_MATRIX
+    matrix = FORM_WORKFLOW_MATRIX.get(form_id, {})
+    required_sigs = matrix.get("required_signatures", [])
+    sigs = body.get("signatures", {}) or {}
+    missing = [r for r in required_sigs if r not in sigs]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing required signatures: {missing}")
+
     doc = {
         "id": str(uuid.uuid4()),
         "tenant_id": "solvit",
@@ -325,8 +511,9 @@ async def submit_form(form_id: str, request: Request):
         "form_title": schema["title"],
         "submitted_by": user["id"],
         "data": body.get("data", {}),
-        "signatures": body.get("signatures", {}),
+        "signatures": sigs,
         "status": "Submitted",
+        "outcome_rule": matrix.get("outcome_rule"),
         "submitted_at": datetime.now(timezone.utc).isoformat()
     }
 
@@ -344,6 +531,18 @@ async def submit_form(form_id: str, request: Request):
         if emp_id:
             from automation.engine import automation_engine
             await automation_engine.fire_event("employee_exiting", {"employee_id": emp_id})
+
+    # Fire outcome rule generically (best-effort)
+    if matrix.get("outcome_rule"):
+        try:
+            from automation.engine import automation_engine
+            await automation_engine.fire_event(matrix["outcome_rule"], {
+                "form_id": form_id,
+                "submitted_by": user["id"],
+                "data": body.get("data", {})
+            })
+        except Exception:
+            pass
 
     result = await db.form_submissions.insert_one(doc)
     doc["_id"] = str(result.inserted_id)

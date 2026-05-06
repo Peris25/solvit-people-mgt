@@ -31,6 +31,7 @@ const MENU_ITEMS = [
     { path: '/compliance', label: 'Statutory Compliance', icon: '✅', roles: ['hr_admin', 'finance', 'hr_manager'] },
     { path: '/calendar', label: 'HR Calendar', icon: '📅', roles: ['hr_admin', 'hr_manager', 'employee', 'solver'] },
     { path: '/forms', label: 'Forms', icon: '📝', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee', 'solver'] },
+    { path: '/my-tasks', label: 'My Tasks', icon: '✓', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee', 'solver', 'finance', 'executive'] },
     { path: '/settings', label: 'Settings', icon: '⚙', roles: ['hr_admin', 'hr_manager'] },
   ]},
 ];

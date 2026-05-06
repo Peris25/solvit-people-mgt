@@ -15,8 +15,14 @@ export default function Retention() {
   const [showConduct, setShowConduct] = useState(null);
   const [scheduleForm, setScheduleForm] = useState({ employee_id: '', employee_name: '', scheduled_date: '', trigger_reason: '' });
   const [conductForm, setConductForm] = useState({});
+  const [attrition, setAttrition] = useState(null);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    if (['hr_admin', 'hr_manager', 'executive'].includes(user?.role)) {
+      api.getVoluntaryAttrition().then(r => setAttrition(r.data)).catch(() => {});
+    }
+  }, []);
 
   const load = async () => {
     setLoading(true);
@@ -57,12 +63,38 @@ export default function Retention() {
 
   const RISK_COLORS = { Low: '#22C55E', Elevated: '#F59E0B', High: '#F97316', Critical: '#EF4444', Unknown: '#9CA3AF' };
 
+  const KPIPill = ({ k, v, color = '#191919' }) => (
+    <div style={{ padding: '8px 14px', border: '1px solid rgba(25,25,25,0.08)' }}>
+      <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252' }}>{k}</div>
+      <div style={{ fontSize: '20px', fontWeight: 900, color }}>{v}</div>
+    </div>
+  );
+
   return (
     <div data-testid="retention-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', margin: 0 }}>Retention & Flight Risk</h1>
         <p style={{ color: '#525252', fontSize: '13px', margin: 0, marginTop: '4px' }}>Proactive retention intelligence</p>
       </div>
+
+      {/* Voluntary Attrition KPI banner (correction §4) */}
+      {attrition && (
+        <div data-testid="attrition-card" style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '16px 20px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.18em', color: '#525252' }}>Voluntary Attrition · 12-mo rolling</div>
+            <div style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.04em', color: attrition.status === 'Healthy' ? '#22C55E' : attrition.status === 'Concerning' ? '#F97316' : '#FF353F' }}>
+              {attrition.pct}%
+            </div>
+            <div style={{ fontSize: '11px', color: '#525252' }}>Target ≤ {attrition.target_pct}% · <strong>{attrition.status}</strong></div>
+          </div>
+          <div style={{ display: 'flex', gap: '14px', flex: 1, justifyContent: 'flex-end' }}>
+            <KPIPill k="Voluntary exits" v={attrition.voluntary_count_12mo} />
+            <KPIPill k="Regrettable" v={attrition.regrettable} color="#FF353F" />
+            <KPIPill k="Non-regrettable" v={attrition.non_regrettable} color="#525252" />
+            <KPIPill k="Probation excl." v={attrition.probation_exits_excluded} color="#9CA3AF" />
+          </div>
+        </div>
+      )}
 
       {summary && (
         <div style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>

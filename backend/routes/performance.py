@@ -126,6 +126,49 @@ async def get_active_cycle(request: Request):
     return {"cycle_type": cycle_type, "cycle_year": now.year, "is_active": True}
 
 
+@router.get("/talent-density")
+async def get_talent_density_kpi(request: Request, cycle_year: Optional[int] = None):
+    """Composite organisational health metric. Target 85%."""
+    user = await get_current_user(request)
+    if user["role"] not in ["hr_admin", "hr_manager", "executive"]:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    db = get_db()
+    year = cycle_year or datetime.now(timezone.utc).year
+
+    active_count = await db.employees.count_documents({"tenant_id": "solvit", "lifecycle_state": "Active"})
+    reviews = await db.performance_reviews.find({"tenant_id": "solvit", "cycle_year": year}).to_list(500)
+    in_target = sum(1 for r in reviews if r.get("nine_box_placement") in ["Stars", "Core_Contributor"])
+    primary_pct = (in_target / max(active_count, 1)) * 100 if active_count else 0
+
+    section_b_scores = [r.get("section_b_score") for r in reviews if r.get("section_b_score") is not None]
+    sec_b_avg = sum(section_b_scores) / len(section_b_scores) if section_b_scores else 0
+    section_b_pct = max(0, min(100, (3 - sec_b_avg) / 2 * 100)) if sec_b_avg else 0
+
+    survey_pct = 70
+    latest_survey = await db.survey_responses.find({"tenant_id": "solvit"}).sort("created_at", -1).limit(50).to_list(50)
+    if latest_survey:
+        scores = []
+        for s in latest_survey:
+            scores.extend([v for v in (s.get("scores") or {}).values() if isinstance(v, (int, float))])
+        if scores:
+            survey_pct = sum(scores) / len(scores) * 20
+
+    composite = round(primary_pct * 0.6 + section_b_pct * 0.25 + survey_pct * 0.15, 1)
+    return {
+        "score_pct": composite,
+        "target_pct": 85,
+        "status": "Healthy" if composite >= 85 else "Below Target" if composite >= 70 else "Critical",
+        "components": {
+            "primary_stars_core_pct": round(primary_pct, 1),
+            "secondary_values_avg_pct": round(section_b_pct, 1),
+            "tertiary_alignment_pct": round(survey_pct, 1),
+        },
+        "active_employees": active_count,
+        "in_target_quadrant": in_target,
+        "cycle_year": year
+    }
+
+
 @router.get("/{review_id}")
 async def get_review(review_id: str, request: Request):
     user = await get_current_user(request)
