@@ -539,6 +539,9 @@ async def submit_form(form_id: str, request: Request):
             await automation_engine.fire_event(matrix["outcome_rule"], {
                 "form_id": form_id,
                 "submitted_by": user["id"],
+                "subject_employee_id": body.get("employee_id") or user.get("employee_id"),
+                "employee_id": body.get("employee_id") or user.get("employee_id"),
+                "solver_id": body.get("solver_id"),
                 "data": body.get("data", {})
             })
         except Exception:

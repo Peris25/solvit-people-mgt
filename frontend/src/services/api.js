@@ -194,6 +194,11 @@ export const getVoluntaryAttrition = () => api.get('/retention/voluntary-attriti
 
 // Performance KPIs
 export const getTalentDensity = (cycle_year) => api.get('/performance/talent-density', { params: { cycle_year } });
+export const getReviewPanel = (employee_id) => api.get(`/performance/review-panel/${employee_id}`);
+
+// Access Matrix
+export const getAccessMatrix = () => api.get('/access/matrix');
+export const checkModuleAccess = (module_id) => api.get(`/access/check/${module_id}`);
 
 // Automation
 export const getAutomationRules = () => api.get('/automation');

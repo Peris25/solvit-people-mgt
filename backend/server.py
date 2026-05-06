@@ -33,6 +33,7 @@ from routes.settings import router as settings_router
 from routes.ai_agent import router as ai_agent_router
 from routes.forms import router as forms_router
 from routes.automation_routes import router as automation_router
+from routes.access import router as access_router
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -71,6 +72,7 @@ app.include_router(settings_router, prefix=API_PREFIX)
 app.include_router(ai_agent_router, prefix=API_PREFIX)
 app.include_router(forms_router, prefix=API_PREFIX)
 app.include_router(automation_router, prefix=API_PREFIX)
+app.include_router(access_router, prefix=API_PREFIX)
 
 
 @app.get("/api/health")

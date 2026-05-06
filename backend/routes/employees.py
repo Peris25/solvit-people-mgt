@@ -66,8 +66,8 @@ def fmt(doc):
 async def bulk_transition(request: Request):
     """Transition multiple employees to a new lifecycle state in one call. HR Admin only."""
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    from utils.access_matrix import enforce_destructive
+    enforce_destructive("employee.lifecycle.manual_change", user["role"])
     body = await request.json()
     employee_ids = body.get("employee_ids", [])
     new_state = body.get("lifecycle_state")
@@ -355,8 +355,9 @@ async def update_employee(employee_id: str, upd: EmployeeUpdate, request: Reques
 @router.post("/{employee_id}/transition")
 async def transition_state(employee_id: str, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    # Section B: manual lifecycle change is HR-Admin-only (destructive action)
+    from utils.access_matrix import enforce_destructive
+    enforce_destructive("employee.lifecycle.manual_change", user["role"])
     body = await request.json()
     new_state = body.get("lifecycle_state")
     if new_state not in LIFECYCLE_STATES:

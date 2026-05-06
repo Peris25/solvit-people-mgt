@@ -6,32 +6,53 @@ import * as api from '../services/api';
 
 const MENU_ITEMS = [
   { section: 'Core', items: [
-    { path: '/dashboard', label: 'HR Dashboard', icon: '⊞', roles: ['hr_admin', 'hr_manager', 'executive'] },
-    { path: '/employees', label: 'Employee Database', icon: '👥', roles: ['hr_admin', 'hr_manager', 'line_manager', 'finance', 'employee'] },
-    { path: '/solvers', label: 'Solver Database', icon: '⚡', roles: ['hr_admin', 'hr_manager', 'line_manager', 'solver'] },
-    { path: '/recruitment', label: 'Recruitment', icon: '🎯', roles: ['hr_admin', 'hr_manager', 'line_manager'] },
+    // Dashboard visible to everyone (RoleDashboard picks appropriate view)
+    { path: '/dashboard', label: 'Dashboard', icon: '⊞', roles: ['hr_admin', 'hr_manager', 'executive', 'line_manager', 'finance', 'employee', 'solver'] },
+    // M01 Employee Database — HR full, LM(own reports), Finance(read salary), Employee(own), Executive(aggregate)
+    { path: '/employees', label: 'Employees', icon: '👥', roles: ['hr_admin', 'hr_manager', 'line_manager', 'finance', 'employee', 'executive'] },
+    // M02 Solver Database — HR full, Solvers Manager (line_manager), Solver (own), Executive (aggregate)
+    { path: '/solvers', label: 'Solvers', icon: '⚡', roles: ['hr_admin', 'hr_manager', 'line_manager', 'solver', 'executive'] },
+    // M03 Recruitment — HR full, LM (own dept), Executive (headcount summary)
+    { path: '/recruitment', label: 'Recruitment', icon: '🎯', roles: ['hr_admin', 'hr_manager', 'line_manager', 'executive'] },
+    // M04 Onboarding — HR full, LM, Employee, Solver
     { path: '/onboarding', label: 'Onboarding', icon: '🚀', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee', 'solver'] },
   ]},
   { section: 'Performance', items: [
-    { path: '/performance', label: 'Performance Reviews', icon: '📊', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee'] },
-    { path: '/surveys', label: 'Alignment Surveys', icon: '📋', roles: ['hr_admin', 'hr_manager', 'employee', 'solver'] },
-    { path: '/retention', label: 'Retention & Risk', icon: '🛡', roles: ['hr_admin', 'hr_manager'] },
+    // M05 Performance — HR full, LM, Employee(own), Executive(aggregate)
+    { path: '/performance', label: 'Performance', icon: '📊', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee', 'executive'] },
+    // M06 Surveys — HR full, Employee/Solver respond, Executive(aggregate)
+    { path: '/surveys', label: 'Surveys', icon: '📋', roles: ['hr_admin', 'hr_manager', 'employee', 'solver', 'executive'] },
+    // M07 Retention — HR full, Executive(aggregate)
+    { path: '/retention', label: 'Retention', icon: '🛡', roles: ['hr_admin', 'hr_manager', 'executive'] },
+    // M08 L&D — HR full, LM, Employee
     { path: '/lnd', label: 'L&D', icon: '📚', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee'] },
-    { path: '/projects', label: 'Project Ownership', icon: '💼', roles: ['hr_admin', 'hr_manager', 'employee'] },
+    // M09 Project Ownership — HR full, LM, Employee(own)
+    { path: '/projects', label: 'Projects', icon: '💼', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee'] },
   ]},
   { section: 'HR Operations', items: [
-    { path: '/leave', label: 'Leave Management', icon: '🏖', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee'] },
-    { path: '/compensation', label: 'Compensation', icon: '💰', roles: ['hr_admin', 'hr_manager', 'finance'] },
-    { path: '/recognition', label: 'Recognition', icon: '🏆', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee', 'solver'] },
-    { path: '/disciplinary', label: 'Disciplinary', icon: '⚖', roles: ['hr_admin', 'hr_manager', 'line_manager'] },
-    { path: '/policies', label: 'Policy Library', icon: '📄', roles: ['hr_admin', 'hr_manager', 'employee', 'solver'] },
+    // M18 Leave — HR full, LM, Employee
+    { path: '/leave', label: 'Leave', icon: '🏖', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee'] },
+    // M10 Compensation — HR full, Finance full, Executive(envelope only)
+    { path: '/compensation', label: 'Compensation', icon: '💰', roles: ['hr_admin', 'hr_manager', 'finance', 'executive'] },
+    // M11 Recognition — HR full, LM, Finance(monetary approve), Employee, Solver(own)
+    { path: '/recognition', label: 'Recognition', icon: '🏆', roles: ['hr_admin', 'hr_manager', 'line_manager', 'finance', 'employee', 'solver'] },
+    // M14 Disciplinary — HR full, LM(own active cases), Employee(own)
+    { path: '/disciplinary', label: 'Disciplinary', icon: '⚖', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee'] },
+    // M13 Policy Library — everyone
+    { path: '/policies', label: 'Policies', icon: '📄', roles: ['hr_admin', 'hr_manager', 'line_manager', 'finance', 'employee', 'solver', 'executive'] },
   ]},
   { section: 'Finance & Admin', items: [
-    { path: '/budget', label: 'Budget Governance', icon: '📈', roles: ['hr_admin', 'finance', 'executive'] },
-    { path: '/compliance', label: 'Statutory Compliance', icon: '✅', roles: ['hr_admin', 'finance', 'hr_manager'] },
-    { path: '/calendar', label: 'HR Calendar', icon: '📅', roles: ['hr_admin', 'hr_manager', 'employee', 'solver'] },
-    { path: '/forms', label: 'Forms', icon: '📝', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee', 'solver'] },
+    // M12 Budget — HR(read), Finance(full), Executive(read envelope)
+    { path: '/budget', label: 'Budget', icon: '📈', roles: ['hr_admin', 'hr_manager', 'finance', 'executive'] },
+    // M19 Statutory Compliance — HR(read), Finance(full)
+    { path: '/compliance', label: 'Compliance', icon: '✅', roles: ['hr_admin', 'hr_manager', 'finance'] },
+    // M15 HR Calendar — HR full, LM(own team), Finance(statutory only)
+    { path: '/calendar', label: 'Calendar', icon: '📅', roles: ['hr_admin', 'hr_manager', 'line_manager', 'finance'] },
+    // M17 Forms Engine — HR full, LM/Finance/Employee/Solver contextual
+    { path: '/forms', label: 'Forms', icon: '📝', roles: ['hr_admin', 'hr_manager', 'line_manager', 'finance', 'employee', 'solver'] },
+    // My Tasks — for everyone
     { path: '/my-tasks', label: 'My Tasks', icon: '✓', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee', 'solver', 'finance', 'executive'] },
+    // Settings — HR Admin only (system configuration)
     { path: '/settings', label: 'Settings', icon: '⚙', roles: ['hr_admin', 'hr_manager'] },
   ]},
 ];

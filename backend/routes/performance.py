@@ -126,6 +126,90 @@ async def get_active_cycle(request: Request):
     return {"cycle_type": cycle_type, "cycle_year": now.year, "is_active": True}
 
 
+@router.get("/review-panel/{employee_id}")
+async def get_review_panel(employee_id: str, request: Request):
+    """Return the Review Meeting Panel for an employee per FRD Correction §2.
+
+    Rules (matrix-authoritative):
+    - MD / CEO              → []           (board-led, not in platform)
+    - Reports to MD         → [MD, HR Admin]
+    - Reports to Finance Ops Mgr → [HR Admin, Line Manager:finance_ops]
+    - All other employees   → [HR Admin, Line Manager]
+    Casting vote: HR Admin (recorded in `casting_vote_role`).
+    """
+    user = await get_current_user(request)
+    if user["role"] not in ["hr_admin", "hr_manager", "line_manager", "executive"]:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    db = get_db()
+    try:
+        emp = await db.employees.find_one({"_id": ObjectId(employee_id)})
+    except Exception:
+        emp = await db.employees.find_one({"id": employee_id})
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    role_title = (emp.get("role_title") or "").lower()
+    is_md = bool(emp.get("is_md")) or role_title in ("managing director", "ceo", "md", "chief executive officer")
+    reports_to_md = bool(emp.get("reports_to_md"))
+    reports_to_finance_ops = bool(emp.get("reports_to_finance_ops"))
+
+    if is_md:
+        return {
+            "employee_id": str(emp.get("id", str(emp["_id"]))),
+            "employee_name": emp.get("full_name"),
+            "panel": [],
+            "panel_type": "board_led",
+            "casting_vote_role": None,
+            "note": "MD / CEO performance is board-led — not handled in this platform.",
+        }
+
+    panel_roles = []
+    if reports_to_md:
+        panel_type = "md_direct_report"
+        panel_roles = ["md", "hr_admin"]
+    elif reports_to_finance_ops:
+        panel_type = "finance_ops_report"
+        panel_roles = ["hr_admin", "line_manager:finance_ops"]
+    else:
+        panel_type = "standard"
+        panel_roles = ["hr_admin", "line_manager"]
+
+    # Resolve actual users for each role slot
+    panel = []
+    for slot in panel_roles:
+        if slot == "md":
+            md_user = await db.users.find_one({"role": "executive", "tenant_id": "solvit"})
+            panel.append({"role": "md", "user_id": str(md_user["_id"]) if md_user else None,
+                          "name": md_user.get("full_name") if md_user else "Managing Director",
+                          "email": md_user.get("email") if md_user else None})
+        elif slot == "hr_admin":
+            hr_user = await db.users.find_one({"role": "hr_admin", "tenant_id": "solvit"})
+            panel.append({"role": "hr_admin", "user_id": str(hr_user["_id"]) if hr_user else None,
+                          "name": hr_user.get("full_name") if hr_user else "HR Admin",
+                          "email": hr_user.get("email") if hr_user else None})
+        elif slot.startswith("line_manager"):
+            lm_id = emp.get("line_manager_id")
+            lm = None
+            if lm_id:
+                lm = await db.employees.find_one({"id": lm_id}) or await db.users.find_one({"id": lm_id})
+            panel.append({"role": "line_manager", "user_id": lm_id,
+                          "name": (lm or {}).get("full_name", "Line Manager"),
+                          "email": (lm or {}).get("work_email") or (lm or {}).get("email")})
+
+    return {
+        "employee_id": str(emp.get("id", str(emp["_id"]))),
+        "employee_name": emp.get("full_name"),
+        "panel": panel,
+        "panel_type": panel_type,
+        "casting_vote_role": "hr_admin",
+        "rationale": {
+            "is_md": is_md,
+            "reports_to_md": reports_to_md,
+            "reports_to_finance_ops": reports_to_finance_ops,
+        }
+    }
+
+
 @router.get("/talent-density")
 async def get_talent_density_kpi(request: Request, cycle_year: Optional[int] = None):
     """Composite organisational health metric. Target 85%."""

@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
+import Dashboard from './pages/RoleDashboard';
 import Employees from './pages/Employees';
 import Solvers from './pages/Solvers';
 import Recruitment from './pages/Recruitment';

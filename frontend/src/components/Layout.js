@@ -24,6 +24,15 @@ export default function Layout() {
 
   if (user === null) return <Navigate to="/login" replace />;
 
+  // Solver — mobile bottom-nav-only interface (no sidebar)
+  if (user.role === 'solver') {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: '#F5F5F5', fontFamily: 'Arial, Helvetica, sans-serif' }}>
+        <Outlet />
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#F5F5F5', fontFamily: 'Arial, Helvetica, sans-serif' }}>
       <Sidebar collapsed={sidebarCollapsed} onToggle={setSidebarCollapsed} onAIToggle={() => setAiOpen(p => !p)} aiOpen={aiOpen} />

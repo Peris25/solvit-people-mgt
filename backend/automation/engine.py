@@ -6,6 +6,72 @@ import uuid
 
 logger = logging.getLogger(__name__)
 
+# Form-outcome → action map (FRD §Form Workflow Matrix).
+# Each outcome rule can change state, fire downstream events, or create tasks.
+# `condition` (optional callable) inspects payload data to gate the action.
+FORM_OUTCOME_HANDLERS = {
+    # Probation review (form-08): outcome data contains decision (Pass / Extend / Fail)
+    "probation.review.complete": {
+        "decisions": {
+            "Pass":   {"new_state": "Active",   "downstream_event": "probation_passed"},
+            "Extend": {"new_state": "Probation","downstream_event": "probation_extended"},
+            "Fail":   {"new_state": "Exiting",  "downstream_event": "probation_failed"},
+        },
+        "decision_field": "decision",
+    },
+    # PIP activation (form-09)
+    "pip.activated":          {"new_state": "PIP",         "downstream_event": "pip_started"},
+    # Realignment (form-10) — Below score
+    "realignment.activated":  {"new_state": "Realignment", "downstream_event": "realignment_started"},
+    # Resignation (form-31) — kicks off 7-task exit workflow
+    "resignation.submitted":  {"new_state": "Exiting",     "downstream_event": "employee_exiting"},
+    # Exit clearance fully signed (form-23)
+    "clearance.signed_off":   {"new_state": "Exited",      "downstream_event": "all_exit_tasks_completed"},
+    # Confidentiality form (form-24) — no state change, just complete the exit task
+    "confidentiality.signed": {"task_complete": "ET03"},
+    # Solver onboarding outcomes (form-02 / form-03 quizzes)
+    "code.quiz.complete":     {"solver_progress": "code_quiz_passed"},
+    "vehicle.assessment.complete": {"solver_progress": "vehicle_assessment_passed"},
+    # IDP signed (form-12) — first development cycle complete
+    "idp.signed":             {"flag_set": "idp_active"},
+    # Training approved (form-13)
+    "training.approved":      {"create_record": "training_assignment"},
+    # Performance review completed (form-06)
+    "review.completed":       {"downstream_event": "review_cycle_completed"},
+    # Hearing recorded (form-20) — disciplinary
+    "hearing.recorded":       {"flag_set": "hearing_completed"},
+    # Warning issued (form-18)
+    "warning.issued":         {"flag_set": "warning_active"},
+    # Suspension activated (form-19) — paid precautionary
+    "suspension.activated":   {"new_state": "Suspended"},
+    # Stay interview (form-22) — flag follow-up
+    "stay_interview.recorded":{"flag_set": "stay_interview_done"},
+    # Recognition (form-27) — fire downstream notification
+    "recognition.recorded":   {"downstream_event": "recognition_recorded"},
+    # Solver award approved (form-32)
+    "solver_award.approved":  {"downstream_event": "solver_award_approved"},
+    # Project assignment approved (form-14)
+    "project.assigned":       {"flag_set": "project_assigned"},
+    # Goals set (form-11)
+    "goals.set":              {"flag_set": "goals_set"},
+    # Policy acknowledged (form-16)
+    "policy.acknowledged":    {"flag_set": "policy_acknowledged"},
+    # Solver alignment / engagement
+    "solver.alignment.submitted": {},
+    "solver.pulse.submitted": {},
+    "alignment.survey.submitted": {},
+    "engagement.submitted":   {},
+    "self_review.submitted":  {},
+    "peer_review.submitted":  {},
+    "leave.approved":         {"downstream_event": "leave_request_approved"},
+    "show_cause.responded":   {"flag_set": "show_cause_responded"},
+    "exit_interview.recorded":{"flag_set": "exit_interview_recorded"},
+    "stage1.complete":        {"solver_progress": "stage1_complete"},
+    "solver.recruitment.complete": {"flag_set": "solver_recruitment_complete"},
+    "gp_gate.set":            {"flag_set": "gp_gate_set"},
+}
+
+
 EXIT_WORKFLOW_TASKS = [
     {"task_key": "ET01", "title": "Schedule and conduct exit interview (Form 21)", "assigned_role": "hr_admin", "days_due": 5},
     {"task_key": "ET02", "title": "Send resignation acknowledgement to employee", "assigned_role": "system", "days_due": 0},
@@ -39,10 +105,15 @@ class AutomationEngine:
         logger.info("✅ Automation Engine started")
 
     async def fire_event(self, event_name: str, data: dict):
-        """Fire an event-driven automation rule"""
+        """Fire an event-driven automation rule, including form-outcome rules."""
         if self.db is None:
             return
         try:
+            # 1. Form outcome handlers — applied first so state changes happen
+            #    even when no automation rule has been seeded for the event.
+            await self._handle_form_outcome(event_name, data)
+
+            # 2. Standard automation_rules collection lookup
             rules = await self.db.automation_rules.find({
                 "trigger_type": "event",
                 "trigger_event": event_name,
@@ -53,6 +124,103 @@ class AutomationEngine:
                 await self._execute_rule(rule, data)
         except Exception as e:
             logger.error(f"Error firing event {event_name}: {e}")
+
+    async def _handle_form_outcome(self, event_name: str, data: dict):
+        """Apply Form Workflow Matrix outcomes to employee state / records."""
+        spec = FORM_OUTCOME_HANDLERS.get(event_name)
+        if not spec:
+            return
+        from bson import ObjectId
+        emp_id = data.get("subject_employee_id") or data.get("employee_id")
+        form_data = data.get("data") or {}
+
+        # Decision-driven (form-08 probation)
+        decisions = spec.get("decisions")
+        if decisions:
+            decision_field = spec.get("decision_field", "decision")
+            decision_val = form_data.get(decision_field) or form_data.get("probation_decision") or form_data.get("outcome")
+            branch = decisions.get(str(decision_val))
+            if branch and emp_id:
+                await self._apply_state(emp_id, branch.get("new_state"))
+                if branch.get("downstream_event"):
+                    # avoid recursion infinite — only fire if not already same name
+                    if branch["downstream_event"] != event_name:
+                        await self.fire_event(branch["downstream_event"], data)
+            return
+
+        # Direct state change
+        if spec.get("new_state") and emp_id:
+            await self._apply_state(emp_id, spec["new_state"])
+
+        # Downstream event chain
+        if spec.get("downstream_event") and spec["downstream_event"] != event_name:
+            await self.fire_event(spec["downstream_event"], data)
+
+        # Mark exit task complete
+        if spec.get("task_complete"):
+            await self.db.tasks.update_many(
+                {"entity_id": emp_id, "task_key": spec["task_complete"], "status": "Pending"},
+                {"$set": {"status": "Completed", "completed_at": datetime.now(timezone.utc).isoformat()}}
+            )
+
+        # Solver progress flag (form-01..03)
+        if spec.get("solver_progress"):
+            solver_id = data.get("solver_id") or emp_id
+            if solver_id:
+                try:
+                    await self.db.solvers.update_one(
+                        {"id": solver_id},
+                        {"$set": {f"progress.{spec['solver_progress']}": True,
+                                  "updated_at": datetime.now(timezone.utc).isoformat()}}
+                    )
+                except Exception:
+                    pass
+
+        # Set a generic flag on employee document
+        if spec.get("flag_set") and emp_id:
+            try:
+                await self.db.employees.update_one(
+                    {"id": emp_id},
+                    {"$set": {f"flags.{spec['flag_set']}": True,
+                              "updated_at": datetime.now(timezone.utc).isoformat()}}
+                )
+            except Exception:
+                pass
+
+        # Audit
+        await self.db.audit_logs.insert_one({
+            "id": str(uuid.uuid4()),
+            "tenant_id": "solvit",
+            "action": "form.outcome.fired",
+            "entity": f"form_outcome:{event_name}",
+            "metadata": {"data": data, "spec": spec},
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
+    async def _apply_state(self, emp_id: str, new_state: str):
+        """Update employee lifecycle_state (handles both ObjectId and uuid id)."""
+        if not new_state or not emp_id:
+            return
+        from bson import ObjectId
+        update = {"lifecycle_state": new_state, "updated_at": datetime.now(timezone.utc).isoformat()}
+        try:
+            res = await self.db.employees.update_one({"_id": ObjectId(emp_id)}, {"$set": update})
+            if res.matched_count == 0:
+                await self.db.employees.update_one({"id": emp_id}, {"$set": update})
+        except Exception:
+            await self.db.employees.update_one({"id": emp_id}, {"$set": update})
+        # Notify HR Admin
+        await self.db.notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "tenant_id": "solvit",
+            "recipient_role": "hr_admin",
+            "category": "Lifecycle",
+            "title": f"Lifecycle: → {new_state}",
+            "message": f"Employee {emp_id} transitioned to {new_state} via form outcome.",
+            "data": {"employee_id": emp_id, "new_state": new_state},
+            "is_read": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
 
     async def _execute_rule(self, rule: dict, data: dict):
         """Execute a single automation rule"""

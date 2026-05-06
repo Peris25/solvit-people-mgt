@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 4 verified — Access Matrix (Section A 19 modules + Section B 7 destructive actions) endpoints return correct role-specific views for hr_admin/line_manager/employee/solver. Review Meeting Panel endpoint returns standard panel [hr_admin, line_manager] with casting_vote_role=hr_admin, board_led panel for MD (is_md=true), and md_direct_report path coded but PUT /api/employees does not persist reports_to_md so that branch was skipped (panel logic itself is correct per code review). Form-outcome triggers all working end-to-end via fire_event chain: form-31 → Exiting; form-08 Pass → Active; form-08 Fail → Exiting; form-09 → PIP; form-10 → Realignment. Section B enforce_destructive correctly blocks line_manager (and any non hr_admin) from POST /api/employees/{id}/transition with 403. Frontend: HR Admin /dashboard renders [data-testid=hr-dashboard] with alerts-banner + kanban-board + hr-calendar-widget + talent-density-gauge + quick-stats-bar; Employee /dashboard renders [data-testid=employee-dashboard] with emp-greeting, emp-tabs (5 tabs), my-tasks-zone, my-performance-zone, my-leave-zone, my-recog-zone; Solver /dashboard renders [data-testid=solver-dashboard] with [data-testid=solver-bottom-nav] showing 5 tabs and NO sidebar. HR Admin can navigate /employees, /performance, /forms, /retention without crashes. 23/24 new pytest cases passing (1 SKIPPED — md_direct_report panel — due to PUT /employees not allowing reports_to_md persistence; not a panel-logic bug).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/employees/{id}", "issue": "Does not persist arbitrary review-panel routing flags (reports_to_md, reports_to_finance_ops, is_md). The Pydantic update model excludes these fields, so the panel branches md_direct_report and finance_ops_report cannot be reached via API. Either expand EmployeeUpdate model or route these flags through a dedicated endpoint."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_4.py",
+    "/app/test_reports/pytest/iteration_4.xml"
+  ],
+  "action_items": [
+    "(Optional) Expose reports_to_md / reports_to_finance_ops / is_md in EmployeeUpdate so HR Admin can configure review-panel routing via the API/UI. Currently these fields can only be set at insert time, blocking the md_direct_report and finance_ops_report panel branches end-to-end.",
+    "(Optional) Audit fmt() helper sweep called out in iteration_3 — /app/backend/routes/performance.py still uses the old pattern `doc['id'] = str(doc['_id'])` which clobbers any UUID id stored on insert. Performance reviews may expose Mongo ObjectId instead of stored UUID id, breaking subsequent PUT /performance/{review_id} when the route tries to ObjectId(review_id) vs. id field. Same risk pattern likely persists in routes/leave.py, routes/recognition.py, routes/recruitment.py — needs a sweep."
+  ],
+  "critical_code_review_comments": [
+    "automation/engine.py FORM_OUTCOME_HANDLERS — the 'employee_exiting' downstream event has no entry in FORM_OUTCOME_HANDLERS itself, so the 7 exit workflow tasks are only created if a seeded automation_rules row with trigger_event=employee_exiting + action_type=trigger_workflow + workflow=exit_workflow exists in the DB. Tests confirmed lifecycle_state→Exiting works (handled via resignation.submitted) but the 7-task creation depends on seed data; consider hardcoding _create_exit_tasks call inside _handle_form_outcome for resignation.submitted as a safety net.",
+    "routes/performance.py review_panel route uses bool(emp.get('is_md')) but EmployeeCreate/EmployeeUpdate Pydantic models don't expose is_md — so the field can never be set through the public API. Fields are only populatable via direct DB insert (seeder).",
+    "utils/access_matrix.enforce_destructive is correctly invoked in routes/employees.py lines 70 and 360 — destructive bulk-transition + transition both gated to hr_admin only. line_manager rightly receives 403 with detail 'Destructive action ... restricted to HR Admin only'.",
+    "routes/forms.py submit_form line 533 fires 'employee_exiting' event for form-31, then line 539 fires the matrix outcome_rule ('resignation.submitted') which itself transitions to Exiting and re-fires employee_exiting. Functionally correct, but two near-identical events for the same form may cause duplicate notifications. Consider skipping line 533 since outcome_rule already chains to it.",
+    "routes/access.py /matrix endpoint exposes the entire ACCESS_MATRIX dict to every authenticated role including 'employee' and 'solver'. The matrix itself contains role-level access info for ALL roles which could be considered metadata leak. Consider returning only my_access for non-admin roles, or move to /access/my-access endpoint."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_4.py (created — 24 tests, 23 passing, 1 skipped due to PUT /employees field gap)"
+  ],
+  "success_rate": {
+    "backend": "100% pass rate on iteration-4 scope (23/23 executed; 1 skipped — gated by missing PUT /employees field, not a panel logic bug). Regression: all 8 regression endpoints in iteration_4 still passing.",
+    "frontend": "100% — all 3 role dashboards render with the documented data-testids; HR Admin sidebar visible, Solver sidebar correctly hidden, Employee sidebar visible (per Layout.js skip-list = solver only)."
+  },
+  "test_credentials": "All 6 accounts from /app/memory/test_credentials.md used; password Solvit@2026 for everyone. jessica@solvit.co.ke (hr_admin), manager@solvit.co.ke (line_manager), employee@solvit.co.ke (employee), solver@solvit.co.ke (solver), md@solvit.co.ke (executive), finance@solvit.co.ke (finance).",
+  "seed_data_creation": "Created 5 TEST_ prefixed employees (TEST_OutcomeEmp_*) during form-outcome tests — they persist in employees collection with various lifecycle_states (Exiting, Active, PIP, Realignment) until next reset-demo-data. No user/auth seed records added.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Regression files: test_solvit_platform.py (iter 1), test_iteration_2.py (iter 2), test_iteration_3.py (iter 3), test_iteration_4.py (iter 4 — 24 tests, 23 pass, 1 skip). Run all: pytest /app/backend/tests/ -v. Key new endpoints validated: GET /api/access/matrix, GET /api/access/check/{module_id}, GET /api/performance/review-panel/{employee_id}. Form-outcome chain confirmed working through automation_engine.fire_event → _handle_form_outcome → FORM_OUTCOME_HANDLERS dispatch → _apply_state. The skipped md_direct_report panel test is gated on PUT /api/employees accepting reports_to_md — not a bug in performance.py review_panel logic itself (code reads field correctly). Frontend dashboards: HR uses /app/frontend/src/pages/Dashboard.js (4 zones), employee uses EmployeeDashboard.js (5 tabs), solver uses SolverDashboard.js (bottom-nav). Layout.js skips sidebar only for role==='solver'.",
+  "rca_of_the_issue": "No bugs to RCA in iteration 4. The single skipped test (md_direct_report panel) is a known data-input gap: EmployeeUpdate Pydantic model in routes/employees.py does not include is_md / reports_to_md / reports_to_finance_ops, so HR Admin cannot toggle these flags through the public API. Mitigation: add these optional fields to EmployeeUpdate or expose a /api/employees/{id}/panel-routing PATCH endpoint."
+}
