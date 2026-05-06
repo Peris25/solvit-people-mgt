@@ -1,0 +1,76 @@
+{
+  "project_name": "Solvit Limited People Management Platform",
+  "theme": "Light",
+  "archetype": "4 (Swiss & High-Contrast)",
+  "concept": "The Control Room Grid",
+  "design_philosophy": "Objective, rigid, and functional. Since the user mandated 'Arial', we combat the 'generic Word document' feel by employing the 'Swiss Brutalist' technique: extreme weight contrasts (Black vs. Regular), aggressive tight tracking on headings, sharp 1px borders, and flat surfaces. No shadows, no gradients. Data density is prioritized via strict grid systems.",
+  "colors": {
+    "background": "#F5F5F5",
+    "surface": "#FFFFFF",
+    "text_primary": "#191919",
+    "text_secondary": "#525252",
+    "brand_primary": "#FF353F",
+    "borders": "rgba(25, 25, 25, 0.1)",
+    "status_badges": {
+      "active": "#22C55E",
+      "onboarding": "#3B82F6",
+      "probation": "#F59E0B",
+      "exiting": "#F97316",
+      "exited": "#6B7280",
+      "pip": "#EF4444"
+    }
+  },
+  "typography": {
+    "primary_font": "Arial, Helvetica Neue, sans-serif",
+    "strategy": "The Swiss Brutalist approach: Enforce extreme weight contrasts and tight letter spacing to create deliberate architectural tension. Never center headings. Strict left alignment.",
+    "hierarchy": {
+      "h1": "text-4xl md:text-5xl font-black tracking-tighter text-[#191919]",
+      "h2": "text-2xl md:text-3xl font-bold tracking-tight text-[#191919]",
+      "h3": "text-xl font-bold tracking-tight text-[#191919]",
+      "body": "text-base font-normal leading-relaxed text-[#191919]",
+      "labels": "text-xs font-bold uppercase tracking-[0.2em] text-[#525252]"
+    }
+  },
+  "spacing_and_layout": {
+    "grid_system": "The Control Room Grid. Dense layouts. Use gap-4 to gap-6 for dashboards. App frame includes a collapsible left sidebar, sticky top bar, and main content area.",
+    "containers": "Flat #FFFFFF backgrounds with 1px solid border-black/10. NO box-shadows. Internal padding p-6 or p-8.",
+    "kanban": "4 explicit columns (Onboarding, Active, Exiting, Exited). Columns must have h-full and vertical scrolling. Cards within must have 1px borders.",
+    "border_radius": "rounded-sm (2px to 4px max) for an industrial, precise aesthetic."
+  },
+  "components": {
+    "buttons": "Flat, sharp corners (rounded-sm), solid #FF353F for primary, solid #191919 for secondary. Clear hover states with background darkening.",
+    "inputs": "Customize Shadcn primitives: flat background, sharp 1px borders, focus:ring-1 focus:ring-[#FF353F].",
+    "badges": "Small, uppercase, font-bold, tracking-wide, slightly rounded. Use exact colors specified in status_badges.",
+    "ai_agent_panel": "Fixed right slide-in panel. Must have a distinct 1px left border. Use monospace typography for AI generated text outputs to distinguish from HR system data."
+  },
+  "media_and_images": {
+    "hero_login_bg": {
+      "url": "https://images.unsplash.com/photo-1762912297981-ee1a51f4f187?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzV8MHwxfHNlYXJjaHwxfHx2ZWhpY2xlJTIwaW5zcGVjdGlvbiUyMG1vZGVybnxlbnwwfHx8fDE3NzgwOTMzOTV8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Modern vehicle inspection bay for login background to establish brand context."
+    },
+    "avatars": [
+      {
+        "url": "https://images.pexels.com/photos/4183516/pexels-photo-4183516.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "role": "HR Admin / Manager Placeholder"
+      },
+      {
+        "url": "https://images.pexels.com/photos/7163464/pexels-photo-7163464.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "role": "Solver / Employee Placeholder"
+      }
+    ]
+  },
+  "interactions": {
+    "hover": "Subtle background color shifts, 0.2s ease transitions. Do not use scale transforms (no bouncing).",
+    "focus": "High contrast ring focus:ring-2 focus:ring-[#191919] ring-offset-2 focus:outline-none."
+  },
+  "accessibility_and_testing": {
+    "test_ids": "All interactive elements (buttons, links, form inputs) MUST have data-testid attributes (e.g., data-testid='login-submit-btn').",
+    "contrast": "Ensure dark text on light backgrounds always passes minimum 4.5:1 ratio."
+  },
+  "instructions_to_main_agent": [
+    "Use exact hex codes provided for brand and statuses.",
+    "Implement the Kanban dashboard using the 'Control Room Grid' philosophy.",
+    "Do not use Shadcn default shadows (remove them). Rely on 1px borders.",
+    "Ensure the AI Panel is always accessible and visible for the HR Admin role."
+  ]
+}
