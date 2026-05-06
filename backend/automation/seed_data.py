@@ -145,6 +145,53 @@ EXIT_INTERVIEW_STEPHEN = {
 }
 
 
+async def seed_extended_employees(db):
+    """Add additional demo employees covering all 9 FTE lifecycle states.
+    Idempotent — only creates each emp if not already present (by email)."""
+    today = datetime.now(timezone.utc).date()
+    extra = [
+        {"full_name": "Daniel Kimani", "work_email": "daniel.kimani@solvit.co.ke", "department": "Marketing", "role_title": "Marketing Lead", "role_level": "L3", "start_date": str(today.replace(year=today.year - 2)), "lifecycle_state": "On_Leave", "current_salary_kes": 95000, "phone_number": "+254700111201"},
+        {"full_name": "Faith Cherono", "work_email": "faith.cherono@solvit.co.ke", "department": "Operations", "role_title": "Inspection Coordinator", "role_level": "L2", "start_date": str(today.replace(year=today.year - 1)), "lifecycle_state": "PIP", "current_salary_kes": 65000, "phone_number": "+254700111202"},
+        {"full_name": "Samuel Mutiso", "work_email": "samuel.mutiso@solvit.co.ke", "department": "Technology", "role_title": "Junior Engineer", "role_level": "L1", "start_date": str(today.replace(year=today.year - 3)), "lifecycle_state": "Suspended", "current_salary_kes": 70000, "phone_number": "+254700111203"},
+        {"full_name": "Lydia Wambui", "work_email": "lydia.wambui@solvit.co.ke", "department": "Commercial", "role_title": "Senior Account Manager", "role_level": "L3", "start_date": str(today.replace(year=today.year - 4)), "lifecycle_state": "Notice_Period", "current_salary_kes": 110000, "phone_number": "+254700111204"},
+        {"full_name": "Joseph Otieno", "work_email": "joseph.otieno@solvit.co.ke", "department": "Operations", "role_title": "Field Inspector", "role_level": "L2", "start_date": str(today.replace(year=today.year - 1, month=max(1, today.month - 2))), "lifecycle_state": "Exiting", "current_salary_kes": 60000, "phone_number": "+254700111205"},
+        {"full_name": "Esther Njeri", "work_email": "esther.njeri@solvit.co.ke", "department": "HR_People", "role_title": "People Officer", "role_level": "L2", "start_date": str(today - __import__('datetime').timedelta(days=14)), "lifecycle_state": "Onboarding", "current_salary_kes": 68000, "phone_number": "+254700111206"},
+        {"full_name": "Patrick Wekesa", "work_email": "patrick.wekesa@solvit.co.ke", "department": "Finance", "role_title": "Accountant", "role_level": "L2", "start_date": str(today - __import__('datetime').timedelta(days=45)), "lifecycle_state": "Probation", "current_salary_kes": 75000, "phone_number": "+254700111207"},
+        {"full_name": "Catherine Adhiambo", "work_email": "catherine.adhiambo@solvit.co.ke", "department": "Valuation", "role_title": "Senior Valuation Officer", "role_level": "L3", "start_date": str(today.replace(year=today.year - 2)), "lifecycle_state": "Exited", "current_salary_kes": 90000, "phone_number": "+254700111208"},
+    ]
+    inserted = 0
+    for e in extra:
+        existing = await db.employees.find_one({"work_email": e["work_email"], "tenant_id": "solvit"})
+        if existing:
+            continue
+        start_date = datetime.fromisoformat(e["start_date"]).date()
+        probation_end = start_date + __import__('datetime').timedelta(days=90)
+        doc = {
+            "id": str(uuid.uuid4()),
+            "tenant_id": "solvit",
+            **e,
+            "national_id_number": f"3{2000000 + inserted}",
+            "kra_pin": f"A0{50000 + inserted}123Z",
+            "nssf_number": f"S{1000 + inserted:04d}",
+            "sha_number": f"SHA-{2000 + inserted:04d}",
+            "employment_type": "Full Time",
+            "probation_end_date": probation_end.isoformat(),
+            "date_of_birth": "1990-01-01",
+            "gender": "Female" if inserted % 2 else "Male",
+            "line_manager_id": None,
+            "project_ownership_eligible": False,
+            "last_performance_score": None,
+            "last_review_date": None,
+            "flight_risk_level": ["Critical", "High", "Elevated", "Healthy"][inserted % 4],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.employees.insert_one(doc)
+        inserted += 1
+    print(f"✅ Extended demo employees seeded: {inserted} new (total covers 9 lifecycle states)")
+    return inserted
+
+
 async def seed_all(db):
     """Run all seed operations"""
     await seed_users(db)

@@ -7,6 +7,30 @@ const api = axios.create({
   withCredentials: true,
 });
 
+// Global response interceptor — handle 401 auth errors gracefully so they
+// don't bubble to React's error overlay as "Uncaught runtime errors".
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error?.response?.status === 401) {
+      // Session expired or not authenticated — clear hint, redirect to login.
+      try {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('solvit_auth');
+          // Avoid redirect loop on the login page itself
+          if (!window.location.pathname.startsWith('/login')) {
+            window.location.replace('/login');
+          }
+        }
+      } catch (_) { /* ignore */ }
+      // Resolve as a benign empty response instead of rejecting,
+      // so individual components don't show error overlays.
+      return Promise.resolve({ data: null, status: 401, _silentAuth: true });
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Auth
 export const login = (email, password) => api.post('/auth/login', { email, password });
 export const logout = () => api.post('/auth/logout');
@@ -21,6 +45,7 @@ export const updateEmployee = (id, data) => api.put(`/employees/${id}`, data);
 export const transitionEmployee = (id, lifecycle_state) => api.post(`/employees/${id}/transition`, { lifecycle_state });
 export const getKanban = () => api.get('/employees/kanban');
 export const getEmployeeStats = () => api.get('/employees/stats');
+export const seedDemoEmployees = () => api.post('/employees/seed-demo');
 
 // Solvers
 export const getSolvers = (params) => api.get('/solvers', { params });

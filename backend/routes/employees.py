@@ -62,6 +62,18 @@ def fmt(doc):
     return doc
 
 
+@router.post("/seed-demo")
+async def seed_demo_employees_endpoint(request: Request):
+    """Seed additional dummy employees covering all 9 lifecycle states. HR Admin only."""
+    user = await get_current_user(request)
+    if user["role"] != "hr_admin":
+        raise HTTPException(status_code=403, detail="Only HR Admin can seed demo employees")
+    db = get_db()
+    from automation.seed_data import seed_extended_employees
+    inserted = await seed_extended_employees(db)
+    return {"status": "success", "inserted": inserted, "message": f"{inserted} demo employees added covering all lifecycle states"}
+
+
 @router.get("")
 async def list_employees(request: Request, lifecycle_state: Optional[str] = None, department: Optional[str] = None, search: Optional[str] = None, include_exited: bool = False):
     user = await get_current_user(request)

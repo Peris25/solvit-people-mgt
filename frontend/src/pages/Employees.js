@@ -24,8 +24,27 @@ export default function Employees() {
   const [form, setForm] = useState({ full_name: '', work_email: '', department: 'Operations', role_title: '', role_level: 'L2', start_date: '', employment_type: 'Full_Time', current_salary_kes: '', lifecycle_state: 'Onboarding' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [seeding, setSeeding] = useState(false);
+  const [seedMsg, setSeedMsg] = useState('');
 
   const canEdit = ['hr_admin', 'hr_manager'].includes(user?.role);
+
+  const handleSeedDemo = async () => {
+    setSeeding(true); setSeedMsg('');
+    try {
+      const res = await api.seedDemoEmployees();
+      const r = res.data;
+      if (r) {
+        setSeedMsg(`✓ ${r.inserted || 0} demo employees added across all 9 lifecycle states`);
+        await loadEmployees();
+      }
+    } catch (err) {
+      setSeedMsg(`✗ ${err.response?.data?.detail || err.message}`);
+    } finally {
+      setSeeding(false);
+      setTimeout(() => setSeedMsg(''), 6000);
+    }
+  };
 
   useEffect(() => { loadEmployees(); }, [search, filterState, filterDept]);
 
@@ -79,11 +98,19 @@ export default function Employees() {
           <p style={{ color: '#525252', fontSize: '13px', margin: 0, marginTop: '4px' }}>FTE employees — {employees.length} records</p>
         </div>
         {canEdit && (
-          <button data-testid="add-employee-btn" onClick={() => { setSelected(null); setShowForm(true); }} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>
-            + Add Employee
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {user?.role === 'hr_admin' && (
+              <button data-testid="seed-demo-employees-btn" onClick={handleSeedDemo} disabled={seeding} style={{ padding: '10px 18px', backgroundColor: 'transparent', color: '#191919', border: '1px solid #191919', cursor: seeding ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial', opacity: seeding ? 0.6 : 1 }}>
+                {seeding ? 'Generating...' : '⚡ Generate Demo Employees'}
+              </button>
+            )}
+            <button data-testid="add-employee-btn" onClick={() => { setSelected(null); setShowForm(true); }} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>
+              + Add Employee
+            </button>
+          </div>
         )}
       </div>
+      {seedMsg && <div data-testid="seed-msg" style={{ padding: '8px 14px', backgroundColor: seedMsg.startsWith('✓') ? '#DCFCE7' : '#FEE2E2', color: seedMsg.startsWith('✓') ? '#166534' : '#991B1B', fontSize: '12px', fontWeight: 700, marginBottom: '12px' }}>{seedMsg}</div>}
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
