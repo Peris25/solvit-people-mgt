@@ -208,6 +208,14 @@ export const getReviewPanel = (employee_id) => api.get(`/performance/review-pane
 export const getAccessMatrix = () => api.get('/access/matrix');
 export const checkModuleAccess = (module_id) => api.get(`/access/check/${module_id}`);
 
+// Masters Settings
+export const listMastersSettings = () => api.get('/settings/masters');
+export const getAllMastersSettings = () => api.get('/settings/masters/all');
+export const getMastersSettings = (category) => api.get(`/settings/masters/${category}`);
+export const updateMastersSettings = (category, values) => api.put(`/settings/masters/${category}`, { values });
+export const resetMastersSettings = (category) => api.post(`/settings/masters/${category}/reset`);
+export const getMastersAudit = ({ category, limit } = {}) => api.get('/settings/masters/audit/log', { params: { category, limit } });
+
 // Automation
 export const getAutomationRules = () => api.get('/automation');
 export const toggleRule = (ruleId) => api.put(`/automation/${ruleId}/toggle`);

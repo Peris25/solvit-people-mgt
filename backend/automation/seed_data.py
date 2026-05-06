@@ -5,12 +5,13 @@ import uuid
 
 
 DEMO_USERS = [
-    {"email": "jessica@solvit.co.ke", "full_name": "Jessica Mwangi", "role": "hr_admin", "department": "HR_People", "password": "Solvit@2026"},
+    {"email": "jessica@solvit.co.ke", "full_name": "Jessica Mwangi", "role": "hr_admin", "department": "HR & People", "password": "Solvit@2026"},
     {"email": "manager@solvit.co.ke", "full_name": "David Ochieng", "role": "line_manager", "department": "Operations", "password": "Solvit@2026"},
     {"email": "finance@solvit.co.ke", "full_name": "Sarah Njoroge", "role": "finance", "department": "Finance", "password": "Solvit@2026"},
-    {"email": "employee@solvit.co.ke", "full_name": "James Kamau", "role": "employee", "department": "Commercial", "password": "Solvit@2026"},
+    {"email": "employee@solvit.co.ke", "full_name": "James Kamau", "role": "employee", "department": "Commercial & Business Development", "password": "Solvit@2026"},
     {"email": "solver@solvit.co.ke", "full_name": "Peter Njoroge", "role": "solver", "department": None, "password": "Solvit@2026"},
-    {"email": "md@solvit.co.ke", "full_name": "Michael Omondi", "role": "executive", "department": "Leadership", "password": "Solvit@2026"},
+    {"email": "md@solvit.co.ke", "full_name": "Michael Omondi", "role": "executive", "department": "HR & People", "password": "Solvit@2026"},
+    {"email": "itadmin@solvit.co.ke", "full_name": "Isaac Karanja", "role": "it_admin", "department": "Technology", "password": "Solvit@2026"},
 ]
 
 PAY_BANDS = [

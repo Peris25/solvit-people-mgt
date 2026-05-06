@@ -22,6 +22,7 @@ import Calendar from './pages/Calendar';
 import Leave from './pages/Leave';
 import Compliance from './pages/Compliance';
 import Settings from './pages/Settings';
+import MastersSettings from './pages/MastersSettings';
 import Forms from './pages/Forms';
 import EmployeeProfile from './pages/EmployeeProfile';
 import MyTasks from './pages/MyTasks';
@@ -56,6 +57,7 @@ export default function App() {
             <Route path="leave" element={<Leave />} />
             <Route path="compliance" element={<Compliance />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="masters" element={<MastersSettings />} />
             <Route path="forms" element={<Forms />} />
             <Route path="my-tasks" element={<MyTasks />} />
           </Route>

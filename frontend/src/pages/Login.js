@@ -9,6 +9,7 @@ const DEMO_USERS = [
   { label: 'Employee', email: 'employee@solvit.co.ke', role: 'employee', color: '#3B82F6' },
   { label: 'Solver', email: 'solver@solvit.co.ke', role: 'solver', color: '#22C55E' },
   { label: 'MD / Executive', email: 'md@solvit.co.ke', role: 'executive', color: '#8B5CF6' },
+  { label: 'IT Admin', email: 'itadmin@solvit.co.ke', role: 'it_admin', color: '#0EA5E9' },
 ];
 
 export default function Login() {

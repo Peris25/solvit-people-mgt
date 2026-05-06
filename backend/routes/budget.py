@@ -121,10 +121,19 @@ async def _compute_total_people_cost(db) -> dict:
 async def get_envelope(request: Request):
     """§1–§4 Returns envelope, total cost, headroom and gating status."""
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "finance", "executive"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "finance", "executive", "it_admin"]:
         raise HTTPException(status_code=403, detail="No access to Budget Governance")
     db = get_db()
     await _ensure_baseline(db)
+    # Live setting — envelope % of GP (default 50)
+    from routes.masters_settings import get_setting
+    envelope_pct = await get_setting("budget_compensation", "people_cost_envelope_pct_of_gp", 50)
+    tier_1 = await get_setting("budget_compensation", "tier_1", TIER_THRESHOLDS["Tier_1"])
+    tier_2 = await get_setting("budget_compensation", "tier_2", TIER_THRESHOLDS["Tier_2"])
+    live_thresholds = {
+        "Tier_1": {"min_revenue_kes": tier_1.get("revenue_target_kes"), "min_pbt_kes": tier_1.get("pbt_target_kes")},
+        "Tier_2": {"min_revenue_kes": tier_2.get("revenue_target_kes"), "min_pbt_kes": tier_2.get("pbt_target_kes")},
+    }
     gp = await db.gp_records.find_one({"tenant_id": "solvit"}, sort=[("submitted_at", -1)])
     cost = await _compute_total_people_cost(db)
     finance_input_received = bool(gp and gp.get("actual_gp_kes"))
@@ -135,6 +144,7 @@ async def get_envelope(request: Request):
             "period": (gp or {}).get("period") or datetime.now(timezone.utc).strftime("%Y"),
             "actual_gp_kes": None,
             "people_cost_envelope_kes": None,
+            "envelope_pct_of_gp": envelope_pct,
             "total_annual_people_cost_kes": cost["total_annual_kes"],
             "active_fte_headcount": cost["active_fte_headcount"],
             "headroom_kes": None,
@@ -142,10 +152,11 @@ async def get_envelope(request: Request):
             "tier_status": "Tier Switch locked — Finance input required",
             "active_tier": None,
             "form28_confirmed": False,
+            "tier_thresholds": live_thresholds,
         }
 
     actual_gp = int(gp.get("actual_gp_kes") or 0)
-    envelope = int(actual_gp * 0.5)
+    envelope = int(actual_gp * (envelope_pct / 100.0))
     total_cost = cost["total_annual_kes"]
     headroom = envelope - total_cost
     headroom_status = "Within envelope" if headroom >= 0 else "Over envelope — Finance review required"
@@ -158,6 +169,7 @@ async def get_envelope(request: Request):
         "period": gp.get("period"),
         "actual_gp_kes": actual_gp,
         "people_cost_envelope_kes": envelope,
+        "envelope_pct_of_gp": envelope_pct,
         "total_annual_people_cost_kes": total_cost,
         "active_fte_headcount": cost["active_fte_headcount"],
         "headroom_kes": headroom,
@@ -165,7 +177,7 @@ async def get_envelope(request: Request):
         "tier_status": tier_status,
         "active_tier": gp.get("active_tier"),
         "form28_confirmed": bool(gp.get("form28_confirmed")),
-        "tier_thresholds": TIER_THRESHOLDS,
+        "tier_thresholds": live_thresholds,
     }
 
 
@@ -173,12 +185,14 @@ async def get_envelope(request: Request):
 async def get_summary(request: Request):
     """§8 Department breakdown + headcount + average salary."""
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "finance", "executive"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "finance", "executive", "it_admin"]:
         raise HTTPException(status_code=403, detail="No access to Budget Governance")
     db = get_db()
     cost = await _compute_total_people_cost(db)
     gp = await db.gp_records.find_one({"tenant_id": "solvit"}, sort=[("submitted_at", -1)])
-    envelope = int((gp or {}).get("actual_gp_kes", 0) * 0.5) if gp and gp.get("actual_gp_kes") else None
+    from routes.masters_settings import get_setting
+    envelope_pct = await get_setting("budget_compensation", "people_cost_envelope_pct_of_gp", 50)
+    envelope = int((gp or {}).get("actual_gp_kes", 0) * (envelope_pct / 100.0)) if gp and gp.get("actual_gp_kes") else None
 
     by_dept = []
     for dept_name, info in cost["by_department"].items():
@@ -216,7 +230,9 @@ async def record_gp(request: Request):
         raise HTTPException(status_code=400, detail="actual_gp_kes must be > 0")
 
     cost = await _compute_total_people_cost(db)
-    envelope = int(gp * 0.5)
+    from routes.masters_settings import get_setting
+    envelope_pct = await get_setting("budget_compensation", "people_cost_envelope_pct_of_gp", 50)
+    envelope = int(gp * (envelope_pct / 100.0))
     headroom = envelope - cost["total_annual_kes"]
 
     existing = await db.gp_records.find_one({"tenant_id": "solvit", "period": period})
@@ -306,19 +322,28 @@ async def list_allocations(request: Request):
 @router.get("/allocations/summary")
 async def allocations_summary(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "finance"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "finance", "it_admin"]:
         raise HTTPException(status_code=403, detail="No access")
     db = get_db()
     gp = await db.gp_records.find_one({"tenant_id": "solvit"}, sort=[("submitted_at", -1)])
     if not (gp and gp.get("actual_gp_kes")):
         return {"unlocked": False, "headroom_kes": 0, "allocated_kes": 0, "remaining_kes": 0}
     cost = await _compute_total_people_cost(db)
-    headroom = int(gp["actual_gp_kes"] * 0.5) - cost["total_annual_kes"]
+    from routes.masters_settings import get_setting
+    envelope_pct = await get_setting("budget_compensation", "people_cost_envelope_pct_of_gp", 50)
+    headroom = int(gp["actual_gp_kes"] * (envelope_pct / 100.0)) - cost["total_annual_kes"]
     allocs = await db.budget_allocations.find({
         "tenant_id": "solvit",
         "status": {"$in": ["Approved", "Spent"]},
     }).to_list(500)
-    allocated = sum(int(a.get("amount_kes") or 0) for a in allocs)
+    # For Spent rows, count actual spent (variance returns to unallocated pool).
+    # For Approved rows still committed, count the full allocated amount.
+    allocated = 0
+    for a in allocs:
+        if a.get("status") == "Spent" and a.get("spent_amount_kes") is not None:
+            allocated += int(a.get("spent_amount_kes") or 0)
+        else:
+            allocated += int(a.get("amount_kes") or 0)
     return {
         "unlocked": True,
         "headroom_kes": headroom,
@@ -346,7 +371,10 @@ async def create_allocation(request: Request):
     if amount > summary["remaining_kes"]:
         raise HTTPException(status_code=400, detail=f"Amount exceeds remaining unallocated headroom (KES {summary['remaining_kes']:,})")
 
-    needs_finance = amount >= 50_000
+    # Finance approval threshold pulled from Masters Settings (default 50,000)
+    from routes.masters_settings import get_setting
+    finance_threshold = await get_setting("budget_compensation", "allocation_finance_approval_threshold_kes", 50_000)
+    needs_finance = amount >= finance_threshold
     doc = {
         "id": str(uuid.uuid4()),
         "tenant_id": "solvit",

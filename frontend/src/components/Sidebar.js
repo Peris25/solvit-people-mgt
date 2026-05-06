@@ -51,9 +51,11 @@ const MENU_ITEMS = [
     // M17 Forms Engine — HR full, LM/Finance/Employee/Solver contextual
     { path: '/forms', label: 'Forms', icon: '📝', roles: ['hr_admin', 'hr_manager', 'line_manager', 'finance', 'employee', 'solver'] },
     // My Tasks — for everyone
-    { path: '/my-tasks', label: 'My Tasks', icon: '✓', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee', 'solver', 'finance', 'executive'] },
-    // Settings — HR Admin only (system configuration)
-    { path: '/settings', label: 'Settings', icon: '⚙', roles: ['hr_admin', 'hr_manager'] },
+    { path: '/my-tasks', label: 'My Tasks', icon: '✓', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee', 'solver', 'finance', 'executive', 'it_admin'] },
+    // Masters Settings — IT Admin + HR Admin/Finance (section-scoped writes)
+    { path: '/masters', label: 'Masters Settings', icon: '⚙', roles: ['it_admin', 'hr_admin', 'hr_manager', 'finance'] },
+    // Settings (AI/Email config) — HR Admin only (system configuration)
+    { path: '/settings', label: 'AI & Email Setup', icon: '🤖', roles: ['hr_admin', 'hr_manager', 'it_admin'] },
   ]},
 ];
 

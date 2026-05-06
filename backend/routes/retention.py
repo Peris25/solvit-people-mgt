@@ -227,12 +227,14 @@ async def voluntary_attrition_kpi(request: Request):
                 non_regrettable += 1
 
     pct = round((voluntary_count / avg_headcount) * 100, 1)
+    from routes.masters_settings import get_setting
+    target = int(await get_setting("retention", "attrition_target_pct", 10) or 10)
     return {
         "voluntary_count_12mo": voluntary_count,
         "avg_headcount": avg_headcount,
         "pct": pct,
-        "target_pct": 10,
-        "status": "Healthy" if pct <= 10 else "Concerning" if pct <= 15 else "Critical",
+        "target_pct": target,
+        "status": "Healthy" if pct <= target else "Concerning" if pct <= target + 5 else "Critical",
         "regrettable": regrettable,
         "non_regrettable": non_regrettable,
         "probation_exits_excluded": probation_exits,

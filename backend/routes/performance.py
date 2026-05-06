@@ -238,10 +238,12 @@ async def get_talent_density_kpi(request: Request, cycle_year: Optional[int] = N
             survey_pct = sum(scores) / len(scores) * 20
 
     composite = round(primary_pct * 0.6 + section_b_pct * 0.25 + survey_pct * 0.15, 1)
+    from routes.masters_settings import get_setting
+    target = int(await get_setting("performance", "talent_density_target_pct", 85) or 85)
     return {
         "score_pct": composite,
-        "target_pct": 85,
-        "status": "Healthy" if composite >= 85 else "Below Target" if composite >= 70 else "Critical",
+        "target_pct": target,
+        "status": "Healthy" if composite >= target else "Below Target" if composite >= max(target - 15, 50) else "Critical",
         "components": {
             "primary_stars_core_pct": round(primary_pct, 1),
             "secondary_values_avg_pct": round(section_b_pct, 1),
