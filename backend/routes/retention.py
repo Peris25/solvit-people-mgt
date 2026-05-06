@@ -152,15 +152,21 @@ async def update_stay_interview(interview_id: str, request: Request):
     if user["role"] not in ["hr_admin", "hr_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     body = await request.json()
-    body["updated_at"] = datetime.now(timezone.utc).isoformat()
+    # Whitelist allowed fields to prevent injection of tenant_id, conducted_by, _id, etc.
+    allowed = {"status", "scheduled_date", "trigger_reason", "what_makes_stay",
+               "what_might_leave", "energising", "frustrating", "career_path_clear",
+               "manager_support_rating", "growth_actions", "agreed_actions",
+               "follow_up_date", "completed_at", "notes", "employee_name"}
+    update = {k: v for k, v in body.items() if k in allowed}
+    update["updated_at"] = datetime.now(timezone.utc).isoformat()
     db = get_db()
     try:
         result = await db.stay_interviews.find_one_and_update(
-            {"_id": ObjectId(interview_id)}, {"$set": body}, return_document=True
+            {"_id": ObjectId(interview_id)}, {"$set": update}, return_document=True
         )
     except Exception:
         result = await db.stay_interviews.find_one_and_update(
-            {"id": interview_id}, {"$set": body}, return_document=True
+            {"id": interview_id}, {"$set": update}, return_document=True
         )
     if not result:
         raise HTTPException(status_code=404, detail="Stay interview not found")

@@ -40,7 +40,10 @@ def fmt(doc):
         key = doc["llm_api_key"]
         doc["llm_api_key"] = key[:8] + "..." + key[-4:] if len(key) > 12 else "***"
     if doc.get("email_api_key"):
-        doc["email_api_key"] = "***configured***"
+        key = doc["email_api_key"]
+        doc["email_api_key"] = key[:4] + "..." + key[-4:] if len(key) > 8 else "***"
+    if doc.get("smtp_password"):
+        doc["smtp_password"] = "***"
     return doc
 
 

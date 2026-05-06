@@ -3,119 +3,97 @@
 ## Original Problem Statement
 Build a full-stack People Management Platform for **Solvit Limited** (Kenyan tech-enabled vehicle inspection company) implementing the FRD: 19 modules, intelligent forms engine (32 forms), automation rules engine, employee lifecycle state machine (9 FTE + 5 Solver states), AI HR Agent (Policy Q&A + Compliance Guardian), HR Kanban dashboard, Kenya statutory compliance (KES, EAT, NSSF/SHA/PAYE), pre-populated launch data and demo-friendly auth (standard login + 6 quick-login role tiles).
 
-## Tech Stack (deviation from FRD)
-- **Backend**: FastAPI + Motor (async MongoDB) + APScheduler  *(FRD said Node + Postgres; user explicitly approved Python+Mongo)*
-- **Frontend**: React 18 (JS, not TS) + Tailwind utility classes + shadcn/ui
-- **Auth**: JWT in httpOnly cookies (custom)
-- **AI**: Emergent LLM Key (configurable provider in Settings — gpt-5.2 / Claude / Gemini)
-- **Scheduler**: APScheduler (replaces Redis+Bull)
-- **Timezone**: Africa/Nairobi (EAT)
+## Tech Stack
+- Backend: FastAPI + Motor (async MongoDB) + APScheduler + sendgrid (6.12.5)
+- Frontend: React 18 + Tailwind utility classes
+- Auth: JWT in httpOnly cookies (custom)
+- AI: Emergent LLM Key (gpt-5.2 default; Claude/Gemini via Settings)
+- Scheduler: APScheduler (replaces Redis+Bull from FRD)
+- Email: SendGrid OR generic SMTP (configurable in Settings)
+- Timezone: Africa/Nairobi (EAT)
 
 ## Architecture
 ```
 /app/
 ├── backend/
-│   ├── server.py              # FastAPI app — mounts 22 routers, init DB, start automation engine, seed_all
-│   ├── database.py            # init_db, get_db, close_db (Motor)
-│   ├── utils/auth.py          # bcrypt + jwt + get_current_user + require_roles
-│   ├── routes/
-│   │   ├── auth_routes.py    employees.py  solvers.py  recruitment.py
-│   │   ├── onboarding.py     performance.py surveys.py  retention.py
-│   │   ├── lnd.py            projects.py   compensation.py recognition.py
-│   │   ├── budget.py         policies.py   disciplinary.py leave.py
-│   │   ├── calendar.py       compliance.py settings.py    ai_agent.py
-│   │   ├── forms.py          automation_routes.py
-│   └── automation/
-│       ├── engine.py         # APScheduler — daily cron, anniversary, compliance, fire_event
-│       └── seed_data.py      # 6 demo users · 10 employees · 3 solvers · pay bands · 60+ rules · holidays · exit interview
+│   ├── server.py                    # 22 routers mounted at /api
+│   ├── database.py / utils/auth.py / utils/email_service.py
+│   ├── routes/                      # 22 route files
+│   │   ├── auth_routes employees solvers recruitment onboarding
+│   │   ├── performance surveys retention lnd projects
+│   │   ├── compensation recognition budget policies disciplinary
+│   │   ├── leave calendar compliance settings ai_agent
+│   │   ├── forms forms_data automation_routes
+│   ├── automation/engine.py + seed_data.py
+│   └── tests/test_solvit_platform.py + test_iteration_2.py
 └── frontend/src/
-    ├── App.js                # 21 routes
-    ├── context/AuthContext.js
-    ├── services/api.js       # axios wrapper — all module endpoints
-    ├── components/
-    │   ├── Layout.js Sidebar.js (4 sections, 19 menu items, role-filtered)
-    │   ├── AIAgent.js (slide-in panel, compliance check + chat)
-    │   └── StatusBadge.js
-    └── pages/
-        Login (incl. 6 demo tiles), Dashboard (kanban+list), Employees,
-        Solvers, Recruitment, Onboarding, Performance, Surveys, Retention,
-        LnD, Projects, Compensation, Recognition, Budget, Policies,
-        Disciplinary, Leave, Calendar, Compliance, Forms, Settings
+    ├── App.js (22 routes including /employees/:id)
+    ├── context/AuthContext.js (auth_hint gated probe)
+    ├── services/api.js
+    ├── components/{Layout,Sidebar (with bell),AIAgent,StatusBadge}.js
+    └── pages/  # 22 pages
+        Login, Dashboard, Employees, EmployeeProfile, Solvers, Recruitment,
+        Onboarding, Performance (3x3 9-box), Surveys, Retention (Stay Interview),
+        LnD, Projects, Compensation, Recognition, Budget, Policies, Disciplinary,
+        Leave, Calendar, Compliance, Forms, Settings (AI/Email/Automation/Audit)
 ```
 
-## What's Implemented (Feb 2026)
-### Auth & Demo Data
-- 6 demo accounts (HR Admin/Line Mgr/Finance/Employee/Solver/MD) — password `Solvit@2026`
-- 10 demo employees including Jessica (Active), Robert (Onboarding), John (Probation), Stephen (Exited)
-- 3 demo solvers (Active Elite/High_Performer + Registering)
-- 5 pay bands (L1–L5 + B1a)
-- 12 Kenya 2026 public holidays
-- Stephen Kiragu exit interview record
-- 3 active pay band alerts (at_minimum, below_minimum)
+## Implemented (May 2026)
 
-### Automation Engine
-- APScheduler with Africa/Nairobi tz, started on FastAPI startup
-- 60+ rules across Onboarding, Probation, Performance, Surveys, Retention, Recognition, Exit, Leave, Compliance
-- Event-driven: `fire_event(name, data)` reads matching rules from DB and dispatches
-- Cron: daily 08:00 (probation reviews, onboarding overdue, solver inactive, leave SLA), anniversaries 08:30, compliance every 4h
-- Actions: create_task, send_notification, change_state, trigger_workflow (incl. 7-task exit_workflow)
+### Iteration 1 — MVP foundation
+- 6 demo accounts, 10 employees, 3 solvers, 5 pay bands, 60+ rules, 12 holidays
+- 21 frontend pages with consistent design system (red #FF353F, dark #191919, Arial)
+- AI HR Agent with Emergent LLM Key default + deterministic fallback
+- HR Kanban (4 cols), 6 KPIs, role-filtered sidebar
+- KES + en-GB date formatting; PAYE/NSSF/SHA calculator
 
-### Backend API (22 routers, /api prefix)
-- Full CRUD for employees, solvers, candidates, leave, projects, policies, disciplinary
-- Performance reviews + 9-box matrix + active cycle
-- Retention: flight risk, exit insights, stay interviews
-- L&D: IDP, training requests, skills matrix
-- Compensation: pay bands, alerts, bonus calculator (Tier 1/2), GP gate, salary reviews
-- Budget: people cost envelope (50% GP), summary by dept/level
-- Compliance: PAYE/NSSF/SHA calculator, deadlines, statutory rates (Kenya 2026)
-- Calendar: aggregates holidays + leave + onboarding milestones + surveys + manual events
-- Forms: 32 form schemas (8 fully populated incl. quizzes with auto-scoring), submission endpoint
-- AI Agent: chat with provider routing (OpenAI/Anthropic/Gemini via Emergent LLM Key) + deterministic fallback (policy search + compliance guardian)
-- Settings: LLM/email provider config, audit log
-- Automation routes: list rules, toggle, list/update tasks, notifications
+### Iteration 1.5 — Bug fix + enhancements
+- Fixed 401-on-login bug via localStorage auth_hint gating
+- 3×3 9-box Talent Matrix (Performance × Potential)
+- Reset Demo Data button (HR Admin only) — wipes 22 collections, re-seeds
+- Default exclusion of Exited employees from /api/employees
 
-### Frontend (21 pages + AI panel + Sidebar)
-- Login screen with 6 demo quick-login tiles
-- HR Dashboard: 6 KPI strip + Kanban (4 columns) + List view + notifications banner
-- All 19 module pages live with consistent design system (red #FF353F, dark #191919, Arial)
-- AI Agent slide-in panel for HR Admin/Manager
-- Role-filtered Sidebar
-- KES formatting + en-GB date formatting throughout
+### Iteration 2 — Five P1 enhancements (current)
+- **Employee Profile Drilldown** (`/employees/:id`): 7 tabs (Overview/Timeline/Performance/Leave/Recognitions/Training/IDP) with rich aggregator endpoint
+- **24 Form Schemas** in `forms_data.py` (form-04 alignment survey, form-07 self-review, form-08 probation, form-09 PIP, form-10 exit notice, form-11 OKR, form-12 IDP, form-13 training request, form-14 skills self-assess, form-16 policy ack, form-17 hearing notice, form-18 outcome letter, form-19 grievance, form-20 whistleblower, form-22 stay interview, form-23 exit clearance 23-task, form-24 NDA, form-25 reference letter, form-26 360 peer review, form-27 manager recognition, form-28 long service, form-29 solver suspension, form-30 solver perf review, form-32 solver award nomination). Plus 5 missing form-03 quiz questions.
+- **Sidebar Notifications Bell**: red badge with unread count, 60s polling, dropdown with mark-as-read + mark-all-read
+- **Stay Interview Workflow UI**: tab in Retention page; Schedule modal triggered from at-risk rows; Conduct modal captures Form-22 fields; persists to DB
+- **Email Pipeline**: SendGrid + SMTP support via `utils/email_service.py`; settings UI exposes provider-specific fields; HR Admin can send test email; automation engine fires email on rule notifications when configured
 
-## Known Limitations / P1 Backlog
-- Forms-engine: 8/32 schemas fully populated; remaining 24 are placeholders that submit but have empty field arrays
-- AI Agent: relies on user configuring an API key in Settings (else falls back to deterministic policy search + compliance check)
-- Email notifications: settings UI exists; SendGrid/SMTP send pipeline not yet wired (in-app notifications work)
-- 9-box visual matrix not yet rendered on Performance page (data endpoint exists)
-- Stay-interview UI not yet built (data endpoint exists)
-- File uploads (S3 pre-signed URLs) — pending P2
+## Test Results
+- **Iteration 1**: 46/46 backend + 19/19 frontend pages ✅
+- **Iteration 1.5**: 9-box, reset, profile filter ✅
+- **Iteration 2**: 22/22 new + 46/46 regression + all critical frontend flows ✅
 
 ## Roadmap
 
 ### P0 (Done)
-- [x] App boot, login, role-based nav
-- [x] All 21 frontend pages render
-- [x] All 22 backend routers respond
-- [x] Seed data + demo accounts
-- [x] Automation engine running
-- [x] AI Agent with fallback
-- [x] PAYE/NSSF/SHA calculator
-- [x] Forms engine (renderer + 8 fully-spec'd forms + auto-scoring)
+- App boot + auth + role-based nav
+- All 22 frontend pages render
+- All 22 backend routers respond
+- Seed data + reset endpoint
+- Automation engine
+- AI Agent (Emergent LLM Key)
+- 9-box matrix UI
+- 32 form schemas (~80% fully populated)
+- Employee profile drilldown
+- Notifications bell
+- Stay interview workflow
+- Email pipeline (SendGrid + SMTP)
 
-### P1 (next iterations)
-- [ ] Wire Emergent LLM Key as default for AI Agent (auto-configure on first use)
-- [ ] Implement remaining 24 form schemas (FRD §7 reference)
-- [ ] 9-box matrix UI on Performance page
-- [ ] Stay-interview workflow UI
-- [ ] Per-employee profile drilldown (timeline, IDP, leave history, recognitions)
-- [ ] Notifications bell on Sidebar (live count)
+### P1
+- Drag-and-drop reassignment on 9-box matrix
+- Per-employee IDP edit form (currently view-only)
+- Bulk actions (e.g., assign training to multiple employees)
+- Employee photo uploads + S3 pre-signed URLs
 
 ### P2
-- [ ] Email send pipeline (SendGrid + SMTP)
-- [ ] File uploads with pre-signed URLs (policies, signatures, exit clearance)
-- [ ] Refactor: split routes/employees.py and similar into models/ + services/ + routes/
-- [ ] Pytest coverage in /app/backend/tests
-- [ ] CSV export on Employees, Compensation, Budget
+- File uploads (policies, signatures, exit clearance docs)
+- CSV exports (Employees, Compensation, Budget)
+- Refactor: routes → models/ + services/ split
+- pytest coverage expansion in /app/backend/tests
+- Mobile-responsive layout audit
+- Multi-tenancy (currently hardcoded "solvit")
 
 ## Test Credentials
-See `/app/memory/test_credentials.md`
+See `/app/memory/test_credentials.md`.
