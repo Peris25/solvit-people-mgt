@@ -12,6 +12,7 @@ router = APIRouter(prefix="/employees", tags=["employees"])
 LIFECYCLE_STATES = ["Candidate", "Onboarding", "Probation", "Active", "On_Leave", "PIP", "Realignment", "Exiting", "Exited"]
 DEPARTMENTS = ["Operations", "Commercial", "Finance", "Technology", "HR_People", "Valuation"]
 ROLE_LEVELS = ["L1", "L2", "L3", "L4", "L5", "B1a", "B1b"]
+EMPLOYMENT_TYPES = ["Full_Time", "Solver", "Consultant"]
 
 
 class EmployeeCreate(BaseModel):

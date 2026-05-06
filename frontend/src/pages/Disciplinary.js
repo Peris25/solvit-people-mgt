@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import StatusBadge from '../components/StatusBadge';
+import EmployeePicker from '../components/EmployeePicker';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -19,7 +20,11 @@ export default function Disciplinary() {
 
   const load = async () => {
     setLoading(true);
-    try { const r = await api.getDisCases(); setCases(r.data); }
+    try {
+      const r = await api.getDisCases();
+      // Defensive: 401/500 interceptor may set data:null — coerce to []
+      setCases(Array.isArray(r?.data) ? r.data : []);
+    }
     finally { setLoading(false); }
   };
 
@@ -80,8 +85,14 @@ export default function Disciplinary() {
             <form onSubmit={create} style={{ padding: '24px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Employee Name</label>
-                  <input required value={form.employee_name} onChange={e => setForm(p => ({ ...p, employee_name: e.target.value, employee_id: e.target.value.toLowerCase().replace(/ /g, '_') }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Employee</label>
+                  <EmployeePicker
+                    testId="disciplinary-employee-picker"
+                    value={form.employee_id}
+                    placeholder="Select employee..."
+                    required
+                    onChange={(emp) => setForm(p => ({ ...p, employee_id: emp.id, employee_name: emp.full_name }))}
+                  />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Type</label>

@@ -51,14 +51,10 @@ export default function Login() {
     <div style={{ minHeight: '100vh', backgroundColor: '#F5F5F5', display: 'flex', fontFamily: 'Arial, Helvetica, sans-serif' }}>
       {/* Left — brand panel */}
       <div style={{ flex: 1, background: '#191919', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '48px', minHeight: '100vh', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ backgroundImage: 'url(https://images.unsplash.com/photo-1762912297981-ee1a51f4f187?crop=entropy&cs=srgb&fm=jpg&ixlib=rb-4.1.0&q=85)', backgroundSize: 'cover', backgroundPosition: 'center', position: 'absolute', inset: 0, opacity: 0.25 }} />
+        <div style={{ backgroundImage: 'url(https://solvit.co.ke/wp-content/uploads/2024/03/Client-Meet.webp)', backgroundSize: 'cover', backgroundPosition: 'center', position: 'absolute', inset: 0, opacity: 0.35 }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(25,25,25,0.85) 0%, rgba(25,25,25,0.55) 100%)' }} />
         <div style={{ position: 'relative', zIndex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-            <div style={{ width: '40px', height: '40px', backgroundColor: '#FF353F', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ color: '#fff', fontWeight: 900, fontSize: '20px' }}>S</span>
-            </div>
-            <span style={{ color: '#fff', fontWeight: 900, fontSize: '20px', letterSpacing: '-0.05em' }}>SOLVIT</span>
-          </div>
+          <img src="https://www.solvit.limited/dist/images/logo.png" alt="Solvit" style={{ height: '44px', width: 'auto', display: 'block', filter: 'brightness(0) invert(1)' }} />
         </div>
         <div style={{ position: 'relative', zIndex: 1 }}>
           <h1 style={{ color: '#fff', fontSize: '42px', fontWeight: 900, lineHeight: 1.1, letterSpacing: '-0.05em', margin: 0, marginBottom: '16px' }}>

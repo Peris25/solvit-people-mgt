@@ -1,7 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import StatusBadge from '../components/StatusBadge';
+import EmployeePicker from '../components/EmployeePicker';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+
+// Display-only labels per leave type. The full Kenyan Employment Act detail
+// is shown in a small helper text BELOW the dropdown, not inside it.
+const LEAVE_TYPE_LABELS = {
+  Annual: 'Annual leave',
+  Sick: 'Sick leave',
+  Maternity: 'Maternity leave',
+  Paternity: 'Paternity leave',
+  Compassionate: 'Compassionate leave',
+};
 
 export default function Leave() {
   const { user } = useAuth();
@@ -102,7 +113,7 @@ export default function Leave() {
               {requests.map((r, i) => (
                 <tr key={r.id} data-testid={`leave-${r.id}`} style={{ borderBottom: '1px solid rgba(25,25,25,0.05)', backgroundColor: i % 2 === 0 ? '#fff' : '#FAFAFA' }}>
                   <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: '11px' }}>{(r.employee_id || '').substring(0, 8)}</td>
-                  <td style={{ padding: '10px 14px', fontWeight: 700 }}>{r.leave_type}</td>
+                  <td style={{ padding: '10px 14px', fontWeight: 700 }}>{LEAVE_TYPE_LABELS[r.leave_type] || r.leave_type}</td>
                   <td style={{ padding: '10px 14px', color: '#525252' }}>{r.start_date} → {r.end_date}</td>
                   <td style={{ padding: '10px 14px', fontWeight: 700 }}>{r.working_days}</td>
                   <td style={{ padding: '10px 14px', color: '#525252' }}>{r.handover_contact || '—'}</td>
@@ -135,8 +146,13 @@ export default function Leave() {
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Leave Type</label>
                   <select required value={form.leave_type} onChange={e => setForm(p => ({ ...p, leave_type: e.target.value }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px' }}>
-                    {Object.keys(types).map(t => <option key={t} value={t}>{t} — {types[t].description}</option>)}
+                    {Object.keys(types).map(t => <option key={t} value={t}>{LEAVE_TYPE_LABELS[t] || `${t} leave`}</option>)}
                   </select>
+                  {types[form.leave_type]?.description && (
+                    <div style={{ fontSize: '10px', color: '#525252', marginTop: '4px', fontStyle: 'italic' }}>
+                      {types[form.leave_type].description}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Start Date</label>
@@ -149,7 +165,13 @@ export default function Leave() {
                 <div style={{ gridColumn: '1 / -1', backgroundColor: '#F5F5F5', padding: '8px 12px', fontSize: '12px' }}>Working Days: <strong>{calcDays()}</strong></div>
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Handover Contact</label>
-                  <input value={form.handover_contact} onChange={e => setForm(p => ({ ...p, handover_contact: e.target.value }))} placeholder="Name of colleague covering" style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
+                  <EmployeePicker
+                    testId="leave-handover-picker"
+                    value={form.handover_contact_id || ''}
+                    excludeId={form.employee_id || myEmpId}
+                    placeholder="Select colleague covering for you..."
+                    onChange={(emp) => setForm(p => ({ ...p, handover_contact: emp.full_name, handover_contact_id: emp.id }))}
+                  />
                 </div>
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Handover Notes</label>

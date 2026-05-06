@@ -13,14 +13,50 @@ export default function Compensation() {
   const [bonus, setBonus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tier, setTier] = useState('Tier1');
+  const [editBand, setEditBand] = useState(null);
+  const [editForm, setEditForm] = useState({ min_kes: 0, mid_kes: 0, max_kes: 0, roles_csv: '', note: '' });
+  const [saving, setSaving] = useState(false);
+
+  const canEditBands = ['hr_admin', 'hr_manager'].includes(user?.role);
 
   useEffect(() => {
     Promise.all([api.getPayBands(), api.getPayBandAlerts()])
-      .then(([b, a]) => { setBands(b.data); setAlerts(a.data); })
+      .then(([b, a]) => { setBands(b.data || []); setAlerts(a.data || []); })
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { if (tab === 'bonus') api.getBonusCalculator(tier).then(r => setBonus(r.data)); }, [tab, tier]);
+
+  const openEdit = (band) => {
+    setEditBand(band);
+    setEditForm({
+      min_kes: band.min_kes || 0,
+      mid_kes: band.mid_kes || 0,
+      max_kes: band.max_kes || 0,
+      roles_csv: (band.roles || []).join(', '),
+      note: band.note || '',
+    });
+  };
+
+  const saveBand = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const payload = {
+        min_kes: Number(editForm.min_kes),
+        mid_kes: Number(editForm.mid_kes),
+        max_kes: Number(editForm.max_kes),
+        roles: editForm.roles_csv.split(',').map(s => s.trim()).filter(Boolean),
+        note: editForm.note,
+      };
+      await api.updatePayBand(editBand.id, payload);
+      const r = await api.getPayBands();
+      setBands(r.data || []);
+      setEditBand(null);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div data-testid="compensation-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
@@ -39,7 +75,7 @@ export default function Compensation() {
         <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead><tr style={{ backgroundColor: '#F5F5F5' }}>
-              {['Band', 'Min', 'Mid', 'Max', 'Roles'].map(h => (
+              {['Band', 'Min', 'Mid', 'Max', 'Roles', canEditBands ? 'Edit' : ''].filter(Boolean).map(h => (
                 <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', borderBottom: '1px solid rgba(25,25,25,0.08)' }}>{h}</th>
               ))}
             </tr></thead>
@@ -51,6 +87,11 @@ export default function Compensation() {
                   <td style={{ padding: '12px 14px', fontWeight: 700, color: '#22C55E' }}>{fmtKES(b.mid_kes)}</td>
                   <td style={{ padding: '12px 14px', fontWeight: 700 }}>{fmtKES(b.max_kes)}</td>
                   <td style={{ padding: '12px 14px', color: '#525252', fontSize: '11px' }}>{(b.roles || []).join(', ')}{b.note && <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '2px' }}>{b.note}</div>}</td>
+                  {canEditBands && (
+                    <td style={{ padding: '12px 14px' }}>
+                      <button data-testid={`edit-band-${b.band}`} onClick={() => openEdit(b)} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #FF353F', color: '#FF353F', background: 'transparent', cursor: 'pointer', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Edit</button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -117,6 +158,54 @@ export default function Compensation() {
               </table>
             </div>
           ) : <div style={{ padding: '48px', textAlign: 'center' }}>Calculating...</div>}
+        </div>
+      )}
+
+      {editBand && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div data-testid="edit-band-modal" style={{ backgroundColor: '#fff', width: '520px', border: '1px solid rgba(25,25,25,0.15)' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between' }}>
+              <h3 style={{ margin: 0, fontWeight: 900 }}>Edit Pay Band {editBand.band}</h3>
+              <button onClick={() => setEditBand(null)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}>×</button>
+            </div>
+            <form onSubmit={saveBand} style={{ padding: '24px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '14px' }}>
+                {[{ k: 'min_kes', l: 'Min (KES)' }, { k: 'mid_kes', l: 'Mid (KES)' }, { k: 'max_kes', l: 'Max (KES)' }].map(f => (
+                  <div key={f.k}>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>{f.l}</label>
+                    <input
+                      data-testid={`band-edit-${f.k}`}
+                      type="number" required min={0}
+                      value={editForm[f.k]}
+                      onChange={e => setEditForm(p => ({ ...p, [f.k]: e.target.value }))}
+                      style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Roles (comma-separated)</label>
+                <input
+                  value={editForm.roles_csv}
+                  onChange={e => setEditForm(p => ({ ...p, roles_csv: e.target.value }))}
+                  placeholder="Senior Account Manager, Operations Manager"
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Note (optional)</label>
+                <input
+                  value={editForm.note}
+                  onChange={e => setEditForm(p => ({ ...p, note: e.target.value }))}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button type="button" onClick={() => setEditBand(null)} style={{ padding: '10px 20px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '12px' }}>Cancel</button>
+                <button data-testid="band-edit-save" type="submit" disabled={saving} style={{ padding: '10px 24px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>{saving ? 'Saving...' : 'Save Band'}</button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

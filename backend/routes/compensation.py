@@ -28,6 +28,43 @@ async def get_pay_bands(request: Request):
     return [fmt(b) for b in bands]
 
 
+@router.put("/pay-bands/{band_id}")
+async def update_pay_band(band_id: str, request: Request):
+    """HR Admin (or HR Manager) can edit pay band min/mid/max and roles."""
+    user = await get_current_user(request)
+    if user["role"] not in ["hr_admin", "hr_manager"]:
+        raise HTTPException(status_code=403, detail="Only HR Admin can edit pay bands")
+    db = get_db()
+    body = await request.json()
+    allowed = {"min_kes", "mid_kes", "max_kes", "roles", "note"}
+    update = {k: v for k, v in body.items() if k in allowed}
+    if not update:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
+    update["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update["updated_by"] = user["id"]
+    try:
+        result = await db.pay_bands.find_one_and_update(
+            {"_id": ObjectId(band_id)}, {"$set": update}, return_document=True
+        )
+    except Exception:
+        result = await db.pay_bands.find_one_and_update(
+            {"id": band_id}, {"$set": update}, return_document=True
+        )
+    if not result:
+        raise HTTPException(status_code=404, detail="Pay band not found")
+    # Audit
+    await db.audit_logs.insert_one({
+        "id": str(uuid.uuid4()),
+        "tenant_id": "solvit",
+        "action": "pay_band.update",
+        "entity": f"pay_band:{band_id}",
+        "performed_by": user["id"],
+        "metadata": update,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+    return fmt(result)
+
+
 @router.get("/pay-bands/alerts")
 async def get_pay_band_alerts(request: Request):
     user = await get_current_user(request)

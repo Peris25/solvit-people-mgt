@@ -130,6 +130,7 @@ export const trainingDecision = (id, data) => api.put(`/lnd/training/${id}/decis
 
 // Compensation
 export const getPayBands = () => api.get('/compensation/pay-bands');
+export const updatePayBand = (id, data) => api.put(`/compensation/pay-bands/${id}`, data);
 export const getPayBandAlerts = () => api.get('/compensation/pay-bands/alerts');
 export const getBonusCalculator = (tier) => api.get('/compensation/bonus/calculator', { params: { tier } });
 export const getGPGate = () => api.get('/compensation/gp-gate');
@@ -142,6 +143,13 @@ export const getSolverAwards = () => api.get('/recognition/solver-awards');
 // Budget
 export const getBudgetSummary = () => api.get('/budget/summary');
 export const getPeopleEnvelope = () => api.get('/budget/envelope');
+export const submitGPRecord = (data) => api.post('/budget/gp-record', data);
+export const submitForm28 = (data) => api.post('/budget/form-28', data);
+export const getAllocations = () => api.get('/budget/allocations');
+export const getAllocationSummary = () => api.get('/budget/allocations/summary');
+export const createAllocation = (data) => api.post('/budget/allocations', data);
+export const updateAllocation = (id, data) => api.put(`/budget/allocations/${id}`, data);
+export const deleteAllocation = (id) => api.delete(`/budget/allocations/${id}`);
 
 // Policies
 export const getPolicies = () => api.get('/policies');

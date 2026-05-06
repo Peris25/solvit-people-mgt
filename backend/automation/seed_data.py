@@ -199,11 +199,36 @@ async def seed_all(db):
     await seed_automation_rules(db)
     await seed_holidays(db)
     await seed_demo_employees(db)
+    await migrate_department_labels(db)
     await seed_exit_interview(db)
     await seed_pay_band_alerts(db)
     await seed_performance_reviews(db)
     await seed_notifications_and_stay_interviews(db)
     print("✅ All seed data loaded successfully")
+
+
+async def migrate_department_labels(db):
+    """Remap historical/incorrect department labels to the 5 canonical Solvit
+    departments. Idempotent — safe to run on every boot."""
+    REMAP = {
+        "Leadership": "HR & People",
+        "HR_People": "HR & People",
+        "HR People": "HR & People",
+        "People": "HR & People",
+        "Commercial": "Commercial & Business Development",
+        "Business Development": "Commercial & Business Development",
+        "Tech": "Technology",
+        "Valuation": "Operations",
+    }
+    total = 0
+    for old, new in REMAP.items():
+        res = await db.employees.update_many(
+            {"tenant_id": "solvit", "department": old},
+            {"$set": {"department": new}}
+        )
+        total += res.modified_count
+    if total:
+        print(f"✅ Migrated {total} employees to canonical department labels")
 
 
 async def seed_notifications_and_stay_interviews(db):
@@ -354,16 +379,16 @@ async def seed_demo_employees(db):
         return
 
     employees = [
-        {"full_name": "Jessica Mwangi", "work_email": "jessica@solvit.co.ke", "department": "HR_People", "role_title": "HR & Administration Manager", "role_level": "L3", "start_date": "2022-03-01", "lifecycle_state": "Active", "current_salary_kes": 85000},
+        {"full_name": "Jessica Mwangi", "work_email": "jessica@solvit.co.ke", "department": "HR & People", "role_title": "HR & Administration Manager", "role_level": "L3", "start_date": "2022-03-01", "lifecycle_state": "Active", "current_salary_kes": 85000},
         {"full_name": "David Ochieng", "work_email": "manager@solvit.co.ke", "department": "Operations", "role_title": "Operations Manager", "role_level": "L4", "start_date": "2021-06-15", "lifecycle_state": "Active", "current_salary_kes": 115000},
         {"full_name": "Sarah Njoroge", "work_email": "finance@solvit.co.ke", "department": "Finance", "role_title": "Finance Manager", "role_level": "L4", "start_date": "2020-09-01", "lifecycle_state": "Active", "current_salary_kes": 120000},
-        {"full_name": "James Kamau", "work_email": "employee@solvit.co.ke", "department": "Commercial", "role_title": "Account Manager", "role_level": "L2", "start_date": "2024-01-15", "lifecycle_state": "Active", "current_salary_kes": 72000},
-        {"full_name": "Michael Omondi", "work_email": "md@solvit.co.ke", "department": "Leadership", "role_title": "Managing Director", "role_level": "L5", "start_date": "2019-01-01", "lifecycle_state": "Active", "current_salary_kes": 280000},
-        {"full_name": "Mary Wanjiru", "work_email": "mary.wanjiru@solvit.co.ke", "department": "Commercial", "role_title": "Senior Account Manager", "role_level": "L3", "start_date": "2021-08-01", "lifecycle_state": "Active", "current_salary_kes": 53000},
+        {"full_name": "James Kamau", "work_email": "employee@solvit.co.ke", "department": "Commercial & Business Development", "role_title": "Account Manager", "role_level": "L2", "start_date": "2024-01-15", "lifecycle_state": "Active", "current_salary_kes": 72000},
+        {"full_name": "Michael Omondi", "work_email": "md@solvit.co.ke", "department": "HR & People", "role_title": "Managing Director", "role_level": "L5", "start_date": "2019-01-01", "lifecycle_state": "Active", "current_salary_kes": 280000},
+        {"full_name": "Mary Wanjiru", "work_email": "mary.wanjiru@solvit.co.ke", "department": "Commercial & Business Development", "role_title": "Senior Account Manager", "role_level": "L3", "start_date": "2021-08-01", "lifecycle_state": "Active", "current_salary_kes": 53000},
         {"full_name": "John Mwenda", "work_email": "john.mwenda@solvit.co.ke", "department": "Technology", "role_title": "IT Support Specialist", "role_level": "L4", "start_date": "2023-03-01", "lifecycle_state": "Probation", "current_salary_kes": 95000},
         {"full_name": "Grace Akinyi", "work_email": "grace.akinyi@solvit.co.ke", "department": "Operations", "role_title": "Solvers Manager", "role_level": "L4", "start_date": "2022-11-01", "lifecycle_state": "Active", "current_salary_kes": 100000},
         {"full_name": "Robert Kiprotich", "work_email": "robert.kiprotich@solvit.co.ke", "department": "Operations", "role_title": "Valuation Officer", "role_level": "L2", "start_date": "2026-01-15", "lifecycle_state": "Onboarding", "current_salary_kes": 65000},
-        {"full_name": "Stephen Kiragu", "work_email": "s.kiragu@solvit.co.ke", "department": "Valuation", "role_title": "Valuation Officer", "role_level": "L2", "start_date": "2021-10-01", "lifecycle_state": "Exited", "current_salary_kes": 68000},
+        {"full_name": "Stephen Kiragu", "work_email": "s.kiragu@solvit.co.ke", "department": "Operations", "role_title": "Valuation Officer", "role_level": "L2", "start_date": "2021-10-01", "lifecycle_state": "Exited", "current_salary_kes": 68000},
     ]
 
     docs = []

@@ -104,10 +104,26 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
     navigate('/login');
   };
 
-  const filteredMenu = MENU_ITEMS.map(section => ({
-    ...section,
-    items: section.items.filter(item => !item.roles || item.roles.includes(user?.role))
-  })).filter(section => section.items.length > 0);
+  const filteredMenu = (() => {
+    // Employee role: minimal nav, My Tasks at top, no Forms / Finance & Admin sections
+    if (user?.role === 'employee') {
+      return [{
+        section: 'My Workspace',
+        items: [
+          { path: '/my-tasks',  label: 'My Tasks',     icon: '✓' },
+          { path: '/dashboard', label: 'My Dashboard', icon: '⊞' },
+          { path: '/leave',     label: 'Leave',        icon: '🏖' },
+          { path: '/lnd',       label: 'Development',  icon: '📚' },
+          { path: '/recognition', label: 'Recognition', icon: '🏆' },
+          { path: '/policies',  label: 'Policies',     icon: '📄' },
+        ]
+      }];
+    }
+    return MENU_ITEMS.map(section => ({
+      ...section,
+      items: section.items.filter(item => !item.roles || item.roles.includes(user?.role))
+    })).filter(section => section.items.length > 0);
+  })();
 
   const isActive = (path) => location.pathname === path;
 
