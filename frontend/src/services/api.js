@@ -15,6 +15,7 @@ export const getMe = () => api.get('/auth/me');
 // Employees
 export const getEmployees = (params) => api.get('/employees', { params });
 export const getEmployee = (id) => api.get(`/employees/${id}`);
+export const getEmployeeProfile = (id) => api.get(`/employees/${id}/profile`);
 export const createEmployee = (data) => api.post('/employees', data);
 export const updateEmployee = (id, data) => api.put(`/employees/${id}`, data);
 export const transitionEmployee = (id, lifecycle_state) => api.post(`/employees/${id}/transition`, { lifecycle_state });
@@ -63,6 +64,11 @@ export const calculateRisk = (id) => api.post(`/retention/calculate/${id}`);
 export const getRiskSummary = () => api.get('/retention/risk-summary');
 export const getExitInsights = () => api.get('/retention/exit-insights');
 export const getStayInterviews = () => api.get('/retention/stay-interviews');
+export const createStayInterview = (data) => api.post('/retention/stay-interviews', data);
+export const updateStayInterview = (id, data) => api.put(`/retention/stay-interviews/${id}`, data);
+
+// Settings — extras
+export const sendTestEmail = (data) => api.post('/settings/email-test', data);
 
 // LnD
 export const getIDP = (empId) => api.get(`/lnd/idp/${empId}`);

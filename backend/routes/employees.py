@@ -92,6 +92,67 @@ async def list_employees(request: Request, lifecycle_state: Optional[str] = None
     return [fmt(e) for e in employees]
 
 
+@router.get("/{employee_id}/profile")
+async def get_employee_profile(employee_id: str, request: Request):
+    """Aggregated profile: timeline, IDP, leave history, recognitions, performance, training."""
+    user = await get_current_user(request)
+    db = get_db()
+    try:
+        emp = await db.employees.find_one({"_id": ObjectId(employee_id)})
+    except Exception:
+        emp = await db.employees.find_one({"id": employee_id})
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    emp_id = str(emp.get("id", str(emp["_id"])))
+
+    # Permission gate: employee can only view self; line_manager only direct reports; HR/exec all
+    if user["role"] == "employee" and emp.get("work_email") != user.get("email"):
+        raise HTTPException(status_code=403, detail="Not allowed")
+    if user["role"] == "line_manager" and emp.get("line_manager_id") not in [user.get("employee_id"), user.get("id")]:
+        if emp.get("work_email") != user.get("email"):
+            raise HTTPException(status_code=403, detail="Not allowed")
+
+    # Parallel-ish gathers
+    reviews = await db.performance_reviews.find({"employee_id": emp_id}).sort("created_at", -1).to_list(20)
+    leave = await db.leave_requests.find({"employee_id": emp_id}).sort("created_at", -1).to_list(50)
+    recogs_received = await db.recognitions.find({"nominee_id": emp_id}).sort("created_at", -1).to_list(50)
+    recogs_given = await db.recognitions.find({"nominator_id": user.get("id")}).sort("created_at", -1).to_list(50) if user.get("id") == emp_id else []
+    trainings = await db.training_requests.find({"employee_id": emp_id}).sort("created_at", -1).to_list(50)
+    idp = await db.idps.find_one({"employee_id": emp_id})
+    cases = await db.disciplinary_cases.find({"employee_id": emp_id}).sort("created_at", -1).to_list(20) if user["role"] in ["hr_admin", "hr_manager"] else []
+    notifications = await db.notifications.find({"recipient_id": emp_id}).sort("created_at", -1).to_list(20) if user["role"] in ["hr_admin", "hr_manager"] or emp.get("work_email") == user.get("email") else []
+
+    # Build timeline
+    timeline = []
+    if emp.get("start_date"):
+        timeline.append({"date": emp["start_date"], "type": "joined", "title": "Joined Solvit", "color": "#22C55E"})
+    if emp.get("probation_end_date"):
+        timeline.append({"date": emp["probation_end_date"], "type": "probation_end", "title": "Probation End Date", "color": "#3B82F6"})
+    for r in reviews:
+        timeline.append({"date": r.get("created_at", "")[:10], "type": "performance", "title": f"Review · {r.get('cycle_type','').replace('_',' ')} {r.get('cycle_year','')} · score {r.get('overall_score') or '-'}", "color": "#F97316"})
+    for l in leave:
+        if l.get("status") == "Approved":
+            timeline.append({"date": l.get("start_date", ""), "type": "leave", "title": f"{l.get('leave_type')} leave ({l.get('working_days')} days)", "color": "#8B5CF6"})
+    for rc in recogs_received:
+        timeline.append({"date": rc.get("created_at", "")[:10], "type": "recognition", "title": f"Recognized: {rc.get('recognition_type')} — {(rc.get('values_demonstrated') or [''])[0]}", "color": "#FCD34D"})
+    for t in trainings:
+        if t.get("status", "").startswith("Completed"):
+            timeline.append({"date": t.get("created_at", "")[:10], "type": "training", "title": f"Training: {t.get('training_name')}", "color": "#06B6D4"})
+    timeline.sort(key=lambda x: x["date"] or "", reverse=True)
+
+    return {
+        "employee": fmt(emp),
+        "timeline": timeline,
+        "performance_history": [{"id": str(r.get("_id")), "cycle": f"{r.get('cycle_type','').replace('_',' ')} {r.get('cycle_year','')}", "score": r.get("overall_score"), "rating": r.get("rating"), "placement": r.get("nine_box_placement"), "status": r.get("status")} for r in reviews],
+        "leave_history": [{"id": str(l.get("_id")), "type": l.get("leave_type"), "start": l.get("start_date"), "end": l.get("end_date"), "days": l.get("working_days"), "status": l.get("status")} for l in leave],
+        "recognitions": [{"id": str(r.get("_id")), "type": r.get("recognition_type"), "from": r.get("nominator_name"), "values": r.get("values_demonstrated"), "behaviour": r.get("specific_behaviour"), "status": r.get("status"), "created_at": r.get("created_at")} for r in recogs_received],
+        "trainings": [{"id": str(t.get("_id")), "name": t.get("training_name"), "provider": t.get("provider"), "cost_kes": t.get("cost_kes"), "status": t.get("status")} for t in trainings],
+        "idp": ({k: v for k, v in idp.items() if k not in ["_id"]} if idp else None),
+        "disciplinary_cases": [{"id": str(c.get("_id")), "case_ref": c.get("case_ref"), "type": c.get("case_type"), "status": c.get("status")} for c in cases],
+        "notifications": [{"id": str(n.get("_id")), "title": n.get("title"), "message": n.get("message"), "is_read": n.get("is_read", False), "created_at": n.get("created_at")} for n in notifications],
+    }
+
+
 @router.get("/kanban")
 async def get_kanban(request: Request):
     user = await get_current_user(request)

@@ -136,13 +136,35 @@ async def create_stay_interview(request: Request):
         "id": str(uuid.uuid4()),
         "tenant_id": "solvit",
         **body,
-        "status": "Scheduled",
+        "status": body.get("status") or "Scheduled",
         "conducted_by": user["id"],
+        "conducted_by_name": user.get("full_name") or user.get("email"),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     result = await db.stay_interviews.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
     return doc
+
+
+@router.put("/stay-interviews/{interview_id}")
+async def update_stay_interview(interview_id: str, request: Request):
+    user = await get_current_user(request)
+    if user["role"] not in ["hr_admin", "hr_manager"]:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    body = await request.json()
+    body["updated_at"] = datetime.now(timezone.utc).isoformat()
+    db = get_db()
+    try:
+        result = await db.stay_interviews.find_one_and_update(
+            {"_id": ObjectId(interview_id)}, {"$set": body}, return_document=True
+        )
+    except Exception:
+        result = await db.stay_interviews.find_one_and_update(
+            {"id": interview_id}, {"$set": body}, return_document=True
+        )
+    if not result:
+        raise HTTPException(status_code=404, detail="Stay interview not found")
+    return fmt(result)
 
 
 @router.get("/exit-insights")

@@ -121,20 +121,56 @@ export default function Settings() {
                 <>
                   <div style={{ marginBottom: '16px' }}>
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>SendGrid API Key</label>
-                    <input type="password" value={form.email_api_key || ''} onChange={e => setForm(p => ({ ...p, email_api_key: e.target.value }))} placeholder="SG...." style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', outline: 'none', boxSizing: 'border-box' }} />
+                    <input type="password" value={form.email_api_key || ''} onChange={e => setForm(p => ({ ...p, email_api_key: e.target.value }))} placeholder="SG...." style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
+                    <p style={{ fontSize: '11px', color: '#525252', marginTop: '4px' }}>Get an API key at sendgrid.com → Settings → API Keys (Mail Send permission).</p>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>From Email</label>
-                      <input value={form.email_from_address || ''} onChange={e => setForm(p => ({ ...p, email_from_address: e.target.value }))} placeholder="hr@solvit.co.ke" style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', outline: 'none', boxSizing: 'border-box' }} />
+                      <input value={form.email_from_address || ''} onChange={e => setForm(p => ({ ...p, email_from_address: e.target.value }))} placeholder="hr@solvit.co.ke" style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
                     </div>
                     <div>
                       <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>From Name</label>
-                      <input value={form.email_from_name || ''} onChange={e => setForm(p => ({ ...p, email_from_name: e.target.value }))} placeholder="Solvit HR" style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', outline: 'none', boxSizing: 'border-box' }} />
+                      <input value={form.email_from_name || ''} onChange={e => setForm(p => ({ ...p, email_from_name: e.target.value }))} placeholder="Solvit HR" style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
                     </div>
                   </div>
                 </>
               )}
+              {form.email_provider === 'smtp' && (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>SMTP Host</label>
+                      <input value={form.smtp_host || ''} onChange={e => setForm(p => ({ ...p, smtp_host: e.target.value }))} placeholder="smtp.gmail.com" style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Port</label>
+                      <input type="number" value={form.smtp_port || 587} onChange={e => setForm(p => ({ ...p, smtp_port: parseInt(e.target.value) || 587 }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Username</label>
+                      <input value={form.smtp_username || ''} onChange={e => setForm(p => ({ ...p, smtp_username: e.target.value }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Password</label>
+                      <input type="password" value={form.smtp_password || ''} onChange={e => setForm(p => ({ ...p, smtp_password: e.target.value }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>From Email</label>
+                      <input value={form.email_from_address || ''} onChange={e => setForm(p => ({ ...p, email_from_address: e.target.value }))} placeholder="hr@solvit.co.ke" style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>From Name</label>
+                      <input value={form.email_from_name || ''} onChange={e => setForm(p => ({ ...p, email_from_name: e.target.value }))} placeholder="Solvit HR" style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
+                    </div>
+                  </div>
+                </>
+              )}
+              {form.email_provider && <EmailTestButton />}
             </div>
           )}
 
@@ -178,6 +214,33 @@ export default function Settings() {
           )}
         </form>
       )}
+    </div>
+  );
+}
+
+function EmailTestButton() {
+  const { user } = useAuth();
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState('');
+  const send = async () => {
+    setSending(true); setResult('');
+    try {
+      const res = await api.sendTestEmail({ to: user?.email });
+      const r = res.data;
+      if (r.status === 'sent') setResult(`✓ Test email sent via ${r.provider}`);
+      else if (r.status === 'skipped') setResult(`⚠ Skipped: ${r.message}`);
+      else setResult(`Status: ${r.status}`);
+    } catch (err) {
+      setResult(`✗ Failed: ${err.response?.data?.detail || err.message}`);
+    } finally { setSending(false); }
+  };
+  return (
+    <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(25,25,25,0.08)' }}>
+      <button data-testid="send-test-email" type="button" onClick={send} disabled={sending} style={{ padding: '8px 18px', backgroundColor: '#191919', color: '#fff', border: 'none', cursor: sending ? 'not-allowed' : 'pointer', fontSize: '11px', fontWeight: 700, fontFamily: 'Arial', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+        {sending ? 'Sending...' : 'Send Test Email'}
+      </button>
+      {result && <span style={{ marginLeft: '12px', fontSize: '12px', fontWeight: 700, color: result.startsWith('✓') ? '#22C55E' : result.startsWith('✗') ? '#FF353F' : '#F97316' }}>{result}</span>}
+      <p style={{ fontSize: '11px', color: '#525252', marginTop: '8px' }}>Save settings first, then send a test to your own email ({user?.email}).</p>
     </div>
   );
 }

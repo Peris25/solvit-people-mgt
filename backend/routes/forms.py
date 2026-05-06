@@ -259,7 +259,20 @@ FORM_SCHEMAS = {
     }
 }
 
-# Add more form schemas for completeness
+# Merge in 24 fully-populated schemas (FRD §7)
+from routes.forms_data import EXTRA_SCHEMAS, FORM_03_FULL_QUESTIONS
+
+# Add 5 missing questions to form-03 (was 5, target 10)
+existing_q_ids = {f["id"] for f in FORM_SCHEMAS["form-03"]["sections"][0]["fields"]}
+for q in FORM_03_FULL_QUESTIONS:
+    if q["id"] not in existing_q_ids:
+        FORM_SCHEMAS["form-03"]["sections"][0]["fields"].append(q)
+
+# Add the 24 extra schemas
+for fid, schema in EXTRA_SCHEMAS.items():
+    FORM_SCHEMAS[fid] = schema
+
+# Stub any remaining form ids just in case (form-25 etc are now in EXTRA_SCHEMAS)
 for form_num in ["form-04", "form-07", "form-08", "form-09", "form-10", "form-11", "form-12", "form-13",
                  "form-14", "form-16", "form-17", "form-18", "form-19", "form-20", "form-22", "form-23",
                  "form-24", "form-25", "form-26", "form-27", "form-28", "form-29", "form-30", "form-32"]:
@@ -267,33 +280,9 @@ for form_num in ["form-04", "form-07", "form-08", "form-09", "form-10", "form-11
         FORM_SCHEMAS[form_num] = {
             "id": form_num,
             "title": f"Form {form_num.split('-')[1].zfill(2)}",
-            "description": "Form schema — see FRD Section 7 for complete specification",
+            "description": "Form schema",
             "sections": [{"id": "s1", "title": "Details", "fields": []}]
         }
-
-# Populate key additional forms
-FORM_SCHEMAS["form-04"]["title"] = "Solvit Alignment Survey (FTE)"
-FORM_SCHEMAS["form-04"]["description"] = "FTE alignment survey — 12 questions across 3 pillars"
-FORM_SCHEMAS["form-07"]["title"] = "Employee Self-Review"
-FORM_SCHEMAS["form-07"]["description"] = "Employee self-assessment for performance cycle"
-FORM_SCHEMAS["form-08"]["title"] = "Probationary Review Form"
-FORM_SCHEMAS["form-08"]["description"] = "Monthly probation check-in form"
-FORM_SCHEMAS["form-09"]["title"] = "Performance Improvement Plan (PIP)"
-FORM_SCHEMAS["form-09"]["description"] = "8-week PIP document"
-FORM_SCHEMAS["form-11"]["title"] = "Goal-Setting and OKR Form"
-FORM_SCHEMAS["form-11"]["description"] = "Annual OKR and KPI goal setting"
-FORM_SCHEMAS["form-12"]["title"] = "Individual Development Plan (IDP)"
-FORM_SCHEMAS["form-12"]["description"] = "Employee development and career plan"
-FORM_SCHEMAS["form-16"]["title"] = "Policy Acknowledgement"
-FORM_SCHEMAS["form-16"]["description"] = "Policy read and acknowledgement form"
-FORM_SCHEMAS["form-23"]["title"] = "Exit Clearance Checklist"
-FORM_SCHEMAS["form-23"]["description"] = "4-section, 23-task exit clearance"
-FORM_SCHEMAS["form-24"]["title"] = "Post-Employment Confidentiality Acknowledgment"
-FORM_SCHEMAS["form-24"]["description"] = "Non-disclosure and non-solicitation"
-FORM_SCHEMAS["form-26"]["title"] = "360 Peer Review"
-FORM_SCHEMAS["form-26"]["description"] = "Anonymous peer review — Section B of Performance Review"
-FORM_SCHEMAS["form-32"]["title"] = "Solver Quarterly Award Nomination"
-FORM_SCHEMAS["form-32"]["description"] = "Quarterly Solver award nomination and approval"
 
 
 def fmt(doc):

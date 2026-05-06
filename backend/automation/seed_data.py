@@ -155,7 +155,50 @@ async def seed_all(db):
     await seed_exit_interview(db)
     await seed_pay_band_alerts(db)
     await seed_performance_reviews(db)
+    await seed_notifications_and_stay_interviews(db)
     print("✅ All seed data loaded successfully")
+
+
+async def seed_notifications_and_stay_interviews(db):
+    """Seed sample notifications and a stay interview so UIs have data"""
+    if await db.notifications.count_documents({"tenant_id": "solvit"}) == 0:
+        # Find HR admin user
+        hr = await db.users.find_one({"role": "hr_admin", "tenant_id": "solvit"})
+        hr_id = str(hr.get("id", str(hr["_id"]))) if hr else None
+        notifs = [
+            {"title": "[Compliance] PAYE deadline approaching", "message": "Monthly PAYE remittance is due on the 9th of next month. Confirm KRA submission.", "recipient_role": "hr_admin", "category": "Compliance", "is_read": False},
+            {"title": "[Probation] Review due — John Mwangi", "message": "John Mwangi's 3-month probation review is due in 7 days.", "recipient_role": "hr_admin", "category": "Probation", "is_read": False},
+            {"title": "[Pay Band] 3 employees below band minimum", "message": "Pay band compliance: 3 employees flagged. Review Compensation page.", "recipient_role": "hr_admin", "category": "Compensation", "is_read": False},
+            {"title": "[Onboarding] Robert Kiprop overdue", "message": "Robert's onboarding day-7 task list has 2 overdue items.", "recipient_role": "hr_admin", "category": "Onboarding", "is_read": True},
+        ]
+        docs = [{**n, "id": str(uuid.uuid4()), "tenant_id": "solvit", "recipient_id": hr_id, "data": {}, "created_at": datetime.now(timezone.utc).isoformat()} for n in notifs]
+        await db.notifications.insert_many(docs)
+        print(f"✅ {len(docs)} demo notifications seeded")
+
+    if await db.stay_interviews.count_documents({"tenant_id": "solvit"}) == 0:
+        # Pick an active employee at elevated risk (or just first active)
+        emp = await db.employees.find_one({"tenant_id": "solvit", "lifecycle_state": "Active"})
+        if emp:
+            emp_id = str(emp.get("id", str(emp["_id"])))
+            doc = {
+                "id": str(uuid.uuid4()),
+                "tenant_id": "solvit",
+                "employee_id": emp_id,
+                "employee_name": emp.get("full_name"),
+                "scheduled_date": (datetime.now(timezone.utc).replace(hour=10, minute=0)).isoformat()[:16],
+                "status": "Scheduled",
+                "trigger_reason": "Elevated flight risk score (alignment + tenure)",
+                "what_makes_stay": None,
+                "what_might_leave": None,
+                "career_path_clear": None,
+                "manager_support_rating": None,
+                "agreed_actions": None,
+                "follow_up_date": None,
+                "conducted_by": "system",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.stay_interviews.insert_one(doc)
+            print("✅ 1 demo stay interview seeded")
 
 
 async def reset_demo_data(db):
@@ -179,6 +222,7 @@ async def reset_demo_data(db):
     await seed_exit_interview(db)
     await seed_pay_band_alerts(db)
     await seed_performance_reviews(db)
+    await seed_notifications_and_stay_interviews(db)
     print("✅ Demo data reset completed")
 
 

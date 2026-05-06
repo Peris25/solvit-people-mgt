@@ -100,6 +100,28 @@ async def get_raw_settings(request: Request):
     return settings
 
 
+@router.post("/email-test")
+async def email_test(request: Request):
+    user = await get_current_user(request)
+    if user["role"] not in ["hr_admin"]:
+        raise HTTPException(status_code=403, detail="Only HR Admin can send test emails")
+    body = await request.json()
+    to = body.get("to") or user.get("email")
+    if not to:
+        raise HTTPException(status_code=400, detail="Missing recipient")
+    db = get_db()
+    from utils.email_service import send_email, EmailDeliveryError
+    try:
+        result = await send_email(
+            db, to,
+            subject="Solvit People Platform — Test Email",
+            html=f"<p>Hello,</p><p>This is a test email sent from Solvit People Platform at {datetime.now(timezone.utc).isoformat()}.</p><p>Provider: <strong>{(await db.platform_settings.find_one({'tenant_id': 'solvit'}) or {}).get('email_provider') or 'none'}</strong></p><p>If you received this, your email pipeline is working.</p>"
+        )
+        return result
+    except EmailDeliveryError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/reset-demo-data")
 async def reset_demo_data_endpoint(request: Request):
     """Wipe all transactional demo data and re-seed (keeps user accounts intact)"""

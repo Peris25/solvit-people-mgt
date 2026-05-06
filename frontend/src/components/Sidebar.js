@@ -45,6 +45,38 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
   const [notifications, setNotifications] = useState([]);
   const [showNotif, setShowNotif] = useState(false);
 
+  // Poll notifications every 60s
+  React.useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await api.getNotifications();
+        if (!cancelled) setNotifications(r.data || []);
+      } catch { /* ignore */ }
+    };
+    if (user) {
+      load();
+      const t = setInterval(load, 60000);
+      return () => { cancelled = true; clearInterval(t); };
+    }
+    return undefined;
+  }, [user]);
+
+  const unread = notifications.filter(n => !n.is_read).length;
+
+  const markRead = async (id) => {
+    try { await api.markNotificationRead(id); } catch { /* ignore */ }
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+  };
+
+  const markAllRead = async () => {
+    const unreadIds = notifications.filter(n => !n.is_read).map(n => n.id);
+    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    for (const id of unreadIds) {
+      try { await api.markNotificationRead(id); } catch { /* ignore */ }
+    }
+  };
+
   const handleLogout = async () => {
     await logout();
     navigate('/login');
@@ -87,18 +119,46 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
       </div>
 
       {/* User info */}
-      <div style={{ padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <div style={{ padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', position: 'relative' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: ROLE_COLORS[user?.role] || '#525252', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <span style={{ color: '#fff', fontWeight: 700, fontSize: '12px' }}>{user?.full_name?.[0] || 'U'}</span>
           </div>
-          <div style={{ overflow: 'hidden' }}>
+          <div style={{ overflow: 'hidden', flex: 1 }}>
             <div style={{ color: '#fff', fontSize: '12px', fontWeight: 700, letterSpacing: '-0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.full_name || user?.email}</div>
             <div style={{ backgroundColor: ROLE_COLORS[user?.role] || '#525252', color: '#fff', fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1px 6px', display: 'inline-block', marginTop: '2px' }}>
               {ROLE_LABELS[user?.role] || user?.role}
             </div>
           </div>
+          <button data-testid="notif-bell" onClick={() => setShowNotif(s => !s)} style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: '6px', color: 'rgba(255,255,255,0.7)' }}>
+            <Bell size={16} />
+            {unread > 0 && (
+              <span data-testid="notif-badge" style={{ position: 'absolute', top: '-2px', right: '-2px', backgroundColor: '#FF353F', color: '#fff', fontSize: '9px', fontWeight: 900, padding: '1px 5px', borderRadius: '8px', minWidth: '14px', textAlign: 'center', lineHeight: 1.2 }}>{unread > 99 ? '99+' : unread}</span>
+            )}
+          </button>
         </div>
+        {showNotif && (
+          <div data-testid="notif-dropdown" style={{ position: 'absolute', top: '60px', right: '8px', width: '320px', backgroundColor: '#fff', color: '#191919', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 200, maxHeight: '420px', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <strong style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Notifications {unread > 0 && <span style={{ color: '#FF353F' }}>· {unread}</span>}</strong>
+              {unread > 0 && <button data-testid="mark-all-read" onClick={markAllRead} style={{ background: 'none', border: 'none', color: '#FF353F', cursor: 'pointer', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Mark all read</button>}
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {notifications.length === 0 ? (
+                <div style={{ padding: '32px', textAlign: 'center', color: '#9CA3AF', fontSize: '12px' }}>No notifications</div>
+              ) : notifications.slice(0, 20).map(n => (
+                <div key={n.id} data-testid={`notif-${n.id}`} onClick={() => markRead(n.id)} style={{ padding: '12px 16px', borderBottom: '1px solid rgba(25,25,25,0.05)', cursor: 'pointer', backgroundColor: n.is_read ? '#fff' : '#FEF2F2' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                    <strong style={{ fontSize: '12px', color: '#191919', flex: 1 }}>{n.title}</strong>
+                    {!n.is_read && <span style={{ width: '8px', height: '8px', backgroundColor: '#FF353F', borderRadius: '50%', flexShrink: 0, marginTop: '4px' }} />}
+                  </div>
+                  <p style={{ fontSize: '11px', color: '#525252', margin: '4px 0 0', lineHeight: 1.4 }}>{n.message}</p>
+                  <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '4px' }}>{n.created_at ? new Date(n.created_at).toLocaleString('en-KE', { dateStyle: 'short', timeStyle: 'short' }) : ''}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Navigation */}

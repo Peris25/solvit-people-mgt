@@ -158,6 +158,19 @@ class AutomationEngine:
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             await self.db.notifications.insert_one(notif)
+            # Best-effort email — does nothing if email provider not configured
+            try:
+                users = await self.db.users.find({"role": recipient_role, "tenant_id": "solvit"}).to_list(50)
+                for u in users:
+                    if u.get("email"):
+                        from utils.email_service import send_email
+                        await send_email(
+                            self.db, u["email"],
+                            subject=notif["title"],
+                            html=f"<p>{message}</p><p><small>Sent by Solvit People Platform automation</small></p>"
+                        )
+            except Exception as e:
+                logger.warning(f"Email notification skipped: {e}")
 
     async def _change_state_action(self, rule: dict, data: dict, payload: dict):
         new_state = payload.get("new_state")

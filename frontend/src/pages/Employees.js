@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import StatusBadge from '../components/StatusBadge';
 import * as api from '../services/api';
@@ -12,6 +13,7 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
 
 export default function Employees() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -110,7 +112,7 @@ export default function Employees() {
             </thead>
             <tbody>
               {employees.map((emp, i) => (
-                <tr key={emp.id} data-testid={`emp-row-${emp.id}`} style={{ borderBottom: '1px solid rgba(25,25,25,0.05)', backgroundColor: i % 2 === 0 ? '#fff' : '#FAFAFA' }}>
+                <tr key={emp.id} data-testid={`emp-row-${emp.id}`} onClick={() => navigate(`/employees/${emp.id}`)} style={{ borderBottom: '1px solid rgba(25,25,25,0.05)', backgroundColor: i % 2 === 0 ? '#fff' : '#FAFAFA', cursor: 'pointer' }} onMouseEnter={e => e.currentTarget.style.backgroundColor = '#FEF2F2'} onMouseLeave={e => e.currentTarget.style.backgroundColor = i % 2 === 0 ? '#fff' : '#FAFAFA'}>
                   <td style={{ padding: '10px 16px', fontWeight: 700, color: '#191919' }}>{emp.full_name}</td>
                   <td style={{ padding: '10px 16px', color: '#525252' }}>{emp.work_email}</td>
                   <td style={{ padding: '10px 16px', color: '#525252' }}>{emp.role_title}</td>
@@ -121,19 +123,19 @@ export default function Employees() {
                     {user?.role !== 'employee' ? fmtKES(emp.current_salary_kes) : '***'}
                   </td>
                   <td style={{ padding: '10px 16px' }}><StatusBadge status={emp.lifecycle_state} small /></td>
-                  <td style={{ padding: '10px 16px' }}>
+                  <td style={{ padding: '10px 16px' }} onClick={e => e.stopPropagation()}>
                     <div style={{ display: 'flex', gap: '6px' }}>
                       {canEdit && (
                         <>
-                          <button onClick={() => openEdit(emp)} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700, transition: 'all 0.15s' }}>Edit</button>
+                          <button onClick={(ev) => { ev.stopPropagation(); openEdit(emp); }} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700, transition: 'all 0.15s' }}>Edit</button>
                           {emp.lifecycle_state === 'Onboarding' && (
-                            <button onClick={() => handleTransition(emp.id, 'Probation')} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #3B82F6', backgroundColor: 'transparent', color: '#3B82F6', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>→ Probation</button>
+                            <button onClick={(ev) => { ev.stopPropagation(); handleTransition(emp.id, 'Probation'); }} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #3B82F6', backgroundColor: 'transparent', color: '#3B82F6', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>→ Probation</button>
                           )}
                           {emp.lifecycle_state === 'Probation' && (
-                            <button onClick={() => handleTransition(emp.id, 'Active')} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #22C55E', backgroundColor: 'transparent', color: '#22C55E', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>→ Active</button>
+                            <button onClick={(ev) => { ev.stopPropagation(); handleTransition(emp.id, 'Active'); }} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #22C55E', backgroundColor: 'transparent', color: '#22C55E', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>→ Active</button>
                           )}
                           {emp.lifecycle_state === 'Active' && (
-                            <button onClick={() => handleTransition(emp.id, 'Exiting')} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #F97316', backgroundColor: 'transparent', color: '#F97316', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>→ Exiting</button>
+                            <button onClick={(ev) => { ev.stopPropagation(); handleTransition(emp.id, 'Exiting'); }} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #F97316', backgroundColor: 'transparent', color: '#F97316', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>→ Exiting</button>
                           )}
                         </>
                       )}

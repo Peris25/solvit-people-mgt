@@ -23,6 +23,7 @@ import Leave from './pages/Leave';
 import Compliance from './pages/Compliance';
 import Settings from './pages/Settings';
 import Forms from './pages/Forms';
+import EmployeeProfile from './pages/EmployeeProfile';
 
 export default function App() {
   return (
@@ -34,6 +35,7 @@ export default function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="employees" element={<Employees />} />
+            <Route path="employees/:id" element={<EmployeeProfile />} />
             <Route path="solvers" element={<Solvers />} />
             <Route path="recruitment" element={<Recruitment />} />
             <Route path="onboarding" element={<Onboarding />} />
