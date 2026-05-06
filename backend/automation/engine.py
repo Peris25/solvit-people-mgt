@@ -152,6 +152,11 @@ class AutomationEngine:
         if spec.get("new_state") and emp_id:
             await self._apply_state(emp_id, spec["new_state"])
 
+        # Safety net: explicit exit-task creation for resignation/exit outcomes
+        # (independent of any seeded automation_rules row).
+        if event_name == "resignation.submitted" and emp_id:
+            await self._create_exit_tasks(emp_id)
+
         # Downstream event chain
         if spec.get("downstream_event") and spec["downstream_event"] != event_name:
             await self.fire_event(spec["downstream_event"], data)

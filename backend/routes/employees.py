@@ -52,6 +52,10 @@ class EmployeeUpdate(BaseModel):
     employment_type: Optional[str] = None
     lifecycle_state: Optional[str] = None
     profile_photo_url: Optional[str] = None
+    # Review Meeting Panel routing flags (FRD §2)
+    is_md: Optional[bool] = None
+    reports_to_md: Optional[bool] = None
+    reports_to_finance_ops: Optional[bool] = None
 
 
 def fmt(doc):
