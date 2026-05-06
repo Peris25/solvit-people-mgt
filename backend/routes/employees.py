@@ -62,6 +62,48 @@ def fmt(doc):
     return doc
 
 
+@router.post("/bulk-transition")
+async def bulk_transition(request: Request):
+    """Transition multiple employees to a new lifecycle state in one call. HR Admin only."""
+    user = await get_current_user(request)
+    if user["role"] not in ["hr_admin", "hr_manager"]:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    body = await request.json()
+    employee_ids = body.get("employee_ids", [])
+    new_state = body.get("lifecycle_state")
+    if not employee_ids or not new_state:
+        raise HTTPException(status_code=400, detail="employee_ids and lifecycle_state required")
+    db = get_db()
+    valid_states = ["Onboarding", "Probation", "Active", "On_Leave", "PIP", "Suspended", "Notice_Period", "Exiting", "Exited"]
+    if new_state not in valid_states:
+        raise HTTPException(status_code=400, detail=f"Invalid state. Must be one of: {valid_states}")
+    updated = 0
+    for emp_id in employee_ids:
+        try:
+            res = await db.employees.update_one(
+                {"_id": ObjectId(emp_id)},
+                {"$set": {"lifecycle_state": new_state, "updated_at": datetime.now(timezone.utc).isoformat()}}
+            )
+        except Exception:
+            res = await db.employees.update_one(
+                {"id": emp_id},
+                {"$set": {"lifecycle_state": new_state, "updated_at": datetime.now(timezone.utc).isoformat()}}
+            )
+        if res.modified_count > 0:
+            updated += 1
+    # Audit
+    await db.audit_logs.insert_one({
+        "id": str(uuid.uuid4()),
+        "tenant_id": "solvit",
+        "action": "employees.bulk_transition",
+        "entity": f"employees ({len(employee_ids)})",
+        "performed_by": user["id"],
+        "metadata": {"new_state": new_state, "count": updated, "employee_ids": employee_ids},
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    return {"status": "success", "updated_count": updated, "new_state": new_state}
+
+
 @router.post("/seed-demo")
 async def seed_demo_employees_endpoint(request: Request):
     """Seed additional dummy employees covering all 9 lifecycle states. HR Admin only."""

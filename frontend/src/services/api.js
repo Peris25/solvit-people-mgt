@@ -12,7 +12,9 @@ const api = axios.create({
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error?.response?.status === 401) {
+    const status = error?.response?.status;
+    const url = error?.config?.url || '';
+    if (status === 401) {
       // Session expired or not authenticated — clear hint, redirect to login.
       try {
         if (typeof window !== 'undefined') {
@@ -23,9 +25,23 @@ api.interceptors.response.use(
           }
         }
       } catch (_) { /* ignore */ }
-      // Resolve as a benign empty response instead of rejecting,
-      // so individual components don't show error overlays.
       return Promise.resolve({ data: null, status: 401, _silentAuth: true });
+    }
+    if (status >= 500) {
+      // Server error — emit a custom event so a global toast/banner can show,
+      // but don't bubble as an uncaught runtime error to React's overlay.
+      try {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('solvit:server-error', {
+            detail: {
+              url,
+              status,
+              message: error?.response?.data?.detail || error?.message || 'Server error'
+            }
+          }));
+        }
+      } catch (_) { /* ignore */ }
+      return Promise.resolve({ data: null, status, _serverError: true, error: error?.response?.data?.detail || error?.message });
     }
     return Promise.reject(error);
   }
@@ -75,6 +91,18 @@ export const getReview = (id) => api.get(`/performance/${id}`);
 export const updateReview = (id, data) => api.put(`/performance/${id}`, data);
 export const getActiveCycle = () => api.get('/performance/active-cycle');
 export const getNineBoxMatrix = (year) => api.get('/performance/nine-box/matrix', { params: { cycle_year: year } });
+export const updateNineBoxPlacement = (employeeId, placement, cycle_year) => api.put(`/performance/nine-box/${employeeId}/placement`, { placement, cycle_year });
+
+// Bulk
+export const bulkTransitionEmployees = (employee_ids, lifecycle_state) => api.post('/employees/bulk-transition', { employee_ids, lifecycle_state });
+export const bulkAssignTraining = (data) => api.post('/lnd/training/bulk-assign', data);
+
+// Surveys quick-launch
+export const launchQuickSurvey = (data) => api.post('/surveys/launch-quick', data);
+
+// IDP
+export const getIDP = (employee_id) => api.get(`/lnd/idp/${employee_id}`);
+export const upsertIDP = (data) => api.post('/lnd/idp', data);
 
 // Surveys
 export const getSurveyWindows = () => api.get('/surveys/windows');
@@ -96,8 +124,6 @@ export const updateStayInterview = (id, data) => api.put(`/retention/stay-interv
 export const sendTestEmail = (data) => api.post('/settings/email-test', data);
 
 // LnD
-export const getIDP = (empId) => api.get(`/lnd/idp/${empId}`);
-export const saveIDP = (data) => api.post('/lnd/idp', data);
 export const getTrainingRequests = (params) => api.get('/lnd/training', { params });
 export const createTrainingRequest = (data) => api.post('/lnd/training', data);
 export const trainingDecision = (id, data) => api.put(`/lnd/training/${id}/decision`, data);

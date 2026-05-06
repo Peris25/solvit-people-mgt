@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from bson import ObjectId
 from database import get_db
 from utils.auth import get_current_user
@@ -95,6 +95,103 @@ async def create_survey_window(sw: SurveyWindowCreate, request: Request):
     result = await db.survey_windows.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
     return doc
+
+
+@router.post("/launch-quick")
+async def launch_quick_survey(request: Request):
+    """One-click survey launch — creates the window, fires notifications + emails to target audience.
+    Body: { survey_type: 'alignment_fte' | 'alignment_solver' | 'engagement_fte', period_label?: 'Q3 2026' }
+    """
+    user = await get_current_user(request)
+    if user["role"] not in ["hr_admin", "hr_manager"]:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    body = await request.json()
+    survey_type = body.get("survey_type", "alignment_fte")
+    period = body.get("period_label") or f"Q{((datetime.now(timezone.utc).month - 1) // 3) + 1} {datetime.now(timezone.utc).year}"
+
+    db = get_db()
+    is_solver = survey_type.endswith("solver")
+    target_audience = "solver" if is_solver else "FTE"
+
+    today = datetime.now(timezone.utc).date()
+    close = today + timedelta(days=14)
+    window_doc = {
+        "id": str(uuid.uuid4()),
+        "tenant_id": "solvit",
+        "survey_type": survey_type,
+        "title": f"{period} {'Solver' if is_solver else 'FTE'} Alignment Survey",
+        "open_date": today.isoformat(),
+        "close_date": close.isoformat(),
+        "status": "Open",
+        "response_count": 0,
+        "target_audience": target_audience,
+        "created_by": user["id"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.survey_windows.insert_one(window_doc)
+
+    # Determine recipients
+    if is_solver:
+        recipients = await db.solvers.find({"tenant_id": "solvit", "lifecycle_state": "Active"}, {"_id": 0, "id": 1, "full_name": 1, "phone_number": 1}).to_list(500)
+        recipient_emails = []
+    else:
+        active_states = ["Active", "Probation", "Onboarding", "On_Leave"]
+        recipients = await db.employees.find({"tenant_id": "solvit", "lifecycle_state": {"$in": active_states}}, {"_id": 0, "id": 1, "full_name": 1, "work_email": 1}).to_list(500)
+        recipient_emails = [r.get("work_email") for r in recipients if r.get("work_email")]
+
+    # Fire in-app notifications
+    notif_docs = []
+    for r in recipients:
+        notif_docs.append({
+            "id": str(uuid.uuid4()),
+            "tenant_id": "solvit",
+            "recipient_id": r.get("id"),
+            "recipient_role": "employee" if not is_solver else "solver",
+            "category": "Survey",
+            "title": f"[{period}] {window_doc['title']}",
+            "message": f"Your {period} alignment survey is now open. Please respond by {close.strftime('%d %b %Y')}. It takes 5 minutes.",
+            "data": {"survey_window_id": window_doc["id"], "survey_type": survey_type},
+            "is_read": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+    if notif_docs:
+        await db.notifications.insert_many(notif_docs)
+
+    # Fire emails (best-effort — silent if provider not configured)
+    email_results = {"sent": 0, "skipped": 0, "failed": 0}
+    if recipient_emails:
+        try:
+            from utils.email_service import send_email, EmailDeliveryError
+            for email in recipient_emails:
+                try:
+                    res = await send_email(
+                        db, email,
+                        subject=f"[Solvit] {period} Alignment Survey is now open",
+                        html=f"""
+                        <p>Hi,</p>
+                        <p>Your <strong>{period}</strong> alignment survey is now open.</p>
+                        <p>It takes about 5 minutes and is fully confidential. Please respond by <strong>{close.strftime('%d %b %Y')}</strong>.</p>
+                        <p><a href='https://solvit-people-mgmt.preview.emergentagent.com/surveys'>Take the survey →</a></p>
+                        <p style='color:#525252;font-size:12px'>Solvit People Platform</p>
+                        """
+                    )
+                    if res.get("status") == "sent":
+                        email_results["sent"] += 1
+                    else:
+                        email_results["skipped"] += 1
+                except EmailDeliveryError:
+                    email_results["failed"] += 1
+        except Exception:
+            pass
+
+    return {
+        "status": "success",
+        "survey_window": {"id": window_doc["id"], "title": window_doc["title"], "open_date": window_doc["open_date"], "close_date": window_doc["close_date"]},
+        "recipients": len(recipients),
+        "notifications_sent": len(notif_docs),
+        "emails": email_results,
+        "period": period
+    }
 
 
 @router.get("/questions/{survey_type}")

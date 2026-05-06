@@ -24,11 +24,13 @@ import Compliance from './pages/Compliance';
 import Settings from './pages/Settings';
 import Forms from './pages/Forms';
 import EmployeeProfile from './pages/EmployeeProfile';
+import ErrorToast from './components/ErrorToast';
 
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <ErrorToast />
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<Layout />}>

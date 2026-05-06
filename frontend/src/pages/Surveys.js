@@ -11,6 +11,26 @@ export default function Surveys() {
   const [saving, setSaving] = useState(false);
   const [activeWindow, setActiveWindow] = useState(null);
   const [results, setResults] = useState(null);
+  const [launching, setLaunching] = useState(false);
+  const [launchMsg, setLaunchMsg] = useState('');
+
+  const quickLaunch = async (survey_type) => {
+    setLaunching(true); setLaunchMsg('');
+    try {
+      const res = await api.launchQuickSurvey({ survey_type });
+      const r = res.data;
+      if (r) {
+        const emails = r.emails || {};
+        setLaunchMsg(`✓ ${r.survey_window.title} launched. ${r.recipients} recipients · ${r.notifications_sent} notified · ${emails.sent || 0} emailed${emails.skipped ? ` (${emails.skipped} skipped — no email provider)` : ''}`);
+        load();
+      }
+    } catch (err) {
+      setLaunchMsg(`✗ ${err.response?.data?.detail || err.message}`);
+    } finally {
+      setLaunching(false);
+      setTimeout(() => setLaunchMsg(''), 8000);
+    }
+  };
 
   useEffect(() => { load(); }, []);
   const load = async () => {
@@ -40,9 +60,18 @@ export default function Surveys() {
           <p style={{ color: '#525252', fontSize: '13px', margin: 0, marginTop: '4px' }}>FTE and Solver engagement surveys</p>
         </div>
         {['hr_admin', 'hr_manager'].includes(user?.role) && (
-          <button data-testid="create-survey-btn" onClick={() => setShowCreate(true)} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>+ Create Survey</button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button data-testid="quick-launch-fte" onClick={() => quickLaunch('alignment_fte')} disabled={launching} style={{ padding: '10px 16px', backgroundColor: '#22C55E', color: '#fff', border: 'none', cursor: launching ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial', opacity: launching ? 0.6 : 1 }}>
+              {launching ? 'Launching...' : '⚡ One-Click Launch (FTE)'}
+            </button>
+            <button data-testid="quick-launch-solver" onClick={() => quickLaunch('alignment_solver')} disabled={launching} style={{ padding: '10px 16px', backgroundColor: '#F97316', color: '#fff', border: 'none', cursor: launching ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial', opacity: launching ? 0.6 : 1 }}>
+              {launching ? 'Launching...' : '⚡ Solver Quarterly'}
+            </button>
+            <button data-testid="create-survey-btn" onClick={() => setShowCreate(true)} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>+ Custom</button>
+          </div>
         )}
       </div>
+      {launchMsg && <div data-testid="launch-msg" style={{ padding: '10px 14px', backgroundColor: '#DCFCE7', color: '#166534', border: '1px solid #86EFAC', fontSize: '12px', fontWeight: 700, marginBottom: '12px' }}>{launchMsg}</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
         <div>

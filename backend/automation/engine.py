@@ -40,7 +40,7 @@ class AutomationEngine:
 
     async def fire_event(self, event_name: str, data: dict):
         """Fire an event-driven automation rule"""
-        if not self.db:
+        if self.db is None:
             return
         try:
             rules = await self.db.automation_rules.find({
@@ -231,7 +231,7 @@ class AutomationEngine:
 
     async def _run_daily_cron(self):
         """Run daily cron automation checks"""
-        if not self.db:
+        if self.db is None:
             return
         try:
             await self._check_onboarding_overdue()
@@ -383,7 +383,7 @@ class AutomationEngine:
 
     async def _run_compliance_check(self):
         """Run compliance check every 4 hours"""
-        if not self.db:
+        if self.db is None:
             return
         try:
             now = datetime.now(timezone.utc)

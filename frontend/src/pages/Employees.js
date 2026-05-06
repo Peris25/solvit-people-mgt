@@ -26,6 +26,43 @@ export default function Employees() {
   const [error, setError] = useState('');
   const [seeding, setSeeding] = useState(false);
   const [seedMsg, setSeedMsg] = useState('');
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [showBulkTraining, setShowBulkTraining] = useState(false);
+  const [bulkTraining, setBulkTraining] = useState({ training_name: '', provider: 'Internal', delivery_method: 'Internal', cost_kes: '', duration_days: 1, business_justification: '' });
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const toggleSelect = (id) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const toggleSelectAll = () => setSelectedIds(prev => prev.size === employees.length ? new Set() : new Set(employees.map(e => e.id)));
+
+  const handleBulkTransition = async (newState) => {
+    if (!window.confirm(`Transition ${selectedIds.size} employees to ${newState}?`)) return;
+    setBulkBusy(true);
+    try {
+      await api.bulkTransitionEmployees([...selectedIds], newState);
+      setSelectedIds(new Set());
+      await loadEmployees();
+    } finally { setBulkBusy(false); }
+  };
+
+  const handleBulkTraining = async (e) => {
+    e.preventDefault();
+    setBulkBusy(true);
+    try {
+      await api.bulkAssignTraining({
+        employee_ids: [...selectedIds],
+        ...bulkTraining,
+        cost_kes: parseFloat(bulkTraining.cost_kes) || 0,
+        duration_days: parseInt(bulkTraining.duration_days) || 1
+      });
+      setShowBulkTraining(false);
+      setSelectedIds(new Set());
+      setBulkTraining({ training_name: '', provider: 'Internal', delivery_method: 'Internal', cost_kes: '', duration_days: 1, business_justification: '' });
+    } finally { setBulkBusy(false); }
+  };
 
   const canEdit = ['hr_admin', 'hr_manager'].includes(user?.role);
 
@@ -112,6 +149,19 @@ export default function Employees() {
       </div>
       {seedMsg && <div data-testid="seed-msg" style={{ padding: '8px 14px', backgroundColor: seedMsg.startsWith('✓') ? '#DCFCE7' : '#FEE2E2', color: seedMsg.startsWith('✓') ? '#166534' : '#991B1B', fontSize: '12px', fontWeight: 700, marginBottom: '12px' }}>{seedMsg}</div>}
 
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && canEdit && (
+        <div data-testid="bulk-action-bar" style={{ padding: '10px 16px', marginBottom: '12px', backgroundColor: '#191919', color: '#fff', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+          <strong style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.12em' }}>{selectedIds.size} selected</strong>
+          <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)' }}>Bulk action:</span>
+          {['Probation', 'Active', 'On_Leave', 'Suspended', 'PIP', 'Notice_Period', 'Exiting'].map(s => (
+            <button key={s} disabled={bulkBusy} onClick={() => handleBulkTransition(s)} data-testid={`bulk-transition-${s}`} style={{ padding: '4px 10px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '11px', fontFamily: 'Arial', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>→ {s.replace('_', ' ')}</button>
+          ))}
+          <button data-testid="bulk-assign-training-btn" onClick={() => setShowBulkTraining(true)} style={{ padding: '4px 12px', backgroundColor: '#22C55E', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '11px', fontFamily: 'Arial', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>+ Assign Training</button>
+          <button onClick={() => setSelectedIds(new Set())} style={{ marginLeft: 'auto', padding: '4px 10px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '11px', fontFamily: 'Arial' }}>Clear</button>
+        </div>
+      )}
+
       {/* Filters */}
       <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
         <input data-testid="search-employees" placeholder="Search name, email, role..." value={search} onChange={e => setSearch(e.target.value)}
@@ -132,6 +182,11 @@ export default function Employees() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
               <tr style={{ backgroundColor: '#F5F5F5' }}>
+                {canEdit && (
+                  <th style={{ padding: '10px 12px', textAlign: 'left', borderBottom: '1px solid rgba(25,25,25,0.08)', width: '32px' }}>
+                    <input type="checkbox" data-testid="bulk-select-all" checked={selectedIds.size === employees.length && employees.length > 0} onChange={toggleSelectAll} />
+                  </th>
+                )}
                 {['Name', 'Email', 'Role', 'Dept', 'Level', 'Start Date', 'Salary', 'State', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', borderBottom: '1px solid rgba(25,25,25,0.08)', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
@@ -139,7 +194,12 @@ export default function Employees() {
             </thead>
             <tbody>
               {employees.map((emp, i) => (
-                <tr key={emp.id} data-testid={`emp-row-${emp.id}`} onClick={() => navigate(`/employees/${emp.id}`)} style={{ borderBottom: '1px solid rgba(25,25,25,0.05)', backgroundColor: i % 2 === 0 ? '#fff' : '#FAFAFA', cursor: 'pointer' }} onMouseEnter={e => e.currentTarget.style.backgroundColor = '#FEF2F2'} onMouseLeave={e => e.currentTarget.style.backgroundColor = i % 2 === 0 ? '#fff' : '#FAFAFA'}>
+                <tr key={emp.id} data-testid={`emp-row-${emp.id}`} onClick={() => navigate(`/employees/${emp.id}`)} style={{ borderBottom: '1px solid rgba(25,25,25,0.05)', backgroundColor: selectedIds.has(emp.id) ? '#FEF2F2' : (i % 2 === 0 ? '#fff' : '#FAFAFA'), cursor: 'pointer' }} onMouseEnter={e => { if (!selectedIds.has(emp.id)) e.currentTarget.style.backgroundColor = '#FEF2F2'; }} onMouseLeave={e => { if (!selectedIds.has(emp.id)) e.currentTarget.style.backgroundColor = i % 2 === 0 ? '#fff' : '#FAFAFA'; }}>
+                  {canEdit && (
+                    <td style={{ padding: '10px 12px', width: '32px' }} onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" data-testid={`bulk-select-${emp.id}`} checked={selectedIds.has(emp.id)} onChange={() => toggleSelect(emp.id)} />
+                    </td>
+                  )}
                   <td style={{ padding: '10px 16px', fontWeight: 700, color: '#191919' }}>{emp.full_name}</td>
                   <td style={{ padding: '10px 16px', color: '#525252' }}>{emp.work_email}</td>
                   <td style={{ padding: '10px 16px', color: '#525252' }}>{emp.role_title}</td>
@@ -227,6 +287,53 @@ export default function Employees() {
                 <button data-testid="save-employee-btn" type="submit" disabled={saving} style={{ padding: '10px 24px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Arial', opacity: saving ? 0.7 : 1 }}>
                   {saving ? 'Saving...' : 'Save Employee'}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk training modal */}
+      {showBulkTraining && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{ backgroundColor: '#fff', width: '520px', border: '1px solid rgba(25,25,25,0.15)' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between' }}>
+              <div>
+                <h3 style={{ margin: 0, fontWeight: 900 }}>Bulk Assign Training</h3>
+                <p style={{ fontSize: '11px', color: '#525252', margin: '4px 0 0' }}>Assign the same training to {selectedIds.size} selected employees.</p>
+              </div>
+              <button onClick={() => setShowBulkTraining(false)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}>×</button>
+            </div>
+            <form onSubmit={handleBulkTraining} style={{ padding: '24px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Training Name</label>
+                <input required value={bulkTraining.training_name} onChange={e => setBulkTraining(p => ({ ...p, training_name: e.target.value }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Provider</label>
+                <input value={bulkTraining.provider} onChange={e => setBulkTraining(p => ({ ...p, provider: e.target.value }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Delivery</label>
+                <select value={bulkTraining.delivery_method} onChange={e => setBulkTraining(p => ({ ...p, delivery_method: e.target.value }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px' }}>
+                  <option>Internal</option><option>External</option><option>Online</option><option>Mixed</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Cost per emp (KES)</label>
+                <input type="number" value={bulkTraining.cost_kes} onChange={e => setBulkTraining(p => ({ ...p, cost_kes: e.target.value }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Days</label>
+                <input type="number" value={bulkTraining.duration_days} onChange={e => setBulkTraining(p => ({ ...p, duration_days: e.target.value }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Justification</label>
+                <textarea rows={2} value={bulkTraining.business_justification} onChange={e => setBulkTraining(p => ({ ...p, business_justification: e.target.value }))} placeholder="Mandatory training for all selected employees" style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box', resize: 'vertical' }} />
+              </div>
+              <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button type="button" onClick={() => setShowBulkTraining(false)} style={{ padding: '10px 20px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '12px' }}>Cancel</button>
+                <button data-testid="bulk-training-submit" type="submit" disabled={bulkBusy} style={{ padding: '10px 24px', backgroundColor: '#22C55E', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>{bulkBusy ? 'Assigning...' : `Assign to ${selectedIds.size}`}</button>
               </div>
             </form>
           </div>

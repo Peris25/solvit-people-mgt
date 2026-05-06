@@ -65,12 +65,37 @@ export default function Performance() {
      { key: 'Culture_Risk', label: 'Trusted Pro', sub: 'Strong perf, capped potential' }],
   ];
 
+  const [draggedEmp, setDraggedEmp] = useState(null);
+
+  const handleDrop = async (targetKey, e) => {
+    e.preventDefault();
+    if (!draggedEmp || draggedEmp.fromKey === targetKey) { setDraggedEmp(null); return; }
+    // Optimistically update UI
+    setNineBox(prev => {
+      const next = { ...prev };
+      next[draggedEmp.fromKey] = (next[draggedEmp.fromKey] || []).filter(e => e.employee_id !== draggedEmp.emp.employee_id);
+      next[targetKey] = [...(next[targetKey] || []), draggedEmp.emp];
+      return next;
+    });
+    try {
+      await api.updateNineBoxPlacement(draggedEmp.emp.employee_id, targetKey, cycle?.cycle_year);
+    } catch (err) {
+      // Rollback
+      setNineBox(prev => {
+        const next = { ...prev };
+        next[targetKey] = (next[targetKey] || []).filter(e => e.employee_id !== draggedEmp.emp.employee_id);
+        next[draggedEmp.fromKey] = [...(next[draggedEmp.fromKey] || []), draggedEmp.emp];
+        return next;
+      });
+    }
+    setDraggedEmp(null);
+  };
+
   const renderNineBoxGrid = () => {
     const placementCells = {};
     Object.keys(NINE_BOX_LABELS).forEach(p => placementCells[p] = (nineBox?.[p] || []));
     return (
       <div style={{ display: 'flex', gap: '24px' }}>
-        {/* Y-axis label */}
         <div style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', display: 'flex', alignItems: 'center', justifyContent: 'space-around', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#525252', minHeight: '420px' }}>
           <span>Low</span><span>POTENTIAL →</span><span>High</span>
         </div>
@@ -79,41 +104,55 @@ export default function Performance() {
             {NINE_BOX_GRID.map((row, ri) => (
               row.map((cell, ci) => {
                 const employees = placementCells[cell.key] || [];
-                // Distribute employees by index across cells of same key
                 const cellsOfKey = NINE_BOX_GRID.flat().filter(c => c.key === cell.key);
-                const idx = cellsOfKey.findIndex((c, i) => c === cell);
+                const idx = cellsOfKey.findIndex((c) => c === cell);
                 const totalCellsOfKey = cellsOfKey.length;
                 const myEmps = employees.filter((_, i) => i % totalCellsOfKey === idx);
                 const color = NINE_BOX_LABELS[cell.key];
+                const isDropTarget = draggedEmp && draggedEmp.fromKey !== cell.key;
                 return (
                   <div key={`${ri}-${ci}`} data-testid={`ninebox-${cell.key}-${ri}-${ci}`}
+                    onDragOver={(e) => { if (isDropTarget) { e.preventDefault(); e.currentTarget.style.backgroundColor = `${color}25`; } }}
+                    onDragLeave={(e) => { e.currentTarget.style.backgroundColor = cell.main ? `${color}15` : `${color}08`; }}
+                    onDrop={(e) => { e.currentTarget.style.backgroundColor = cell.main ? `${color}15` : `${color}08`; handleDrop(cell.key, e); }}
                     style={{
                       border: `2px solid ${color}`,
                       backgroundColor: cell.main ? `${color}15` : `${color}08`,
                       padding: '12px',
                       minHeight: '130px',
                       display: 'flex',
-                      flexDirection: 'column'
+                      flexDirection: 'column',
+                      transition: 'background-color 0.15s'
                     }}>
                     <div style={{ fontSize: '11px', fontWeight: 900, color, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{cell.label}</div>
                     <div style={{ fontSize: '10px', color: '#525252', marginBottom: '8px' }}>{cell.sub}</div>
                     <div style={{ flex: 1 }}>
-                      {myEmps.map(e => (
-                        <div key={e.employee_id} style={{ fontSize: '11px', padding: '3px 0', borderTop: '1px solid rgba(25,25,25,0.06)' }}>
-                          <strong style={{ color: '#191919' }}>{e.name}</strong>
-                          <span style={{ color: '#525252', marginLeft: '4px' }}>· {e.score}</span>
+                      {myEmps.map(emp => (
+                        <div key={emp.employee_id}
+                          draggable
+                          onDragStart={() => setDraggedEmp({ emp, fromKey: cell.key })}
+                          onDragEnd={() => setDraggedEmp(null)}
+                          data-testid={`ninebox-emp-${emp.employee_id}`}
+                          style={{ fontSize: '11px', padding: '4px 6px', borderTop: '1px solid rgba(25,25,25,0.06)', cursor: 'grab', userSelect: 'none', transition: 'background-color 0.1s' }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.6)'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
+                          <strong style={{ color: '#191919' }}>{emp.name}</strong>
+                          <span style={{ color: '#525252', marginLeft: '4px' }}>· {emp.score}</span>
                         </div>
                       ))}
-                      {myEmps.length === 0 && <div style={{ fontSize: '10px', color: '#9CA3AF', fontStyle: 'italic' }}>No employees</div>}
+                      {myEmps.length === 0 && <div style={{ fontSize: '10px', color: '#9CA3AF', fontStyle: 'italic' }}>{isDropTarget ? '↓ drop here' : 'No employees'}</div>}
                     </div>
                   </div>
                 );
               })
             ))}
           </div>
-          {/* X-axis label */}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#525252' }}>
             <span>Below</span><span>← PERFORMANCE →</span><span>Exceeded</span>
+          </div>
+          <div style={{ marginTop: '12px', padding: '10px 14px', backgroundColor: '#FEF3C7', border: '1px solid #FCD34D', fontSize: '11px', color: '#78350F' }}>
+            💡 Drag an employee card between cells to reassign their 9-box placement. Changes save instantly and are audit-logged.
           </div>
         </div>
       </div>

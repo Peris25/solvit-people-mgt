@@ -199,6 +199,42 @@ async def get_review_history(employee_id: str, request: Request):
     return [fmt(r) for r in reviews]
 
 
+@router.put("/nine-box/{employee_id}/placement")
+async def update_nine_box_placement(employee_id: str, request: Request):
+    """Update an employee's most-recent review nine_box_placement (drag-and-drop)."""
+    user = await get_current_user(request)
+    if user["role"] not in ["hr_admin", "hr_manager", "executive"]:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    body = await request.json()
+    new_placement = body.get("placement")
+    if new_placement not in NINE_BOX:
+        raise HTTPException(status_code=400, detail=f"Invalid placement. Must be one of: {NINE_BOX}")
+    db = get_db()
+    cycle_year = body.get("cycle_year") or datetime.now(timezone.utc).year
+    # Find latest review for this cycle
+    review = await db.performance_reviews.find_one(
+        {"employee_id": employee_id, "cycle_year": cycle_year, "tenant_id": "solvit"},
+        sort=[("created_at", -1)]
+    )
+    if not review:
+        raise HTTPException(status_code=404, detail=f"No performance review found for employee {employee_id} in cycle {cycle_year}. Create one first.")
+    await db.performance_reviews.update_one(
+        {"_id": review["_id"]},
+        {"$set": {"nine_box_placement": new_placement, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    # Audit
+    await db.audit_logs.insert_one({
+        "id": str(uuid.uuid4()),
+        "tenant_id": "solvit",
+        "action": "nine_box.placement.update",
+        "entity": f"performance_review:{review['id']}",
+        "performed_by": user["id"],
+        "metadata": {"old": review.get("nine_box_placement"), "new": new_placement, "employee_id": employee_id},
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    return {"status": "success", "employee_id": employee_id, "placement": new_placement}
+
+
 @router.get("/nine-box/matrix")
 async def get_nine_box_matrix(request: Request, cycle_year: Optional[int] = None):
     user = await get_current_user(request)

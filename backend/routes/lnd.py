@@ -13,7 +13,14 @@ router = APIRouter(prefix="/lnd", tags=["lnd"])
 class IDPCreate(BaseModel):
     employee_id: str
     career_aspiration: Optional[str] = None
-    goals: Optional[List[dict]] = []
+    next_role_target: Optional[str] = None
+    long_term_goal: Optional[str] = None
+    skills_to_develop: Optional[List[str]] = []
+    actions: Optional[List[dict]] = []  # [{action, owner, due_date, status}]
+    training_required: Optional[str] = None
+    mentor_request: Optional[str] = None
+    stretch_assignments: Optional[str] = None
+    goals: Optional[List[dict]] = []  # legacy
 
 
 class TrainingRequest(BaseModel):
@@ -63,6 +70,45 @@ async def create_or_update_idp(idp: IDPCreate, request: Request):
     result = await db.idps.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
     return doc
+
+
+@router.post("/training/bulk-assign")
+async def bulk_assign_training(request: Request):
+    """Assign the same training to multiple employees at once. HR Admin / Manager only."""
+    user = await get_current_user(request)
+    if user["role"] not in ["hr_admin", "hr_manager", "line_manager"]:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    body = await request.json()
+    employee_ids = body.get("employee_ids", [])
+    training_name = body.get("training_name")
+    provider = body.get("provider", "Internal")
+    delivery_method = body.get("delivery_method", "Internal")
+    cost_kes = float(body.get("cost_kes", 0))
+    duration_days = int(body.get("duration_days", 1))
+    business_justification = body.get("business_justification") or "Bulk-assigned training (mandatory)"
+    if not employee_ids or not training_name:
+        raise HTTPException(status_code=400, detail="employee_ids and training_name required")
+    db = get_db()
+    docs = []
+    for emp_id in employee_ids:
+        docs.append({
+            "id": str(uuid.uuid4()),
+            "tenant_id": "solvit",
+            "employee_id": emp_id,
+            "training_name": training_name,
+            "provider": provider,
+            "delivery_method": delivery_method,
+            "cost_kes": cost_kes,
+            "duration_days": duration_days,
+            "business_justification": business_justification,
+            "status": "Pending_Manager_Approval",
+            "assigned_by": user["id"],
+            "is_bulk_assignment": True,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+    if docs:
+        await db.training_requests.insert_many(docs)
+    return {"status": "success", "created": len(docs), "training_name": training_name}
 
 
 @router.get("/training")

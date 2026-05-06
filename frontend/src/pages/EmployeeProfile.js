@@ -77,7 +77,7 @@ export default function EmployeeProfile() {
       {tab === 'leave' && <LeaveList items={profile.leave_history} />}
       {tab === 'recognitions' && <RecognitionsList items={profile.recognitions} />}
       {tab === 'training' && <TrainingList items={profile.trainings} />}
-      {tab === 'idp' && <IDPView idp={profile.idp} />}
+      {tab === 'idp' && <IDPView idp={profile.idp} employeeId={id} onSaved={() => api.getEmployeeProfile(id).then(r => setProfile(r.data))} />}
     </div>
   );
 }
@@ -250,11 +250,89 @@ function TrainingList({ items }) {
   );
 }
 
-function IDPView({ idp }) {
-  if (!idp) return <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '32px', textAlign: 'center', color: '#9CA3AF' }}>No IDP on file</div>;
+function IDPView({ idp, employeeId, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState(idp || { employee_id: employeeId, career_aspiration: '', next_role_target: '', long_term_goal: '', skills_to_develop: [], training_required: '', mentor_request: '', stretch_assignments: '' });
+  const [saving, setSaving] = useState(false);
+
+  React.useEffect(() => { setForm(idp || { employee_id: employeeId, career_aspiration: '', next_role_target: '', long_term_goal: '', skills_to_develop: [], training_required: '', mentor_request: '', stretch_assignments: '' }); }, [idp, employeeId]);
+
+  const save = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await api.upsertIDP({ ...form, employee_id: employeeId, skills_to_develop: typeof form.skills_to_develop === 'string' ? form.skills_to_develop.split(',').map(s => s.trim()).filter(Boolean) : (form.skills_to_develop || []) });
+      setEditing(false);
+      onSaved && onSaved();
+    } finally { setSaving(false); }
+  };
+
+  if (!editing && !idp) {
+    return (
+      <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '32px', textAlign: 'center' }}>
+        <p style={{ color: '#9CA3AF', fontSize: '13px', margin: '0 0 16px' }}>No IDP on file yet.</p>
+        <button data-testid="create-idp-btn" onClick={() => setEditing(true)} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>Create IDP</button>
+      </div>
+    );
+  }
+
+  if (!editing && idp) {
+    return (
+      <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+          <h3 style={{ margin: 0, fontWeight: 900, fontSize: '16px' }}>Individual Development Plan</h3>
+          <button data-testid="edit-idp-btn" onClick={() => setEditing(true)} style={{ padding: '6px 14px', backgroundColor: 'transparent', color: '#191919', border: '1px solid #191919', cursor: 'pointer', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>Edit</button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          {[
+            ['Career Aspiration', idp.career_aspiration],
+            ['Next Role (12-24 mo)', idp.next_role_target],
+            ['Long-term Goal', idp.long_term_goal],
+            ['Skills to Develop', (idp.skills_to_develop || []).join(', ')],
+            ['Training Required', idp.training_required],
+            ['Mentor Request', idp.mentor_request],
+            ['Stretch Assignments', idp.stretch_assignments],
+          ].map(([k, v]) => (
+            <div key={k} style={{ backgroundColor: '#FAFAFA', padding: '12px', border: '1px solid rgba(25,25,25,0.06)' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252' }}>{k}</div>
+              <div style={{ fontSize: '13px', color: '#191919', marginTop: '4px' }}>{v || <em style={{ color: '#9CA3AF' }}>Not set</em>}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '20px' }}>
-      <pre style={{ fontSize: '12px', color: '#191919', whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{JSON.stringify(idp, null, 2)}</pre>
+    <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
+        <h3 style={{ margin: 0, fontWeight: 900, fontSize: '16px' }}>{idp ? 'Edit IDP' : 'Create IDP'}</h3>
+        <button onClick={() => setEditing(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#525252' }}>×</button>
+      </div>
+      <form onSubmit={save} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+        {[
+          { k: 'career_aspiration', l: 'Career Aspiration', textarea: true, span: true },
+          { k: 'next_role_target', l: 'Next Role Target (12-24 mo)' },
+          { k: 'long_term_goal', l: 'Long-term Goal (3-5 yrs)' },
+          { k: 'skills_to_develop', l: 'Skills to Develop (comma-sep)', span: true },
+          { k: 'training_required', l: 'Training Required', textarea: true, span: true },
+          { k: 'mentor_request', l: 'Mentor Request' },
+          { k: 'stretch_assignments', l: 'Stretch Assignments' },
+        ].map(f => (
+          <div key={f.k} style={{ gridColumn: f.span ? '1 / -1' : 'auto' }}>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>{f.l}</label>
+            {f.textarea ? (
+              <textarea data-testid={`idp-${f.k}`} rows={2} value={form[f.k] || ''} onChange={e => setForm(p => ({ ...p, [f.k]: e.target.value }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'Arial' }} />
+            ) : (
+              <input data-testid={`idp-${f.k}`} value={Array.isArray(form[f.k]) ? form[f.k].join(', ') : (form[f.k] || '')} onChange={e => setForm(p => ({ ...p, [f.k]: e.target.value }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box', fontFamily: 'Arial' }} />
+            )}
+          </div>
+        ))}
+        <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+          <button type="button" onClick={() => setEditing(false)} style={{ padding: '10px 20px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '12px' }}>Cancel</button>
+          <button data-testid="save-idp-btn" type="submit" disabled={saving} style={{ padding: '10px 24px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>{saving ? 'Saving...' : 'Save IDP'}</button>
+        </div>
+      </form>
     </div>
   );
 }
