@@ -14,8 +14,12 @@ export function AuthProvider({ children }) {
 
   const checkAuth = async () => {
     try {
-      const res = await axios.get(`${API}/api/auth/me`, { withCredentials: true });
-      setUser(res.data);
+      const res = await axios.get(`${API}/api/auth/me`, { withCredentials: true, validateStatus: (s) => s < 500 });
+      if (res.status === 200) {
+        setUser(res.data);
+      } else {
+        setUser(null);
+      }
     } catch {
       setUser(null);
     }
