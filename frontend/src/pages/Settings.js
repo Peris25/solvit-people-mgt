@@ -186,6 +186,3 @@ function AuditLog() {
     </div>
   );
 }
-
-// Import api at the top for AuditLog
-import * as api from '../services/api';

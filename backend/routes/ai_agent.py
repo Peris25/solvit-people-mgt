@@ -4,6 +4,7 @@ from typing import Optional
 from datetime import datetime, timezone
 from database import get_db
 from utils.auth import get_current_user
+import os
 import uuid
 
 router = APIRouter(prefix="/ai-agent", tags=["ai_agent"])
@@ -123,12 +124,14 @@ async def chat_with_agent(msg: ChatMessage, request: Request):
 
     response_text = ""
 
-    # Try to use configured LLM
-    if settings and settings.get("llm_provider") and settings.get("llm_api_key"):
-        try:
-            provider = settings["llm_provider"]
-            api_key = settings["llm_api_key"]
+    # Try to use configured LLM (or default to Emergent LLM Key + gpt-5.2)
+    emergent_key = os.environ.get("EMERGENT_LLM_KEY")
+    provider = (settings.get("llm_provider") if settings else None) or "openai"
+    model = (settings.get("llm_model") if settings else None) or "gpt-5.2"
+    api_key = (settings.get("llm_api_key") if settings else None) or emergent_key
 
+    if api_key:
+        try:
             # Build context
             context_parts = []
             if is_policy_query:
@@ -154,24 +157,9 @@ For compliance alerts, be proactive and specific. For policy queries, cite the r
                 user_message = f"Context:\n{chr(10).join(context_parts)}\n\nUser question: {msg.message}"
 
             from emergentintegrations.llm.chat import LlmChat, UserMessage
-
-            if provider == "openai":
-                from emergentintegrations.llm.chat import LlmChat, UserMessage
-                chat = LlmChat(api_key=api_key, session_id=conversation_id, system_message=system_prompt)
-                response = await chat.send_message(UserMessage(content=user_message))
-                response_text = response.content if hasattr(response, 'content') else str(response)
-            elif provider == "anthropic":
-                from emergentintegrations.llm.chat import LlmChat, UserMessage
-                chat = LlmChat(api_key=api_key, session_id=conversation_id, system_message=system_prompt, provider="anthropic")
-                response = await chat.send_message(UserMessage(content=user_message))
-                response_text = response.content if hasattr(response, 'content') else str(response)
-            elif provider == "gemini":
-                from emergentintegrations.llm.chat import LlmChat, UserMessage
-                chat = LlmChat(api_key=api_key, session_id=conversation_id, system_message=system_prompt, provider="gemini")
-                response = await chat.send_message(UserMessage(content=user_message))
-                response_text = response.content if hasattr(response, 'content') else str(response)
-            else:
-                response_text = await _fallback_response(db, msg.message, is_policy_query, is_compliance_check)
+            chat = LlmChat(api_key=api_key, session_id=conversation_id, system_message=system_prompt).with_model(provider, model)
+            response = await chat.send_message(UserMessage(text=user_message))
+            response_text = response if isinstance(response, str) else (response.content if hasattr(response, 'content') else str(response))
         except Exception as e:
             print(f"AI Agent LLM error: {e}")
             response_text = await _fallback_response(db, msg.message, is_policy_query, is_compliance_check)
@@ -190,7 +178,7 @@ For compliance alerts, be proactive and specific. For policy queries, cite the r
     return {
         "conversation_id": conversation_id,
         "response": response_text,
-        "provider": settings.get("llm_provider", "fallback") if settings else "fallback"
+        "provider": (settings.get("llm_provider") if settings else None) or ("openai-emergent" if os.environ.get("EMERGENT_LLM_KEY") and api_key else "fallback")
     }
 
 
