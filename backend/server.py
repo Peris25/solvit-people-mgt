@@ -1,89 +1,103 @@
-from fastapi import FastAPI, APIRouter
 from dotenv import load_dotenv
+load_dotenv()
+
+from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
-import uuid
-from datetime import datetime, timezone
+from database import init_db, close_db
+from automation.engine import automation_engine
+from automation.seed_data import seed_all
 
+# Routes
+from routes.auth_routes import router as auth_router
+from routes.employees import router as employees_router
+from routes.solvers import router as solvers_router
+from routes.recruitment import router as recruitment_router
+from routes.onboarding import router as onboarding_router
+from routes.performance import router as performance_router
+from routes.surveys import router as surveys_router
+from routes.retention import router as retention_router
+from routes.lnd import router as lnd_router
+from routes.projects import router as projects_router
+from routes.compensation import router as compensation_router
+from routes.recognition import router as recognition_router
+from routes.budget import router as budget_router
+from routes.policies import router as policies_router
+from routes.disciplinary import router as disciplinary_router
+from routes.calendar import router as calendar_router
+from routes.leave import router as leave_router
+from routes.compliance import router as compliance_router
+from routes.settings import router as settings_router
+from routes.ai_agent import router as ai_agent_router
+from routes.forms import router as forms_router
+from routes.automation_routes import router as automation_router
 
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
-
-# Create the main app without a prefix
-app = FastAPI()
-
-# Create a router with the /api prefix
-api_router = APIRouter(prefix="/api")
-
-
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
-    
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class StatusCheckCreate(BaseModel):
-    client_name: str
-
-# Add your routes to the router instead of directly to app
-@api_router.get("/")
-async def root():
-    return {"message": "Hello World"}
-
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
-
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
-
-# Include the router in the main app
-app.include_router(api_router)
+app = FastAPI(title="Solvit People Management Platform", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+API_PREFIX = "/api"
+
+app.include_router(auth_router, prefix=API_PREFIX)
+app.include_router(employees_router, prefix=API_PREFIX)
+app.include_router(solvers_router, prefix=API_PREFIX)
+app.include_router(recruitment_router, prefix=API_PREFIX)
+app.include_router(onboarding_router, prefix=API_PREFIX)
+app.include_router(performance_router, prefix=API_PREFIX)
+app.include_router(surveys_router, prefix=API_PREFIX)
+app.include_router(retention_router, prefix=API_PREFIX)
+app.include_router(lnd_router, prefix=API_PREFIX)
+app.include_router(projects_router, prefix=API_PREFIX)
+app.include_router(compensation_router, prefix=API_PREFIX)
+app.include_router(recognition_router, prefix=API_PREFIX)
+app.include_router(budget_router, prefix=API_PREFIX)
+app.include_router(policies_router, prefix=API_PREFIX)
+app.include_router(disciplinary_router, prefix=API_PREFIX)
+app.include_router(calendar_router, prefix=API_PREFIX)
+app.include_router(leave_router, prefix=API_PREFIX)
+app.include_router(compliance_router, prefix=API_PREFIX)
+app.include_router(settings_router, prefix=API_PREFIX)
+app.include_router(ai_agent_router, prefix=API_PREFIX)
+app.include_router(forms_router, prefix=API_PREFIX)
+app.include_router(automation_router, prefix=API_PREFIX)
+
+
+@app.get("/api/health")
+async def health():
+    return {"status": "healthy", "app": "Solvit People Platform"}
+
+
+@app.on_event("startup")
+async def startup():
+    logger.info("Starting Solvit People Platform...")
+    db = await init_db()
+    # Create indexes
+    await db.users.create_index("email", unique=True)
+    await db.employees.create_index([("tenant_id", 1), ("work_email", 1)])
+    await db.solvers.create_index([("tenant_id", 1), ("phone_number", 1)])
+    await db.notifications.create_index([("tenant_id", 1), ("recipient_role", 1), ("is_read", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("status", 1)])
+    # Seed initial data
+    await seed_all(db)
+    # Start automation engine
+    await automation_engine.start(db)
+    logger.info("✅ Solvit People Platform started successfully")
+
 
 @app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
+async def shutdown():
+    await close_db()
+    if automation_engine.scheduler:
+        automation_engine.scheduler.shutdown()
+    logger.info("Solvit People Platform shut down")

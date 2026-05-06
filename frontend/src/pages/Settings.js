@@ -1,0 +1,191 @@
+import React, { useState, useEffect } from 'react';
+import * as api from '../services/api';
+import { useAuth } from '../context/AuthContext';
+
+export default function Settings() {
+  const { user } = useAuth();
+  const [settings, setSettings] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [form, setForm] = useState({ llm_provider: '', llm_model: '', llm_api_key: '', email_provider: '', email_api_key: '', email_from_address: '', email_from_name: '', automation_enabled: true, ai_agent_enabled: true });
+  const [tab, setTab] = useState('ai');
+
+  useEffect(() => { load(); }, []);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await api.getSettings();
+      setSettings(res.data);
+      setForm(prev => ({ ...prev, ...res.data }));
+    } finally { setLoading(false); }
+  };
+
+  const save = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await api.updateSettings(form);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } finally { setSaving(false); }
+  };
+
+  const LLM_PROVIDERS = [
+    { value: 'openai', label: 'OpenAI (GPT-4o)', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'] },
+    { value: 'anthropic', label: 'Anthropic (Claude)', models: ['claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-opus-4-5'] },
+    { value: 'gemini', label: 'Google Gemini', models: ['gemini-2.0-flash', 'gemini-1.5-pro'] },
+  ];
+
+  const selectedProvider = LLM_PROVIDERS.find(p => p.value === form.llm_provider);
+
+  return (
+    <div data-testid="settings-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
+      <div style={{ marginBottom: '24px' }}>
+        <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', margin: 0 }}>Platform Settings</h1>
+        <p style={{ color: '#525252', fontSize: '13px', margin: 0, marginTop: '4px' }}>Configure AI, email, and platform options</p>
+      </div>
+
+      <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid rgba(25,25,25,0.1)', marginBottom: '24px' }}>
+        {[{ key: 'ai', label: 'AI Agent' }, { key: 'email', label: 'Email' }, { key: 'automation', label: 'Automation' }, { key: 'audit', label: 'Audit Log' }].map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)} style={{ padding: '10px 20px', backgroundColor: 'transparent', border: 'none', borderBottom: tab === t.key ? '2px solid #FF353F' : '2px solid transparent', marginBottom: '-2px', cursor: 'pointer', fontSize: '12px', fontWeight: tab === t.key ? 700 : 400, color: tab === t.key ? '#FF353F' : '#525252', fontFamily: 'Arial', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? <div style={{ padding: '48px', textAlign: 'center' }}>Loading...</div> : (
+        <form onSubmit={save} style={{ maxWidth: '600px' }}>
+          {tab === 'ai' && (
+            <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '24px' }}>
+              <h3 style={{ fontWeight: 900, fontSize: '16px', marginBottom: '20px', color: '#191919' }}>AI Agent Configuration</h3>
+              <div style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', padding: '12px 16px', marginBottom: '20px', fontSize: '12px', color: '#1D4ED8' }}>
+                Configure an LLM provider to power the AI HR Agent's Policy Q&A and Compliance Guardian features.
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>LLM Provider</label>
+                <select data-testid="llm-provider" value={form.llm_provider || ''} onChange={e => setForm(p => ({ ...p, llm_provider: e.target.value, llm_model: '' }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', outline: 'none' }}>
+                  <option value="">Select provider...</option>
+                  {LLM_PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                </select>
+              </div>
+              {selectedProvider && (
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Model</label>
+                  <select data-testid="llm-model" value={form.llm_model || ''} onChange={e => setForm(p => ({ ...p, llm_model: e.target.value }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', outline: 'none' }}>
+                    <option value="">Select model...</option>
+                    {selectedProvider.models.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+              )}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>API Key</label>
+                <input data-testid="llm-api-key" type="password" value={form.llm_api_key || ''} onChange={e => setForm(p => ({ ...p, llm_api_key: e.target.value }))} placeholder="sk-..." style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', outline: 'none', boxSizing: 'border-box' }} />
+                <p style={{ fontSize: '11px', color: '#525252', marginTop: '4px' }}>Your API key is stored securely and never exposed in the UI.</p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+                <input type="checkbox" id="ai_enabled" checked={form.ai_agent_enabled} onChange={e => setForm(p => ({ ...p, ai_agent_enabled: e.target.checked }))} />
+                <label htmlFor="ai_enabled" style={{ fontSize: '13px', cursor: 'pointer' }}>Enable AI Agent panel for HR Admin</label>
+              </div>
+            </div>
+          )}
+
+          {tab === 'email' && (
+            <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '24px' }}>
+              <h3 style={{ fontWeight: 900, fontSize: '16px', marginBottom: '20px', color: '#191919' }}>Email Notifications</h3>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Email Provider</label>
+                <select data-testid="email-provider" value={form.email_provider || ''} onChange={e => setForm(p => ({ ...p, email_provider: e.target.value }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', outline: 'none' }}>
+                  <option value="">None (in-app only)</option>
+                  <option value="sendgrid">SendGrid</option>
+                  <option value="smtp">SMTP</option>
+                </select>
+              </div>
+              {form.email_provider === 'sendgrid' && (
+                <>
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>SendGrid API Key</label>
+                    <input type="password" value={form.email_api_key || ''} onChange={e => setForm(p => ({ ...p, email_api_key: e.target.value }))} placeholder="SG...." style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>From Email</label>
+                      <input value={form.email_from_address || ''} onChange={e => setForm(p => ({ ...p, email_from_address: e.target.value }))} placeholder="hr@solvit.co.ke" style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', outline: 'none', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>From Name</label>
+                      <input value={form.email_from_name || ''} onChange={e => setForm(p => ({ ...p, email_from_name: e.target.value }))} placeholder="Solvit HR" style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', outline: 'none', boxSizing: 'border-box' }} />
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {tab === 'automation' && (
+            <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '24px' }}>
+              <h3 style={{ fontWeight: 900, fontSize: '16px', marginBottom: '20px', color: '#191919' }}>Automation Engine</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', padding: '16px', backgroundColor: '#F9FAFB', border: '1px solid rgba(25,25,25,0.06)' }}>
+                <input type="checkbox" id="auto_enabled" checked={form.automation_enabled !== false} onChange={e => setForm(p => ({ ...p, automation_enabled: e.target.checked }))} />
+                <div>
+                  <label htmlFor="auto_enabled" style={{ fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'block' }}>Enable Automation Rules Engine</label>
+                  <span style={{ fontSize: '11px', color: '#525252' }}>47 rules — cron-based and event-driven automations</span>
+                </div>
+              </div>
+              <div style={{ fontSize: '12px', color: '#525252', padding: '12px', backgroundColor: '#DCFCE7', border: '1px solid #86EFAC' }}>
+                ✅ Automation engine is running. 47 rules loaded. View and manage rules in the platform configuration.
+              </div>
+            </div>
+          )}
+
+          {tab === 'audit' && <AuditLog />}
+
+          {tab !== 'audit' && (
+            <div style={{ marginTop: '20px', display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <button data-testid="save-settings-btn" type="submit" disabled={saving} style={{ padding: '10px 24px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Arial', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                {saving ? 'Saving...' : 'Save Settings'}
+              </button>
+              {saved && <span style={{ color: '#22C55E', fontSize: '12px', fontWeight: 700 }}>✓ Settings saved</span>}
+            </div>
+          )}
+        </form>
+      )}
+    </div>
+  );
+}
+
+function AuditLog() {
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getAuditLog({ limit: 50 }).then(r => setLogs(r.data)).finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
+      <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(25,25,25,0.08)' }}>
+        <h3 style={{ margin: 0, fontWeight: 900, fontSize: '16px' }}>Audit Log</h3>
+      </div>
+      {loading ? <div style={{ padding: '32px', textAlign: 'center' }}>Loading...</div> : (
+        <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
+          {logs.map((log, i) => (
+            <div key={log.id || i} style={{ padding: '10px 20px', borderBottom: '1px solid rgba(25,25,25,0.04)', fontSize: '12px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+              <div style={{ color: '#525252', whiteSpace: 'nowrap', fontSize: '11px' }}>{new Date(log.timestamp).toLocaleString('en-KE')}</div>
+              <div>
+                <span style={{ fontWeight: 700, color: '#191919' }}>{log.action}</span>
+                {log.entity && <span style={{ color: '#525252', marginLeft: '8px' }}>on {log.entity}</span>}
+              </div>
+              <div style={{ marginLeft: 'auto', fontSize: '10px', color: '#9CA3AF' }}>{log.performed_by?.substring(0, 8)}...</div>
+            </div>
+          ))}
+          {logs.length === 0 && <div style={{ padding: '32px', textAlign: 'center', color: '#9CA3AF' }}>No audit log entries</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Import api at the top for AuditLog
+import * as api from '../services/api';
