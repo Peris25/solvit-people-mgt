@@ -216,6 +216,16 @@ export const updateMastersSettings = (category, values) => api.put(`/settings/ma
 export const resetMastersSettings = (category) => api.post(`/settings/masters/${category}/reset`);
 export const getMastersAudit = ({ category, limit } = {}) => api.get('/settings/masters/audit/log', { params: { category, limit } });
 
+// CSV exports — these return the URL; the caller opens it via window.location to use cookie auth.
+export const csvExportUrl = (kind) => {
+  const base = (process.env.REACT_APP_BACKEND_URL || '').replace(/\/$/, '');
+  return `${base}/api/exports/${kind}.csv`;
+};
+export const downloadCSV = (kind) => { window.location.href = csvExportUrl(kind); };
+
+// MD KPIs (Board-administered)
+export const getMDKpis = () => api.get('/performance/md-kpis');
+
 // Automation
 export const getAutomationRules = () => api.get('/automation');
 export const toggleRule = (ruleId) => api.put(`/automation/${ruleId}/toggle`);

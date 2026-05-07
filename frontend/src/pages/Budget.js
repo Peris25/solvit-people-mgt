@@ -186,9 +186,12 @@ export default function Budget() {
         <div data-testid="headroom-allocation" style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', marginBottom: '16px' }}>
           <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(25,25,25,0.08)', backgroundColor: '#F5F5F5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '12px', fontWeight: 700 }}>Headroom Allocation</span>
-            {isHRAdmin && (
-              <button data-testid="btn-add-allocation" onClick={() => setShowAlloc(true)} style={{ padding: '6px 14px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>+ New Allocation</button>
-            )}
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button data-testid="export-allocations-csv" onClick={() => api.downloadCSV('budget-allocations')} style={{ padding: '6px 12px', backgroundColor: 'transparent', color: '#191919', border: '1px solid rgba(25,25,25,0.2)', cursor: 'pointer', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>↓ CSV</button>
+              {isHRAdmin && (
+                <button data-testid="btn-add-allocation" onClick={() => setShowAlloc(true)} style={{ padding: '6px 14px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>+ New Allocation</button>
+              )}
+            </div>
           </div>
           <div style={{ padding: '16px 18px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
             <div data-testid="alloc-stat-total"><div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.15em', color: '#525252' }}>Confirmed Headroom</div><div style={{ fontSize: '20px', fontWeight: 900, color: '#191919' }}>{fmtKES(allocSummary?.headroom_kes)}</div></div>

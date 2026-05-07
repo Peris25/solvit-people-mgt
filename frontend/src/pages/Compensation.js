@@ -60,9 +60,14 @@ export default function Compensation() {
 
   return (
     <div data-testid="compensation-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
-      <div style={{ marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', margin: 0 }}>Compensation</h1>
-        <p style={{ color: '#525252', fontSize: '13px', margin: '4px 0 0' }}>Pay Bands · Salary Reviews · Bonus Calculator · GP Gate</p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '24px' }}>
+        <div>
+          <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', margin: 0 }}>Compensation</h1>
+          <p style={{ color: '#525252', fontSize: '13px', margin: '4px 0 0' }}>Pay Bands · Salary Reviews · Bonus Calculator · GP Gate</p>
+        </div>
+        {tab === 'bands' && (
+          <button data-testid="export-pay-bands-csv" onClick={() => api.downloadCSV('pay-bands')} style={{ padding: '8px 14px', backgroundColor: 'transparent', color: '#191919', border: '1px solid #191919', cursor: 'pointer', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>↓ CSV</button>
+        )}
       </div>
 
       <div style={{ display: 'flex', borderBottom: '2px solid rgba(25,25,25,0.1)', marginBottom: '20px' }}>

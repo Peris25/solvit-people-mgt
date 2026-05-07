@@ -55,37 +55,53 @@ async def record_statutory_payment(request: Request):
 @router.get("/paye-calculator")
 async def calculate_paye(request: Request, gross_salary: float = 50000):
     user = await get_current_user(request)
-    # Kenya PAYE bands (Income Tax Act Cap 470 — 2023 rates)
-    paye = 0.0
-    taxable = gross_salary
-
-    # Personal relief: KES 2,400/month
-    personal_relief = 2400.0
-
-    bands = [
-        (24000, 0.10),
-        (8333, 0.25),
-        (467667, 0.30),
-        (float("inf"), 0.325),
+    # Pull live rates from Masters Settings (Section 12 lookups + organisation rates).
+    from routes.masters_settings import get_setting
+    org = await get_setting("organisation") or {}
+    paye_brackets = org.get("paye_brackets") or [
+        {"min_kes": 0,      "max_kes": 24000,    "rate_pct": 10},
+        {"min_kes": 24001,  "max_kes": 32333,    "rate_pct": 25},
+        {"min_kes": 32334,  "max_kes": 500000,   "rate_pct": 30},
+        {"min_kes": 500001, "max_kes": 800000,   "rate_pct": 32.5},
+        {"min_kes": 800001, "max_kes": 99999999, "rate_pct": 35},
     ]
+    nhif_rates = org.get("nhif_rates") or []
+    nssf_employer_pct = float(org.get("nssf_employer_pct", 6.0))
 
-    remaining = taxable
-    for band_amount, rate in bands:
-        if remaining <= 0:
+    # PAYE: progressive across bracket widths
+    personal_relief = 2400.0
+    paye = 0.0
+    remaining = gross_salary
+    cumulative_min = 0
+    for b in paye_brackets:
+        bmin = float(b.get("min_kes", cumulative_min))
+        bmax = float(b.get("max_kes", bmin))
+        rate = float(b.get("rate_pct", 0)) / 100.0
+        width = max(0.0, bmax - bmin + 1)
+        taxable_in_band = max(0.0, min(remaining, width))
+        if taxable_in_band <= 0:
             break
-        taxable_in_band = min(remaining, band_amount)
         paye += taxable_in_band * rate
         remaining -= taxable_in_band
+        cumulative_min = bmax
+    paye = max(0.0, paye - personal_relief)
 
-    paye = max(0, paye - personal_relief)
-
-    # NSSF Tier 1 (Tier I: Lower Earnings Limit = 6,000, Upper = 18,000)
+    # NSSF (employee + employer share — show employee only here)
     nssf_tier1 = min(gross_salary, 6000) * 0.06
     nssf_tier2 = max(0, min(gross_salary - 6000, 12000)) * 0.06
     total_nssf = nssf_tier1 + nssf_tier2
 
-    # SHA (Social Health Insurance Act 2023) — 2.75% of gross
-    sha = gross_salary * 0.0275
+    # NHIF (now SHIF/SHA) — table lookup if rates configured, else 2.75% fallback
+    sha = 0.0
+    if nhif_rates:
+        for r in nhif_rates:
+            if float(r.get("min_kes", 0)) <= gross_salary <= float(r.get("max_kes", 0)):
+                sha = float(r.get("amount_kes", 0))
+                break
+        if sha == 0.0:
+            sha = gross_salary * 0.0275
+    else:
+        sha = gross_salary * 0.0275
 
     net_pay = gross_salary - paye - total_nssf - sha
 
@@ -93,10 +109,12 @@ async def calculate_paye(request: Request, gross_salary: float = 50000):
         "gross_salary_kes": gross_salary,
         "paye_kes": round(paye, 2),
         "nssf_employee_kes": round(total_nssf, 2),
+        "nssf_employer_pct": nssf_employer_pct,
         "sha_kes": round(sha, 2),
         "total_deductions_kes": round(paye + total_nssf + sha, 2),
         "net_pay_kes": round(net_pay, 2),
-        "personal_relief_applied": personal_relief
+        "personal_relief_applied": personal_relief,
+        "config_source": "masters_settings.organisation",
     }
 
 

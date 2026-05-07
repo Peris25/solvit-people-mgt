@@ -12,6 +12,18 @@ router = APIRouter(prefix="/performance", tags=["performance"])
 NINE_BOX = ["Stars", "Core_Contributor", "Culture_Risk", "Realignment_Needed", "Exit_Track"]
 RATING_LABELS = {(1.0, 1.49): "Exceeded", (1.5, 1.99): "Met", (2.0, 2.49): "Below", (2.5, 3.0): "Forfeited"}
 
+# MD KPIs (Board-administered) — fixed list per FRD §8 corrections.
+MD_KPIS = [
+    {"kpi": "Revenue Growth",                    "section": "Strategic Direction",      "target": "Per annual business plan"},
+    {"kpi": "Solvit Alignment Survey Score",     "section": "Culture & Values Stewardship", "target": "Org-wide aggregate ≥ 70"},
+    {"kpi": "Operational KPI Achievement",       "section": "Leadership Environment",    "target": "≥ 85% of departmental KPIs monthly"},
+    {"kpi": "Budget Adherence",                  "section": "Financial Governance",      "target": "≤ 5% variance monthly"},
+    {"kpi": "Client Retention",                  "section": "External Representation",   "target": "≥ 95% annually"},
+    {"kpi": "CSAT Score",                        "section": "External Representation",   "target": "> 4.7"},
+    {"kpi": "Channel Partner NPS",               "section": "External Representation",   "target": "> 50 monthly"},
+    {"kpi": "Board Reporting",                   "section": "Board Governance",          "target": "Report submitted by 7th of each month"},
+]
+
 
 def get_rating(score: float) -> str:
     if score <= 1.49:
@@ -22,6 +34,28 @@ def get_rating(score: float) -> str:
         return "Below"
     else:
         return "Forfeited"
+
+
+async def get_rating_live(score: float) -> str:
+    """Threshold-driven classification — pulls bounds live from
+    Masters Settings → performance.scoring_thresholds. Falls back to
+    static defaults on miss."""
+    if score is None:
+        return "Pending"
+    try:
+        from routes.masters_settings import get_setting
+        t = await get_setting("performance", "scoring_thresholds")
+    except Exception:
+        t = None
+    if not t:
+        return get_rating(float(score))
+    s = float(score)
+    for label in ("Exceeded", "Met", "Below"):
+        bounds = t.get(label) or {}
+        lo, hi = bounds.get("min"), bounds.get("max")
+        if lo is not None and hi is not None and lo <= s <= hi:
+            return label
+    return "Forfeited"
 
 
 class ReviewCreate(BaseModel):
@@ -138,7 +172,7 @@ async def get_review_panel(employee_id: str, request: Request):
     Casting vote: HR Admin (recorded in `casting_vote_role`).
     """
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "line_manager", "executive"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "line_manager", "executive", "board", "it_admin"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     try:
@@ -150,17 +184,20 @@ async def get_review_panel(employee_id: str, request: Request):
 
     role_title = (emp.get("role_title") or "").lower()
     is_md = bool(emp.get("is_md")) or role_title in ("managing director", "ceo", "md", "chief executive officer")
+    is_ed = bool(emp.get("is_ed")) or role_title == "executive director"
     reports_to_md = bool(emp.get("reports_to_md"))
     reports_to_finance_ops = bool(emp.get("reports_to_finance_ops"))
 
-    if is_md:
+    if is_md or is_ed:
         return {
             "employee_id": str(emp.get("id", str(emp["_id"]))),
             "employee_name": emp.get("full_name"),
             "panel": [],
             "panel_type": "board_led",
-            "casting_vote_role": None,
-            "note": "MD / CEO performance is board-led — not handled in this platform.",
+            "casting_vote_role": "board_chair",
+            "note": ("MD performance is Board-led — coordinated by the Board Chair. HR has no involvement."
+                     if is_md else
+                     "Executive Director review follows the same Board-led model as the MD. HR is not involved."),
         }
 
     panel_roles = []
@@ -253,6 +290,16 @@ async def get_talent_density_kpi(request: Request, cycle_year: Optional[int] = N
         "in_target_quadrant": in_target,
         "cycle_year": year
     }
+
+
+@router.get("/md-kpis")
+async def get_md_kpis(request: Request):
+    """Return the eight MD KPIs (Board-administered).
+    Visible to Board, MD, and IT Admin only — HR has no read access to MD KPIs."""
+    user = await get_current_user(request)
+    if user["role"] not in ("board", "executive", "it_admin"):
+        raise HTTPException(status_code=403, detail="MD KPIs are Board-only. HR has no access.")
+    return {"kpis": MD_KPIS, "count": len(MD_KPIS), "administered_by": "Board of Directors"}
 
 
 @router.get("/{review_id}")

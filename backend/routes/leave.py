@@ -9,13 +9,28 @@ import uuid
 
 router = APIRouter(prefix="/leave", tags=["leave"])
 
-LEAVE_TYPES = {
-    "Annual": {"days_entitlement": 21, "description": "Kenyan Employment Act 2007 — 21 working days"},
-    "Sick": {"days_entitlement": 30, "description": "30 days full pay + 15 days half pay"},
-    "Maternity": {"days_entitlement": 90, "description": "3 months paid maternity leave"},
-    "Paternity": {"days_entitlement": 14, "description": "2 weeks paternity leave"},
-    "Compassionate": {"days_entitlement": 5, "description": "Compassionate leave"},
+# Default entitlements + descriptions per Kenyan Employment Act 2007.
+# Active leave-type list pulled live from Masters Settings (lookups.leave_types).
+LEAVE_TYPE_DETAILS = {
+    "Annual":        {"days_entitlement": 21, "description": "Kenyan Employment Act 2007 — 21 working days"},
+    "Sick":          {"days_entitlement": 30, "description": "30 days full pay + 15 days half pay"},
+    "Maternity":     {"days_entitlement": 90, "description": "3 months paid maternity leave"},
+    "Paternity":     {"days_entitlement": 14, "description": "2 weeks paternity leave"},
+    "Compassionate": {"days_entitlement": 5,  "description": "Compassionate leave"},
+    "Unpaid":        {"days_entitlement": 0,  "description": "Unpaid leave — entitlement at HR discretion"},
 }
+
+
+async def _active_leave_types() -> dict:
+    """Build the active leave-type dict by intersecting the Masters Settings
+    `lookups.leave_types` list with the entitlement details."""
+    from routes.masters_settings import get_setting
+    active = await get_setting("lookups", "leave_types", list(LEAVE_TYPE_DETAILS.keys())) or list(LEAVE_TYPE_DETAILS.keys())
+    return {t: LEAVE_TYPE_DETAILS.get(t, {"days_entitlement": 0, "description": ""}) for t in active}
+
+
+# Backwards-compatible export used by other modules.
+LEAVE_TYPES = LEAVE_TYPE_DETAILS
 
 
 class LeaveRequest(BaseModel):
@@ -52,7 +67,7 @@ def calculate_working_days(start: str, end: str) -> int:
 
 @router.get("/types")
 async def get_leave_types(request: Request):
-    return LEAVE_TYPES
+    return await _active_leave_types()
 
 
 @router.get("")
@@ -172,7 +187,8 @@ async def get_leave_balances(employee_id: str, request: Request):
         used[lt] = used.get(lt, 0) + r.get("working_days", 0)
 
     balances = {}
-    for leave_type, info in LEAVE_TYPES.items():
+    types = await _active_leave_types()
+    for leave_type, info in types.items():
         entitlement = info["days_entitlement"]
         used_days = used.get(leave_type, 0)
         balances[leave_type] = {

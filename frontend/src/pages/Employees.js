@@ -141,6 +141,7 @@ export default function Employees() {
                 {seeding ? 'Generating...' : '⚡ Generate Demo Employees'}
               </button>
             )}
+            <button data-testid="export-employees-csv" onClick={() => api.downloadCSV('employees')} style={{ padding: '10px 18px', backgroundColor: 'transparent', color: '#191919', border: '1px solid #191919', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>↓ CSV</button>
             <button data-testid="add-employee-btn" onClick={() => { setSelected(null); setShowForm(true); }} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>
               + Add Employee
             </button>

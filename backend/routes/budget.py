@@ -258,11 +258,11 @@ async def record_gp(request: Request):
 
 @router.post("/form-28")
 async def submit_form28(request: Request):
-    """§7 Form 28 — Finance Manager confirms GP Actual + active Tier.
+    """§7 Form 28 — Finance & Operations Manager confirms GP Actual + active Tier.
     Unlocks bonus + salary increase approvals downstream."""
     user = await get_current_user(request)
     if user["role"] != "finance":
-        raise HTTPException(status_code=403, detail="Form 28 is signed by Finance Manager only.")
+        raise HTTPException(status_code=403, detail="Form 28 is signed by Finance & Operations Manager only.")
     db = get_db()
     body = await request.json()
     active_tier = body.get("active_tier")

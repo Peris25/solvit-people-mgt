@@ -27,6 +27,7 @@ import Forms from './pages/Forms';
 import EmployeeProfile from './pages/EmployeeProfile';
 import MyTasks from './pages/MyTasks';
 import ErrorToast from './components/ErrorToast';
+import AccessGate from './components/AccessGate';
 
 export default function App() {
   return (
@@ -48,14 +49,14 @@ export default function App() {
             <Route path="retention" element={<Retention />} />
             <Route path="lnd" element={<LnD />} />
             <Route path="projects" element={<Projects />} />
-            <Route path="compensation" element={<Compensation />} />
-            <Route path="recognition" element={<Recognition />} />
-            <Route path="budget" element={<Budget />} />
-            <Route path="policies" element={<Policies />} />
-            <Route path="disciplinary" element={<Disciplinary />} />
-            <Route path="calendar" element={<Calendar />} />
-            <Route path="leave" element={<Leave />} />
-            <Route path="compliance" element={<Compliance />} />
+            <Route path="compensation" element={<AccessGate module="M10"><Compensation /></AccessGate>} />
+            <Route path="recognition" element={<AccessGate module="M11"><Recognition /></AccessGate>} />
+            <Route path="budget" element={<AccessGate module="M12"><Budget /></AccessGate>} />
+            <Route path="policies" element={<AccessGate module="M13"><Policies /></AccessGate>} />
+            <Route path="disciplinary" element={<AccessGate module="M14"><Disciplinary /></AccessGate>} />
+            <Route path="calendar" element={<AccessGate module="M15"><Calendar /></AccessGate>} />
+            <Route path="leave" element={<AccessGate module="M18"><Leave /></AccessGate>} />
+            <Route path="compliance" element={<AccessGate module="M19"><Compliance /></AccessGate>} />
             <Route path="settings" element={<Settings />} />
             <Route path="masters" element={<MastersSettings />} />
             <Route path="forms" element={<Forms />} />

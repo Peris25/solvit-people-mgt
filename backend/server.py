@@ -35,6 +35,7 @@ from routes.forms import router as forms_router
 from routes.automation_routes import router as automation_router
 from routes.access import router as access_router
 from routes.masters_settings import router as masters_settings_router
+from routes.exports import router as exports_router
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -75,6 +76,7 @@ app.include_router(forms_router, prefix=API_PREFIX)
 app.include_router(automation_router, prefix=API_PREFIX)
 app.include_router(access_router, prefix=API_PREFIX)
 app.include_router(masters_settings_router, prefix=API_PREFIX)
+app.include_router(exports_router, prefix=API_PREFIX)
 
 
 @app.get("/api/health")

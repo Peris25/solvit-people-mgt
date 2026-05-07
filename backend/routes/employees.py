@@ -148,6 +148,14 @@ async def list_employees(request: Request, lifecycle_state: Optional[str] = None
         # Finance only sees compensation data
         pass
     employees = await db.employees.find(query).sort("full_name", 1).to_list(500)
+    # Section §7/§9 Board-only visibility for MD/ED records.
+    # Filter out board_only records (MD, ED) for everyone except Board, the
+    # MD/ED themselves (own record), and IT Admin (system role).
+    if user["role"] not in ("board", "it_admin"):
+        employees = [
+            e for e in employees
+            if not e.get("board_only") or e.get("work_email") == user.get("email")
+        ]
     return [fmt(e) for e in employees]
 
 
@@ -164,7 +172,10 @@ async def get_employee_profile(employee_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Employee not found")
     emp_id = str(emp.get("id", str(emp["_id"])))
 
-    # Permission gate: employee can only view self; line_manager only direct reports; HR/exec all
+    # Permission gate: employee can only view self; line_manager only direct reports; HR/exec all.
+    # Board-only override: MD/ED records hidden from everyone except Board, IT Admin, and the person themselves.
+    if emp.get("board_only") and user["role"] not in ("board", "it_admin") and emp.get("work_email") != user.get("email"):
+        raise HTTPException(status_code=403, detail="MD / ED record — Board access only")
     if user["role"] == "employee" and emp.get("work_email") != user.get("email"):
         raise HTTPException(status_code=403, detail="Not allowed")
     if user["role"] == "line_manager" and emp.get("line_manager_id") not in [user.get("employee_id"), user.get("id")]:
@@ -269,8 +280,10 @@ async def create_employee(emp: EmployeeCreate, request: Request):
         raise HTTPException(status_code=400, detail="Email already exists")
 
     from dateutil.relativedelta import relativedelta
+    from routes.masters_settings import get_setting
+    probation_months = int(await get_setting("organisation", "probation_period_months", 3) or 3)
     start_dt = datetime.fromisoformat(emp.start_date) if emp.start_date else datetime.now(timezone.utc)
-    probation_end = (start_dt + relativedelta(months=3)).isoformat()[:10]
+    probation_end = (start_dt + relativedelta(months=probation_months)).isoformat()[:10]
 
     emp_doc = {
         "id": str(uuid.uuid4()),
@@ -318,6 +331,9 @@ async def get_employee(employee_id: str, request: Request):
         emp = await db.employees.find_one({"id": employee_id})
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
+    # Board-only override (MD / ED): hidden from everyone except Board, IT Admin, self.
+    if emp.get("board_only") and user["role"] not in ("board", "it_admin") and emp.get("work_email") != user.get("email"):
+        raise HTTPException(status_code=403, detail="MD / ED record — Board access only")
     if user["role"] == "employee" and emp.get("work_email") != user["email"]:
         raise HTTPException(status_code=403, detail="Access denied")
     return fmt(emp)

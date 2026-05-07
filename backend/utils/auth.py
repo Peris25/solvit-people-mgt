@@ -6,7 +6,7 @@ from fastapi import HTTPException, Request
 from bson import ObjectId
 
 JWT_ALGORITHM = "HS256"
-ROLES = ["hr_admin", "hr_manager", "line_manager", "finance", "employee", "solver", "executive", "it_admin"]
+ROLES = ["hr_admin", "hr_manager", "line_manager", "finance", "employee", "solver", "executive", "it_admin", "board"]
 
 
 def get_jwt_secret() -> str:
