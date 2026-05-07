@@ -9,6 +9,8 @@ const DEMO_USERS = [
   { label: 'Employee', email: 'employee@solvit.co.ke', role: 'employee', color: '#3B82F6' },
   { label: 'Solver', email: 'solver@solvit.co.ke', role: 'solver', color: '#22C55E' },
   { label: 'MD / Executive', email: 'md@solvit.co.ke', role: 'executive', color: '#8B5CF6' },
+  { label: 'Executive Director', email: 'ed@solvit.co.ke', role: 'executive', color: '#A855F7' },
+  { label: 'Board Chair', email: 'board@solvit.co.ke', role: 'board', color: '#EC4899' },
   { label: 'IT Admin', email: 'itadmin@solvit.co.ke', role: 'it_admin', color: '#0EA5E9' },
 ];
 
@@ -123,7 +125,7 @@ export default function Login() {
             {DEMO_USERS.map(u => (
               <button
                 key={u.email}
-                data-testid={`demo-login-${u.role}`}
+                data-testid={`demo-login-${u.email.split('@')[0]}`}
                 onClick={() => demoLogin(u)}
                 disabled={loading}
                 style={{
