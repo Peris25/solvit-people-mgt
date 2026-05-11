@@ -15,6 +15,7 @@ export default function Solvers() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ full_name: '', phone_number: '', payment_method: 'MPesa', vehicle_categories: [], zones_covered: [] });
   const [saving, setSaving] = useState(false);
+  const [viewSolver, setViewSolver] = useState(null);
 
   const canEdit = ['hr_admin', 'hr_manager', 'line_manager'].includes(user?.role);
 
@@ -112,9 +113,12 @@ export default function Solvers() {
                   </td>
                   <td style={{ padding: '10px 14px' }}><StatusBadge status={s.lifecycle_state} small /></td>
                   <td style={{ padding: '10px 14px' }}>
-                    {canEdit && s.lifecycle_state === 'Registering' && (
-                      <button onClick={async () => { await api.activateSolver(s.id); loadSolvers(); }} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #22C55E', backgroundColor: 'transparent', color: '#22C55E', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>Activate</button>
-                    )}
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button data-testid={`view-solver-${s.id}`} onClick={() => setViewSolver(s)} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid rgba(25,25,25,0.2)', color: '#191919', backgroundColor: 'transparent', cursor: 'pointer', fontFamily: 'Barlow', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>View</button>
+                      {canEdit && s.lifecycle_state === 'Registering' && (
+                        <button onClick={async () => { await api.activateSolver(s.id); loadSolvers(); }} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #22C55E', backgroundColor: 'transparent', color: '#22C55E', cursor: 'pointer', fontFamily: 'Barlow', fontWeight: 700 }}>Activate</button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -123,6 +127,36 @@ export default function Solvers() {
           </table>
         )}
       </div>
+
+      {/* View Solver Modal */}
+      {viewSolver && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '24px' }}>
+          <div data-testid="solver-view-modal" style={{ backgroundColor: '#fff', width: '600px', maxHeight: '90vh', overflowY: 'auto', border: '1px solid rgba(25,25,25,0.15)' }}>
+            <div style={{ padding: '18px 24px', borderBottom: '3px solid #FF353F', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.18em', color: '#FF353F', fontFamily: 'Barlow' }}>Solver Detail</div>
+                <h3 style={{ margin: '4px 0 0', fontFamily: 'Barlow', fontWeight: 900, letterSpacing: '-0.03em', fontSize: '20px' }}>{viewSolver.full_name}</h3>
+              </div>
+              <button onClick={() => setViewSolver(null)} style={{ background: 'none', border: '1px solid rgba(25,25,25,0.2)', padding: '6px 12px', cursor: 'pointer', fontSize: '11px', fontFamily: 'Barlow', fontWeight: 700, textTransform: 'uppercase' }}>Close</button>
+            </div>
+            <div style={{ padding: '24px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', fontSize: '12px', marginBottom: '20px' }}>
+                <Field label="Phone" value={viewSolver.phone_number} />
+                <Field label="Payment Method" value={viewSolver.payment_method} />
+                <Field label="State" value={viewSolver.lifecycle_state} />
+                <Field label="Tier" value={(viewSolver.performance_tier || '—').replace('_', ' ')} />
+                <Field label="Accuracy" value={viewSolver.accuracy_score ? `${viewSolver.accuracy_score}%` : '—'} />
+                <Field label="Reliability" value={viewSolver.reliability_score ? `${viewSolver.reliability_score}%` : '—'} />
+                <Field label="Client Rating" value={viewSolver.client_rating_average ? `${viewSolver.client_rating_average}/5.0` : '—'} />
+                <Field label="Onboarded" value={viewSolver.onboarded_at ? new Date(viewSolver.onboarded_at).toLocaleDateString('en-GB') : '—'} />
+              </div>
+              <Field label="Vehicle Categories" value={(viewSolver.vehicle_categories || []).join(', ') || '—'} block />
+              <Field label="Zones Covered" value={(viewSolver.zones_covered || []).join(', ') || '—'} block />
+              {viewSolver.notes && <Field label="Notes" value={viewSolver.notes} block />}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Solver Modal */}
       {showForm && (
@@ -162,6 +196,15 @@ export default function Solvers() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function Field({ label, value, block }) {
+  return (
+    <div style={{ gridColumn: block ? '1 / -1' : 'auto', marginBottom: block ? '12px' : 0 }}>
+      <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', fontFamily: 'Barlow' }}>{label}</div>
+      <div style={{ fontSize: '13px', color: '#191919', marginTop: '2px' }}>{value || '—'}</div>
     </div>
   );
 }

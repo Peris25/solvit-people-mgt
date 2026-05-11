@@ -1,66 +1,61 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Bell, ChevronLeft, Settings, LogOut, Brain } from 'lucide-react';
+import {
+  Bell, LogOut, Brain,
+  LayoutDashboard, Users, Zap, Target, Rocket,
+  BarChart3, ClipboardList, ShieldCheck, BookOpen, Briefcase,
+  Palmtree, Wallet, Award, Scale, FileText,
+  TrendingUp, CheckCircle2, CalendarDays, FileEdit,
+  ListChecks, Settings as SettingsIcon, Cog, ChevronLeft, Menu
+} from 'lucide-react';
 import * as api from '../services/api';
+
+const ICON_SIZE = 15;
 
 const MENU_ITEMS = [
   { section: 'Core', items: [
-    // Dashboard visible to everyone (RoleDashboard picks appropriate view)
-    { path: '/dashboard', label: 'Dashboard', icon: '⊞', roles: ['hr_admin', 'hr_manager', 'executive', 'line_manager', 'finance', 'employee', 'solver'] },
-    // M01 Employee Database — HR full, LM(own reports), Finance(read salary), Employee(own), Executive(aggregate)
-    { path: '/employees', label: 'Employees', icon: '👥', roles: ['hr_admin', 'hr_manager', 'line_manager', 'finance', 'employee', 'executive'] },
-    // M02 Solver Database — HR full, Solvers Manager (line_manager), Solver (own), Executive (aggregate)
-    { path: '/solvers', label: 'Solvers', icon: '⚡', roles: ['hr_admin', 'hr_manager', 'line_manager', 'solver', 'executive'] },
-    // M03 Recruitment — HR full, LM (own dept), Executive (headcount summary)
-    { path: '/recruitment', label: 'Recruitment', icon: '🎯', roles: ['hr_admin', 'hr_manager', 'line_manager', 'executive'] },
-    // M04 Onboarding — HR full, LM, Employee, Solver
-    { path: '/onboarding', label: 'Onboarding', icon: '🚀', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee', 'solver'] },
+    { path: '/dashboard',   label: 'Dashboard',    Icon: LayoutDashboard, roles: ['hr_admin','hr_manager','executive','line_manager','finance','employee','solver','board','it_admin'] },
+    { path: '/employees',   label: 'Employees',    Icon: Users,           roles: ['hr_admin','hr_manager','line_manager','finance','employee','executive'] },
+    { path: '/solvers',     label: 'Solvers',      Icon: Zap,             roles: ['hr_admin','hr_manager','line_manager','solver','executive'] },
+    { path: '/recruitment', label: 'Recruitment',  Icon: Target,          roles: ['hr_admin','hr_manager','line_manager','executive'] },
+    { path: '/onboarding',  label: 'Onboarding',   Icon: Rocket,          roles: ['hr_admin','hr_manager','line_manager','employee','solver'] },
   ]},
   { section: 'Performance', items: [
-    // M05 Performance — HR full, LM, Employee(own), Executive(aggregate)
-    { path: '/performance', label: 'Performance', icon: '📊', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee', 'executive'] },
-    // M06 Surveys — HR full, Employee/Solver respond, Executive(aggregate)
-    { path: '/surveys', label: 'Surveys', icon: '📋', roles: ['hr_admin', 'hr_manager', 'employee', 'solver', 'executive'] },
-    // M07 Retention — HR full, Executive(aggregate)
-    { path: '/retention', label: 'Retention', icon: '🛡', roles: ['hr_admin', 'hr_manager', 'executive'] },
-    // M08 L&D — HR full, LM, Employee
-    { path: '/lnd', label: 'L&D', icon: '📚', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee'] },
-    // M09 Project Ownership — HR full, LM, Employee(own)
-    { path: '/projects', label: 'Projects', icon: '💼', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee'] },
+    { path: '/performance', label: 'Performance',  Icon: BarChart3,       roles: ['hr_admin','hr_manager','line_manager','employee','executive'] },
+    { path: '/surveys',     label: 'Surveys',      Icon: ClipboardList,   roles: ['hr_admin','hr_manager','employee','solver','executive'] },
+    { path: '/retention',   label: 'Retention',    Icon: ShieldCheck,     roles: ['hr_admin','hr_manager','executive'] },
+    { path: '/lnd',         label: 'L&D',          Icon: BookOpen,        roles: ['hr_admin','hr_manager','line_manager','employee'] },
+    { path: '/projects',    label: 'Projects',     Icon: Briefcase,       roles: ['hr_admin','hr_manager','line_manager','employee'] },
   ]},
   { section: 'HR Operations', items: [
-    // M18 Leave — HR full, LM, Employee
-    { path: '/leave', label: 'Leave', icon: '🏖', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee'] },
-    // M10 Compensation — HR full, Finance full, Executive(envelope only)
-    { path: '/compensation', label: 'Compensation', icon: '💰', roles: ['hr_admin', 'hr_manager', 'finance', 'executive'] },
-    // M11 Recognition — HR full, LM, Finance(monetary approve), Employee, Solver(own)
-    { path: '/recognition', label: 'Recognition', icon: '🏆', roles: ['hr_admin', 'hr_manager', 'line_manager', 'finance', 'employee', 'solver'] },
-    // M14 Disciplinary — HR full, LM(own active cases), Employee(own)
-    { path: '/disciplinary', label: 'Disciplinary', icon: '⚖', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee'] },
-    // M13 Policy Library — everyone
-    { path: '/policies', label: 'Policies', icon: '📄', roles: ['hr_admin', 'hr_manager', 'line_manager', 'finance', 'employee', 'solver', 'executive'] },
+    { path: '/leave',        label: 'Leave',        Icon: Palmtree,       roles: ['hr_admin','hr_manager','line_manager','employee'] },
+    { path: '/compensation', label: 'Compensation', Icon: Wallet,         roles: ['hr_admin','hr_manager','finance','executive'] },
+    { path: '/recognition',  label: 'Recognition',  Icon: Award,          roles: ['hr_admin','hr_manager','line_manager','finance','employee','solver'] },
+    { path: '/disciplinary', label: 'Disciplinary', Icon: Scale,          roles: ['hr_admin','hr_manager','line_manager','employee'] },
+    { path: '/policies',     label: 'Policies',     Icon: FileText,       roles: ['hr_admin','hr_manager','line_manager','finance','employee','solver','executive'] },
   ]},
   { section: 'Finance & Admin', items: [
-    // M12 Budget — HR(read), Finance(full), Executive(read envelope)
-    { path: '/budget', label: 'Budget', icon: '📈', roles: ['hr_admin', 'hr_manager', 'finance', 'executive'] },
-    // M19 Statutory Compliance — HR(read), Finance(full)
-    { path: '/compliance', label: 'Compliance', icon: '✅', roles: ['hr_admin', 'hr_manager', 'finance'] },
-    // M15 HR Calendar — HR full, LM(own team), Finance(statutory only)
-    { path: '/calendar', label: 'Calendar', icon: '📅', roles: ['hr_admin', 'hr_manager', 'line_manager', 'finance'] },
-    // M17 Forms Engine — HR full, LM/Finance/Employee/Solver contextual
-    { path: '/forms', label: 'Forms', icon: '📝', roles: ['hr_admin', 'hr_manager', 'line_manager', 'finance', 'employee', 'solver'] },
-    // My Tasks — for everyone
-    { path: '/my-tasks', label: 'My Tasks', icon: '✓', roles: ['hr_admin', 'hr_manager', 'line_manager', 'employee', 'solver', 'finance', 'executive', 'it_admin'] },
-    // Masters Settings — IT Admin + HR Admin/Finance (section-scoped writes)
-    { path: '/masters', label: 'Masters Settings', icon: '⚙', roles: ['it_admin', 'hr_admin', 'hr_manager', 'finance'] },
-    // Settings (AI/Email config) — HR Admin only (system configuration)
-    { path: '/settings', label: 'AI & Email Setup', icon: '🤖', roles: ['hr_admin', 'hr_manager', 'it_admin'] },
+    { path: '/budget',     label: 'Budget',         Icon: TrendingUp,    roles: ['hr_admin','hr_manager','finance','executive'] },
+    { path: '/compliance', label: 'Compliance',     Icon: CheckCircle2,  roles: ['hr_admin','hr_manager','finance'] },
+    { path: '/calendar',   label: 'Calendar',       Icon: CalendarDays,  roles: ['hr_admin','hr_manager','line_manager','finance'] },
+    { path: '/forms',      label: 'Forms',          Icon: FileEdit,      roles: ['hr_admin','hr_manager','line_manager','finance','employee','solver'] },
+    { path: '/my-tasks',   label: 'My Tasks',       Icon: ListChecks,    roles: ['hr_admin','hr_manager','line_manager','employee','solver','finance','executive','it_admin'] },
+    { path: '/masters',    label: 'Masters Settings', Icon: Cog,          roles: ['it_admin','hr_admin','hr_manager','finance'] },
+    { path: '/settings',   label: 'AI & Email Setup', Icon: SettingsIcon, roles: ['hr_admin','hr_manager','it_admin'] },
   ]},
 ];
 
-const ROLE_LABELS = { hr_admin: 'HR Admin', hr_manager: 'HR Manager', line_manager: 'Line Manager', finance: 'Finance', employee: 'Employee', solver: 'Solver', executive: 'MD / Executive' };
-const ROLE_COLORS = { hr_admin: '#FF353F', hr_manager: '#F97316', line_manager: '#191919', finance: '#22C55E', employee: '#3B82F6', solver: '#8B5CF6', executive: '#EF4444' };
+const ROLE_LABELS = {
+  hr_admin: 'HR Admin', hr_manager: 'HR Manager', line_manager: 'Line Manager',
+  finance: 'Finance', employee: 'Employee', solver: 'Solver',
+  executive: 'MD / Executive', board: 'Board', it_admin: 'IT Admin'
+};
+const ROLE_COLORS = {
+  hr_admin: '#FF353F', hr_manager: '#FF353F', line_manager: '#191919',
+  finance: '#22C55E', employee: '#3B82F6', solver: '#191919',
+  executive: '#191919', board: '#191919', it_admin: '#525252'
+};
 
 export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
   const { user, logout } = useAuth();
@@ -69,7 +64,6 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
   const [notifications, setNotifications] = useState([]);
   const [showNotif, setShowNotif] = useState(false);
 
-  // Poll notifications every 60s
   React.useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -107,17 +101,18 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
   };
 
   const filteredMenu = (() => {
-    // Employee role: minimal nav, My Tasks at top, no Forms / Finance & Admin sections
     if (user?.role === 'employee') {
       return [{
         section: 'My Workspace',
         items: [
-          { path: '/my-tasks',  label: 'My Tasks',     icon: '✓' },
-          { path: '/dashboard', label: 'My Dashboard', icon: '⊞' },
-          { path: '/leave',     label: 'Leave',        icon: '🏖' },
-          { path: '/lnd',       label: 'Development',  icon: '📚' },
-          { path: '/recognition', label: 'Recognition', icon: '🏆' },
-          { path: '/policies',  label: 'Policies',     icon: '📄' },
+          { path: '/my-tasks',    label: 'My Tasks',     Icon: ListChecks },
+          { path: '/dashboard',   label: 'My Dashboard', Icon: LayoutDashboard },
+          { path: '/leave',       label: 'Leave',        Icon: Palmtree },
+          { path: '/performance', label: 'My Reviews',   Icon: BarChart3 },
+          { path: '/surveys',     label: 'My Surveys',   Icon: ClipboardList },
+          { path: '/lnd',         label: 'Development',  Icon: BookOpen },
+          { path: '/recognition', label: 'Recognition',  Icon: Award },
+          { path: '/policies',    label: 'Policies',     Icon: FileText },
         ]
       }];
     }
@@ -131,30 +126,34 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
 
   if (collapsed) {
     return (
-      <div style={{ width: '56px', backgroundColor: '#191919', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 0', gap: '8px', transition: 'width 0.2s', zIndex: 50, minHeight: '100vh' }}>
-        <div style={{ width: '36px', height: '36px', backgroundColor: '#FF353F', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginBottom: '16px' }} onClick={() => onToggle(false)}>
-          <span style={{ color: '#fff', fontWeight: 900, fontSize: '16px' }}>S</span>
+      <div style={{ width: '56px', backgroundColor: '#191919', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 0', gap: '8px', zIndex: 50, minHeight: '100vh' }}>
+        <div data-testid="solvit-logo-mark" style={{ width: '36px', height: '36px', backgroundColor: '#FF353F', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginBottom: '16px' }} onClick={() => onToggle(false)}>
+          <span style={{ color: '#fff', fontWeight: 900, fontSize: '16px', fontFamily: 'Barlow' }}>S</span>
         </div>
-        <button onClick={() => onToggle(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: '8px', transition: 'color 0.2s' }}>≡</button>
+        <button data-testid="sidebar-expand" onClick={() => onToggle(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', padding: '8px' }}>
+          <Menu size={18} />
+        </button>
       </div>
     );
   }
 
   return (
-    <div style={{ width: '240px', backgroundColor: '#191919', display: 'flex', flexDirection: 'column', minHeight: '100vh', fontFamily: 'Arial, Helvetica, sans-serif', flexShrink: 0 }}>
+    <div style={{ width: '240px', backgroundColor: '#191919', display: 'flex', flexDirection: 'column', minHeight: '100vh', fontFamily: 'Nunito Sans, sans-serif', flexShrink: 0 }}>
       {/* Logo */}
       <div style={{ padding: '20px 20px 12px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ width: '32px', height: '32px', backgroundColor: '#FF353F', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <span style={{ color: '#fff', fontWeight: 900, fontSize: '16px' }}>S</span>
+              <span style={{ color: '#fff', fontWeight: 900, fontSize: '16px', fontFamily: 'Barlow' }}>S</span>
             </div>
             <div>
-              <div style={{ color: '#fff', fontWeight: 900, fontSize: '14px', letterSpacing: '-0.03em' }}>SOLVIT</div>
+              <div style={{ color: '#fff', fontWeight: 900, fontSize: '14px', letterSpacing: '-0.03em', fontFamily: 'Barlow' }}>SOLVIT</div>
               <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>People Platform</div>
             </div>
           </div>
-          <button onClick={() => onToggle(true)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '16px', padding: '4px' }}>‹</button>
+          <button data-testid="sidebar-collapse" onClick={() => onToggle(true)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', padding: '4px' }}>
+            <ChevronLeft size={16} />
+          </button>
         </div>
       </div>
 
@@ -173,7 +172,7 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
           <button data-testid="notif-bell" onClick={() => setShowNotif(s => !s)} style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: '6px', color: 'rgba(255,255,255,0.7)' }}>
             <Bell size={16} />
             {unread > 0 && (
-              <span data-testid="notif-badge" style={{ position: 'absolute', top: '-2px', right: '-2px', backgroundColor: '#FF353F', color: '#fff', fontSize: '9px', fontWeight: 900, padding: '1px 5px', borderRadius: '8px', minWidth: '14px', textAlign: 'center', lineHeight: 1.2 }}>{unread > 99 ? '99+' : unread}</span>
+              <span data-testid="notif-badge" style={{ position: 'absolute', top: '-2px', right: '-2px', backgroundColor: '#FF353F', color: '#fff', fontSize: '9px', fontWeight: 900, padding: '1px 5px', minWidth: '14px', textAlign: 'center', lineHeight: 1.2 }}>{unread > 99 ? '99+' : unread}</span>
             )}
           </button>
         </div>
@@ -206,40 +205,45 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
         {filteredMenu.map(section => (
           <div key={section.section} style={{ marginBottom: '4px' }}>
             <div style={{ padding: '8px 20px 4px', fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)' }}>{section.section}</div>
-            {section.items.map(item => (
-              <button
-                key={item.path}
-                data-testid={`nav-${item.path.replace('/', '')}`}
-                onClick={() => navigate(item.path)}
-                style={{
-                  width: '100%', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: '10px',
-                  backgroundColor: isActive(item.path) ? 'rgba(255,53,63,0.15)' : 'transparent',
-                  borderLeft: isActive(item.path) ? '3px solid #FF353F' : '3px solid transparent',
-                  border: 'none', borderRight: 'none', borderTop: 'none', borderBottom: 'none',
-                  borderLeftColor: isActive(item.path) ? '#FF353F' : 'transparent',
-                  borderLeftStyle: 'solid', borderLeftWidth: '3px',
-                  color: isActive(item.path) ? '#fff' : 'rgba(255,255,255,0.6)',
-                  cursor: 'pointer', textAlign: 'left', fontSize: '12px', fontFamily: 'Arial',
-                  transition: 'all 0.15s'
-                }}
-                onMouseEnter={e => { if (!isActive(item.path)) e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.06)'; }}
-                onMouseLeave={e => { if (!isActive(item.path)) e.currentTarget.style.backgroundColor = 'transparent'; }}
-              >
-                <span style={{ fontSize: '14px', width: '18px', textAlign: 'center' }}>{item.icon}</span>
-                <span style={{ fontWeight: isActive(item.path) ? 700 : 400 }}>{item.label}</span>
-              </button>
-            ))}
+            {section.items.map(item => {
+              const Icon = item.Icon;
+              const active = isActive(item.path);
+              return (
+                <button
+                  key={item.path}
+                  data-testid={`nav-${item.path.replace('/', '')}`}
+                  onClick={() => navigate(item.path)}
+                  style={{
+                    width: '100%', padding: '9px 20px', display: 'flex', alignItems: 'center', gap: '12px',
+                    backgroundColor: active ? 'rgba(255,53,63,0.15)' : 'transparent',
+                    borderLeft: active ? '3px solid #FF353F' : '3px solid transparent',
+                    border: 'none',
+                    borderLeftColor: active ? '#FF353F' : 'transparent',
+                    borderLeftStyle: 'solid', borderLeftWidth: '3px',
+                    color: active ? '#fff' : 'rgba(255,255,255,0.6)',
+                    cursor: 'pointer', textAlign: 'left', fontSize: '12px',
+                    fontFamily: 'Nunito Sans, sans-serif',
+                    transition: 'all 0.15s'
+                  }}
+                  onMouseEnter={e => { if (!active) e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.06)'; }}
+                  onMouseLeave={e => { if (!active) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                >
+                  <Icon size={ICON_SIZE} strokeWidth={active ? 2.4 : 2} />
+                  <span style={{ fontWeight: active ? 700 : 500 }}>{item.label}</span>
+                </button>
+              );
+            })}
           </div>
         ))}
       </div>
 
-      {/* AI Agent toggle (HR Admin only) */}
+      {/* AI Agent toggle */}
       {(user?.role === 'hr_admin' || user?.role === 'hr_manager') && (
         <div style={{ padding: '12px 20px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
           <button
             data-testid="ai-agent-toggle"
             onClick={onAIToggle}
-            style={{ width: '100%', padding: '10px 14px', backgroundColor: aiOpen ? '#FF353F' : 'rgba(255,53,63,0.15)', color: aiOpen ? '#fff' : '#FF353F', border: '1px solid rgba(255,53,63,0.4)', cursor: 'pointer', fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', fontFamily: 'Arial', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', transition: 'all 0.2s' }}
+            style={{ width: '100%', padding: '10px 14px', backgroundColor: aiOpen ? '#FF353F' : 'rgba(255,53,63,0.15)', color: aiOpen ? '#fff' : '#FF353F', border: '1px solid rgba(255,53,63,0.4)', cursor: 'pointer', fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', fontFamily: 'Barlow, sans-serif', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', transition: 'all 0.2s' }}
           >
             <Brain size={14} />
             AI HR Agent
@@ -249,7 +253,7 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
 
       {/* Logout */}
       <div style={{ padding: '12px 20px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-        <button onClick={handleLogout} style={{ width: '100%', padding: '8px 12px', backgroundColor: 'transparent', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', fontSize: '11px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: 'Arial', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', transition: 'all 0.2s' }}>
+        <button data-testid="logout-btn" onClick={handleLogout} style={{ width: '100%', padding: '8px 12px', backgroundColor: 'transparent', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', fontSize: '11px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: 'Barlow, sans-serif', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', transition: 'all 0.2s' }}>
           <LogOut size={12} />
           Sign Out
         </button>

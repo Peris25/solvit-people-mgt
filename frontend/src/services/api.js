@@ -127,6 +127,8 @@ export const sendTestEmail = (data) => api.post('/settings/email-test', data);
 export const getTrainingRequests = (params) => api.get('/lnd/training', { params });
 export const createTrainingRequest = (data) => api.post('/lnd/training', data);
 export const trainingDecision = (id, data) => api.put(`/lnd/training/${id}/decision`, data);
+export const getSkillsMatrix = (empId) => api.get(`/lnd/skills-matrix/${empId}`);
+export const updateSkillsMatrix = (empId, data) => api.post(`/lnd/skills-matrix/${empId}`, data);
 
 // Compensation
 export const getPayBands = () => api.get('/compensation/pay-bands');
@@ -168,6 +170,8 @@ export const createLeaveRequest = (data) => api.post('/leave', data);
 export const leaveDecision = (id, data) => api.put(`/leave/${id}/decision`, data);
 export const getLeaveBalances = (empId) => api.get(`/leave/balances/${empId}`);
 export const getLeaveTypes = () => api.get('/leave/types');
+export const getLeaveRollover = (empId) => api.get(`/leave/rollover/${empId}`);
+export const getLeaveCalendar = (year, month) => api.get('/leave/calendar', { params: { year, month } });
 
 // Calendar
 export const getCalendarEvents = (daysAhead) => api.get('/calendar', { params: { days_ahead: daysAhead } });

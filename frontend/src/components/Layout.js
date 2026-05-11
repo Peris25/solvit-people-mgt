@@ -27,14 +27,14 @@ export default function Layout() {
   // Solver — mobile bottom-nav-only interface (no sidebar)
   if (user.role === 'solver') {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#F5F5F5', fontFamily: 'Arial, Helvetica, sans-serif' }}>
+      <div style={{ minHeight: '100vh', backgroundColor: '#F5F5F5', fontFamily: 'Nunito Sans, sans-serif' }}>
         <Outlet />
       </div>
     );
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#F5F5F5', fontFamily: 'Arial, Helvetica, sans-serif' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#F5F5F5', fontFamily: 'Nunito Sans, sans-serif' }}>
       <Sidebar collapsed={sidebarCollapsed} onToggle={setSidebarCollapsed} onAIToggle={() => setAiOpen(p => !p)} aiOpen={aiOpen} />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', marginRight: aiOpen ? '380px' : 0, transition: 'margin-right 0.3s' }}>
         <main style={{ flex: 1, overflowY: 'auto', padding: '24px', maxWidth: '1400px', margin: '0 auto', width: '100%' }}>

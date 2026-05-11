@@ -17,6 +17,8 @@ export default function Performance() {
   const [newReview, setNewReview] = useState({ employee_id: '', cycle_type: 'Year_End', cycle_year: new Date().getFullYear() });
   const [saving, setSaving] = useState(false);
   const [talentDensity, setTalentDensity] = useState(null);
+  const [viewReview, setViewReview] = useState(null);
+  const [viewEmpName, setViewEmpName] = useState('');
 
   useEffect(() => { load(); if (['hr_admin', 'hr_manager', 'executive'].includes(user?.role)) api.getTalentDensity().then(r => setTalentDensity(r.data)).catch(() => {}); }, []);
 
@@ -49,6 +51,23 @@ export default function Performance() {
   };
 
   const NINE_BOX_LABELS = { Stars: '#22C55E', Core_Contributor: '#3B82F6', Culture_Risk: '#F59E0B', Realignment_Needed: '#F97316', Exit_Track: '#EF4444' };
+
+  const openView = async (r) => {
+    try {
+      const res = await api.getReview(r.id);
+      setViewReview(res.data || r);
+    } catch {
+      setViewReview(r);
+    }
+    const emp = employees.find(e => e.id === r.employee_id);
+    setViewEmpName(emp?.full_name || r.employee_id);
+  };
+
+  const printPDF = () => {
+    // Uses browser native print → "Save as PDF". Print CSS in index.css confines
+    // output to the .solvit-print-area block.
+    window.print();
+  };
 
   // 9-box grid layout (rows = Values High→Low, cols = Performance Low→High)
   // Per FRD §2 correction: axes are Performance vs Values (NOT Potential)
@@ -154,7 +173,7 @@ export default function Performance() {
             <span>Low (2.0+)</span><span>← KPI PERFORMANCE (Section A) →</span><span>High (1.0-1.49)</span>
           </div>
           <div style={{ marginTop: '12px', padding: '10px 14px', backgroundColor: '#FEF3C7', border: '1px solid #FCD34D', fontSize: '11px', color: '#78350F' }}>
-            💡 Drag an employee card between cells to reassign their 9-box placement. Y-axis = Section B values alignment (peer scores 7-10/4-7/&lt;4). X-axis = Section A KPI score. Values failure is non-negotiable — high KPI does NOT override low values.
+            Tip: Drag an employee card between cells to reassign their 9-box placement. Y-axis = Section B values alignment (peer scores 7-10/4-7/&lt;4). X-axis = Section A KPI score. Values failure is non-negotiable — high KPI does NOT override low values.
           </div>
         </div>
       </div>
@@ -236,7 +255,7 @@ export default function Performance() {
                   <td style={{ padding: '10px 14px' }}>{r.rating ? <StatusBadge status={r.rating} small /> : '—'}</td>
                   <td style={{ padding: '10px 14px' }}><StatusBadge status={r.status} small /></td>
                   <td style={{ padding: '10px 14px' }}>
-                    <button style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>View</button>
+                    <button data-testid={`view-review-${r.id}`} onClick={() => openView(r)} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontFamily: 'Barlow', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>View</button>
                   </td>
                 </tr>
               ))}
@@ -265,6 +284,79 @@ export default function Performance() {
             )}
           </div>
           {nineBox ? renderNineBoxGrid() : <div style={{ textAlign: 'center', color: '#9CA3AF', padding: '32px' }}>Click "9-Box Matrix" to load data</div>}
+        </div>
+      )}
+
+      {viewReview && (
+        <div className="solvit-no-print" style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '24px' }}>
+          <div style={{ backgroundColor: '#fff', width: '720px', maxHeight: '90vh', overflowY: 'auto', border: '1px solid rgba(25,25,25,0.15)' }}>
+            <div className="solvit-no-print" style={{ padding: '18px 24px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontFamily: 'Barlow', fontWeight: 900, letterSpacing: '-0.02em' }}>Performance Review — Read Only</h3>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button data-testid="review-pdf-btn" onClick={printPDF} style={{ padding: '8px 16px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Barlow' }}>Download PDF</button>
+                <button onClick={() => setViewReview(null)} style={{ background: 'none', border: '1px solid rgba(25,25,25,0.2)', padding: '6px 12px', cursor: 'pointer', fontSize: '11px', fontFamily: 'Barlow', fontWeight: 700, textTransform: 'uppercase' }}>Close</button>
+              </div>
+            </div>
+            <div className="solvit-print-area" data-testid="review-view-modal" style={{ padding: '24px', fontFamily: 'Nunito Sans, sans-serif', color: '#191919' }}>
+              <div style={{ borderBottom: '3px solid #FF353F', paddingBottom: '12px', marginBottom: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                  <div>
+                    <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#FF353F', fontFamily: 'Barlow' }}>SOLVIT · Performance Review</div>
+                    <h2 style={{ margin: '6px 0 0', fontFamily: 'Barlow', fontWeight: 900, letterSpacing: '-0.03em', fontSize: '24px' }}>{viewEmpName}</h2>
+                    <div style={{ fontSize: '12px', color: '#525252', marginTop: '2px' }}>{viewReview.cycle_type?.replace('_', ' ')} {viewReview.cycle_year}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#525252' }}>Overall Score</div>
+                    <div style={{ fontSize: '36px', fontWeight: 900, fontFamily: 'Barlow', letterSpacing: '-0.04em', color: '#FF353F' }}>{viewReview.overall_score ?? '—'}</div>
+                    {viewReview.rating && <div style={{ fontSize: '11px', fontWeight: 700, color: '#191919' }}>{viewReview.rating}</div>}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', marginBottom: '20px' }}>
+                {[
+                  { label: 'Section A — KPI', value: viewReview.section_a_score, sub: 'Performance objectives' },
+                  { label: 'Section B — Values', value: viewReview.section_b_score, sub: 'Peer 360° alignment' },
+                  { label: 'Section C — Output', value: viewReview.section_c_score, sub: 'NPS / CSAT / Output' },
+                ].map(s => (
+                  <div key={s.label} style={{ padding: '14px', backgroundColor: '#F5F5F5', borderLeft: '3px solid #191919' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', fontFamily: 'Barlow' }}>{s.label}</div>
+                    <div style={{ fontSize: '24px', fontWeight: 900, fontFamily: 'Barlow', letterSpacing: '-0.03em', color: '#191919', marginTop: '4px' }}>{s.value ?? '—'}</div>
+                    <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '2px' }}>{s.sub}</div>
+                  </div>
+                ))}
+              </div>
+
+              {viewReview.section_a_kpis && viewReview.section_a_kpis.length > 0 && (
+                <div style={{ marginBottom: '20px' }}>
+                  <h4 style={{ margin: '0 0 8px', fontFamily: 'Barlow', fontWeight: 900, fontSize: '13px', letterSpacing: '-0.01em' }}>KPI Detail</h4>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                    <thead><tr style={{ backgroundColor: '#F5F5F5' }}>{['KPI','Weight','Score'].map(h => <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#525252', fontFamily: 'Barlow' }}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {viewReview.section_a_kpis.map((k, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid rgba(25,25,25,0.06)' }}>
+                          <td style={{ padding: '8px 12px' }}>{k.name || k.kpi || '—'}</td>
+                          <td style={{ padding: '8px 12px', color: '#525252' }}>{k.weight ? `${k.weight}%` : '—'}</td>
+                          <td style={{ padding: '8px 12px', fontWeight: 700 }}>{k.score ?? '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', fontSize: '12px' }}>
+                <div><strong style={{ color: '#525252', textTransform: 'uppercase', fontSize: '10px', letterSpacing: '0.12em', fontFamily: 'Barlow' }}>Status:</strong> <span style={{ marginLeft: '6px' }}>{viewReview.status || '—'}</span></div>
+                <div><strong style={{ color: '#525252', textTransform: 'uppercase', fontSize: '10px', letterSpacing: '0.12em', fontFamily: 'Barlow' }}>9-Box:</strong> <span style={{ marginLeft: '6px' }}>{(viewReview.nine_box_placement || '—').replace('_', ' ')}</span></div>
+                {viewReview.manager_comments && <div style={{ gridColumn: '1 / -1' }}><strong style={{ color: '#525252', textTransform: 'uppercase', fontSize: '10px', letterSpacing: '0.12em', fontFamily: 'Barlow' }}>Manager Comments:</strong><p style={{ marginTop: '4px' }}>{viewReview.manager_comments}</p></div>}
+                {viewReview.employee_comments && <div style={{ gridColumn: '1 / -1' }}><strong style={{ color: '#525252', textTransform: 'uppercase', fontSize: '10px', letterSpacing: '0.12em', fontFamily: 'Barlow' }}>Employee Comments:</strong><p style={{ marginTop: '4px' }}>{viewReview.employee_comments}</p></div>}
+              </div>
+
+              <div style={{ marginTop: '32px', paddingTop: '12px', borderTop: '1px solid rgba(25,25,25,0.08)', fontSize: '10px', color: '#9CA3AF', textAlign: 'center' }}>
+                Generated from Solvit People Platform · {new Date().toLocaleDateString('en-GB')} · Confidential
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
