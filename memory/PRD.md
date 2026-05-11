@@ -38,6 +38,37 @@ Build a full-stack People Management Platform for **Solvit Limited** (Kenyan tec
 
 ## Implemented (May 2025 → Feb 2026)
 
+### Iter 8 — UAT Round 1 (UI Brand + Leave + PDF + Skills Matrix) ✅
+**Solvit Brand Identity sweep:**
+- Typography: Barlow (display) + Nunito Sans (body) loaded via Google Fonts; global CSS variables and overrides remap legacy `fontFamily: 'Arial'` inline styles to brand body font
+- Colors: #FF353F primary red · #191919 black · #F5F5F5 light grey enforced across new components
+- Sidebar fully rebuilt with lucide-react SVG icons (LayoutDashboard, Users, Zap, Target, Rocket, BarChart3, ClipboardList, ShieldCheck, BookOpen, Briefcase, Palmtree, Wallet, Award, Scale, FileText, TrendingUp, CheckCircle2, CalendarDays, FileEdit, ListChecks, Cog, Settings, Brain) — zero emoji glyphs
+- Global CSS forces `border-radius: 4px` on rounded-pill buttons; print styles for `.solvit-print-area`
+
+**Leave Module overhaul (frontend):**
+- 4-tab layout: My Applications · Team Leave (LM/HR) · Calendar · Rollover
+- "Accrued Balance" black brand card (1.75 days/month × completed_months_in_year)
+- Rollover banner + Rollover panel with carried_forward / used / remaining stat boxes
+- Apply modal: required Line Manager EmployeePicker (`leave-lm-picker`) — client-side alert when missing
+- Monthly Leave Calendar (`leave-calendar`) with prev/next month nav and per-day event chips
+
+**Performance Review:**
+- Functional "View" button → read-only modal (`review-view-modal`) with section A/B/C breakdown, KPI detail table, comments
+- "Download PDF" button (`review-pdf-btn`) uses `window.print()` + print CSS confined to `.solvit-print-area` — zero new deps
+
+**Other UAT items:**
+- Solver Database "View" detail modal (`solver-view-modal`) — phone, tier, accuracy, zones, vehicle categories
+- L&D Skills Matrix tab — per-employee picker, add/edit/remove skills with Beginner/Intermediate/Advanced/Expert
+- Employee Sidebar: added My Reviews + My Surveys entries
+
+**Backend hardening:**
+- `routes/leave.py` `fmt()` no longer overwrites UUID `id` with Mongo `_id` (POST→GET id parity restored)
+- `/api/leave/rollover/{empId}` always returns `deadline` + non-null `banner` for empty-state shape parity
+
+**Test Results — Iter 8:** 18/18 backend pytest ✅ · Frontend smoke pass (sidebar SVG icons, Nunito Sans body, Barlow H1, 4 leave tabs, accrued card, lm-picker, calendar grid, rollover panel)
+
+### Iter 1–7 — Foundation through Structural corrections (see earlier sections)
+
 ### Iter 1–3 — Foundation, FRD corrections
 - 22 module pages, AI Agent, sequential Forms engine, 9-Box, Talent Density, Voluntary Attrition, Stay Interview, KES + en-GB date, drag-drop Performance × Values, "My Tasks", bulk actions
 
@@ -110,11 +141,14 @@ Settings wiring (leave/probation/PAYE/scoring), AccessGate, Kenya helpers, CSV e
 ### P2 — Backlog
 - S3-compatible photo / document uploads (employee photos, policy PDFs, exit clearance)
 - Multi-tenancy (currently hardcoded "solvit")
+- Role-specific dashboards for Line Manager & FinOps (D04) — currently both fall through to HR Admin Dashboard
+- Salary Single Source of Truth standardisation (D08)
+- Onboarding Drill-down view (D13)
 - Refactor: routes → models/ + services/ split
 - pytest coverage expansion
 - Mobile-responsive layout audit
-- Wire onboarding week labels + recognition event months from settings (low impact, mostly UI)
-- Unify `/api/leave/types` response shape (currently dict; consider list-of-objects)
+- Wire onboarding week labels + recognition event months from settings
+- Unify `/api/leave/types` response shape
 
 ## Test Credentials
 See `/app/memory/test_credentials.md` (9 accounts, all `Solvit@2026`).

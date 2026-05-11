@@ -150,7 +150,7 @@ export default function Leave() {
 
       {/* Rollover banner */}
       {rollover && rollover.carried_forward > 0 && (
-        <div data-testid="rollover-banner" style={{ padding: '12px 16px', backgroundColor: rollover.deadline_passed ? '#FEE2E2' : '#FEF3C7', borderLeft: `4px solid ${rollover.deadline_passed ? '#FF353F' : '#F59E0B'}`, marginBottom: '20px', fontSize: '12px', color: '#191919' }}>
+        <div data-testid="rollover-banner" style={{ padding: '12px 16px', backgroundColor: rollover.deadline_passed ? '#FEE2E2' : '#FEF3C7', borderLeftWidth: '4px', borderLeftStyle: 'solid', borderLeftColor: rollover.deadline_passed ? '#FF353F' : '#F59E0B', marginBottom: '20px', fontSize: '12px', color: '#191919' }}>
           <strong style={{ color: '#FF353F' }}>Rollover Leave:</strong> {rollover.remaining} of {rollover.carried_forward} carried-forward days remaining. {rollover.banner}
         </div>
       )}
@@ -391,7 +391,7 @@ function RolloverPanel({ rollover }) {
         </div>
       </div>
       {rollover.banner && (
-        <div style={{ padding: '12px 16px', backgroundColor: rollover.deadline_passed ? '#FEE2E2' : '#FEF3C7', borderLeft: `4px solid ${rollover.deadline_passed ? '#FF353F' : '#F59E0B'}`, fontSize: '12px', color: '#191919' }}>
+        <div style={{ padding: '12px 16px', backgroundColor: rollover.deadline_passed ? '#FEE2E2' : '#FEF3C7', borderLeftWidth: '4px', borderLeftStyle: 'solid', borderLeftColor: rollover.deadline_passed ? '#FF353F' : '#F59E0B', fontSize: '12px', color: '#191919' }}>
           {rollover.banner} {rollover.deadline_passed && <strong style={{ color: '#FF353F' }}>· Deadline passed — remaining days forfeited.</strong>}
         </div>
       )}
@@ -400,6 +400,6 @@ function RolloverPanel({ rollover }) {
   );
 }
 
-const statBox = { padding: '16px', backgroundColor: '#F5F5F5', borderLeft: '3px solid #FF353F' };
+const statBox = { padding: '16px', backgroundColor: '#F5F5F5', borderLeftWidth: '3px', borderLeftStyle: 'solid', borderLeftColor: '#FF353F' };
 const statLabel = { fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#525252', fontFamily: 'Barlow' };
 const statValue = { fontSize: '32px', fontWeight: 900, fontFamily: 'Barlow', letterSpacing: '-0.04em', color: '#191919', marginTop: '4px' };

@@ -47,7 +47,10 @@ class LeaveRequest(BaseModel):
 def fmt(doc):
     if not doc:
         return None
-    doc["id"] = str(doc["_id"])
+    # Preserve the UUID `id` field set on insert. Only fall back to the Mongo
+    # ObjectId string when no UUID id is stored (legacy records).
+    if not doc.get("id"):
+        doc["id"] = str(doc["_id"])
     doc["_id"] = str(doc["_id"])
     return doc
 
@@ -248,15 +251,19 @@ async def get_rollover_balance(employee_id: str, request: Request):
     db = get_db()
     # rollover record schema: { tenant_id, employee_id, year, carried_forward, used, status }
     rec = await db.leave_rollover.find_one({"tenant_id": "solvit", "employee_id": employee_id, "year": datetime.now(timezone.utc).year})
-    if not rec:
-        return {"carried_forward": 0, "used": 0, "remaining": 0, "deadline_passed": False, "banner": None}
-    used = int(rec.get("used", 0))
-    cf = int(rec.get("carried_forward", 0))
     from routes.masters_settings import get_setting
     deadline = await get_setting("retention", "rollover_leave_deadline_month_day", "03-31") or "03-31"
     now = datetime.now(timezone.utc)
     md = f"{now.month:02d}-{now.day:02d}"
     deadline_passed = md > deadline
+    if not rec:
+        return {
+            "year": now.year, "carried_forward": 0, "used": 0, "remaining": 0,
+            "deadline": deadline, "deadline_passed": deadline_passed,
+            "banner": f"No carry-forward leave from {now.year - 1}. Rollover deadline is {deadline.replace('-', '/')}.",
+        }
+    used = int(rec.get("used", 0))
+    cf = int(rec.get("carried_forward", 0))
     return {
         "year": rec.get("year"),
         "carried_forward": cf,
