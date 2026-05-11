@@ -16,7 +16,7 @@ LEAVE_TYPE_DETAILS = {
     "Sick":          {"days_entitlement": 30, "description": "30 days full pay + 15 days half pay"},
     "Maternity":     {"days_entitlement": 90, "description": "3 months paid maternity leave"},
     "Paternity":     {"days_entitlement": 14, "description": "2 weeks paternity leave"},
-    "Compassionate": {"days_entitlement": 5,  "description": "Compassionate leave"},
+    "Compassionate": {"days_entitlement": 14, "description": "Compassionate leave — 14 days per event"},
     "Unpaid":        {"days_entitlement": 0,  "description": "Unpaid leave — entitlement at HR discretion"},
 }
 
@@ -39,6 +39,8 @@ class LeaveRequest(BaseModel):
     start_date: str
     end_date: str
     handover_contact: Optional[str] = None
+    handover_contact_id: Optional[str] = None
+    line_manager_id: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -162,6 +164,19 @@ async def leave_decision(request_id: str, request: Request):
     if not result:
         raise HTTPException(status_code=404, detail="Leave request not found")
 
+    # Fix 4d — auto-notify employee on approve/reject
+    if update.get("status") in ("Approved", "Rejected"):
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "tenant_id": "solvit",
+            "recipient_id": result.get("employee_id"),
+            "category": "Leave",
+            "title": f"Leave {update['status']}",
+            "message": f"{result.get('leave_type','Annual')} leave ({result.get('start_date')} → {result.get('end_date')}) {update['status'].lower()} by {user.get('full_name') or user.get('email')}. {('Reason: ' + update.get('manager_reason','')) if update['status']=='Rejected' else ''}".strip(),
+            "is_read": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+
     if update.get("status") == "Approved":
         from automation.engine import automation_engine
         await automation_engine.fire_event("leave_approved", {"employee_id": result.get("employee_id"), "start_date": result.get("start_date")})
@@ -173,7 +188,9 @@ async def leave_decision(request_id: str, request: Request):
 async def get_leave_balances(employee_id: str, request: Request):
     user = await get_current_user(request)
     db = get_db()
-    # Calculate used leave per type
+    # Fetch employee for service-month based accrual (Fix 3a)
+    emp = await db.employees.find_one({"id": employee_id}) or await db.employees.find_one({"_id": ObjectId(employee_id) if ObjectId.is_valid(employee_id) else None})
+
     used = {}
     current_year = datetime.now(timezone.utc).year
     requests = await db.leave_requests.find({
@@ -186,15 +203,113 @@ async def get_leave_balances(employee_id: str, request: Request):
         lt = r.get("leave_type", "Annual")
         used[lt] = used.get(lt, 0) + r.get("working_days", 0)
 
+    # Compute completed months of service in current leave year (Jan-current month)
+    now = datetime.now(timezone.utc)
+    completed_months_in_year = max(0, now.month - 1)  # Jan = 0 completed months
+    if emp and emp.get("start_date"):
+        try:
+            sd = datetime.fromisoformat(emp["start_date"])
+            if sd.year == now.year:
+                completed_months_in_year = max(0, now.month - sd.month - (0 if now.day >= sd.day else 1))
+        except Exception:
+            pass
+    accrued_annual = round(completed_months_in_year * 1.75, 2)
+
     balances = {}
     types = await _active_leave_types()
     for leave_type, info in types.items():
         entitlement = info["days_entitlement"]
         used_days = used.get(leave_type, 0)
-        balances[leave_type] = {
+        entry = {
             "entitlement": entitlement,
             "used": used_days,
             "remaining": max(0, entitlement - used_days),
             "description": info["description"]
         }
-    return balances
+        if leave_type == "Annual":
+            # Fix 3a — show accrued working figure alongside annual entitlement
+            entry["accrued_kenyan_act"] = accrued_annual
+            entry["completed_months_in_year"] = completed_months_in_year
+            entry["remaining"] = round(max(0, accrued_annual - used_days), 2)
+            entry["balance_label"] = "Accrued Balance"
+        balances[leave_type] = entry
+
+    # Top-level convenience keys
+    annual_days_remaining = balances.get("Annual", {}).get("remaining", 0)
+    sick_days_remaining = balances.get("Sick", {}).get("remaining", 0)
+    return {**balances, "annual_days_remaining": annual_days_remaining, "sick_days_remaining": sick_days_remaining,
+            "accrued_annual": accrued_annual}
+
+
+@router.get("/rollover/{employee_id}")
+async def get_rollover_balance(employee_id: str, request: Request):
+    """Fix 3b — rollover balance display. Banner if non-zero with 31 March deadline."""
+    user = await get_current_user(request)
+    db = get_db()
+    # rollover record schema: { tenant_id, employee_id, year, carried_forward, used, status }
+    rec = await db.leave_rollover.find_one({"tenant_id": "solvit", "employee_id": employee_id, "year": datetime.now(timezone.utc).year})
+    if not rec:
+        return {"carried_forward": 0, "used": 0, "remaining": 0, "deadline_passed": False, "banner": None}
+    used = int(rec.get("used", 0))
+    cf = int(rec.get("carried_forward", 0))
+    from routes.masters_settings import get_setting
+    deadline = await get_setting("retention", "rollover_leave_deadline_month_day", "03-31") or "03-31"
+    now = datetime.now(timezone.utc)
+    md = f"{now.month:02d}-{now.day:02d}"
+    deadline_passed = md > deadline
+    return {
+        "year": rec.get("year"),
+        "carried_forward": cf,
+        "used": used,
+        "remaining": max(0, cf - used),
+        "deadline": deadline,
+        "deadline_passed": deadline_passed,
+        "banner": f"Unutilised rollover leave must be taken by {deadline.replace('-', '/')}. Days not taken by this date will be forfeited.",
+    }
+
+
+@router.get("/calendar")
+async def leave_calendar(request: Request, year: Optional[int] = None, month: Optional[int] = None):
+    """Fix 4e — leave calendar. HR Admin sees all; line manager sees own direct reports' dept."""
+    user = await get_current_user(request)
+    db = get_db()
+    now = datetime.now(timezone.utc)
+    year = year or now.year
+    month = month or now.month
+    start = f"{year:04d}-{month:02d}-01"
+    # Compute month end
+    if month == 12:
+        next_m = f"{year+1:04d}-01-01"
+    else:
+        next_m = f"{year:04d}-{month+1:02d}-01"
+
+    query = {"tenant_id": "solvit", "status": {"$in": ["Approved", "Pending"]},
+             "start_date": {"$lt": next_m}, "end_date": {"$gte": start}}
+    rows = await db.leave_requests.find(query).to_list(500)
+    # Enrich with employee
+    emp_ids = list({r.get("employee_id") for r in rows if r.get("employee_id")})
+    emps = {}
+    async for e in db.employees.find({"id": {"$in": emp_ids}}, {"id": 1, "full_name": 1, "department": 1}):
+        emps[e["id"]] = e
+
+    if user["role"] == "line_manager":
+        # Only show employees in the line manager's department
+        my_dept = (await db.employees.find_one({"work_email": user.get("email")}) or {}).get("department")
+        if my_dept:
+            rows = [r for r in rows if (emps.get(r.get("employee_id")) or {}).get("department") == my_dept]
+
+    out = []
+    for r in rows:
+        emp = emps.get(r.get("employee_id"), {})
+        out.append({
+            "id": str(r.get("id", r.get("_id", ""))),
+            "employee_id": r.get("employee_id"),
+            "employee_name": emp.get("full_name", ""),
+            "department": emp.get("department", ""),
+            "leave_type": r.get("leave_type"),
+            "start_date": r.get("start_date"),
+            "end_date": r.get("end_date"),
+            "working_days": r.get("working_days"),
+            "status": r.get("status"),
+        })
+    return {"year": year, "month": month, "events": out}

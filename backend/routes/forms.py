@@ -9,6 +9,17 @@ import uuid
 
 router = APIRouter(prefix="/forms", tags=["forms"])
 
+
+@router.get("/active-survey")
+async def get_active_survey(request: Request):
+    """D11 — return the correct survey form for the caller's role.
+    Solver → form-05 (mobile Alignment Survey for Solvers).
+    FTE (any other role) → form-04.
+    Routing is enforced at the engine layer."""
+    user = await get_current_user(request)
+    form_id = "form-05" if user.get("role") == "solver" else "form-04"
+    return {"form_id": form_id, "role": user.get("role")}
+
 # All 32 form schemas
 FORM_SCHEMAS = {
     "form-01": {

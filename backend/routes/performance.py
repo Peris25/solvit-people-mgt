@@ -110,7 +110,28 @@ async def list_reviews(request: Request, employee_id: Optional[str] = None, cycl
         ids = [str(e.get("id", str(e["_id"]))) for e in direct_reports]
         query["employee_id"] = {"$in": ids}
     reviews = await db.performance_reviews.find(query).sort("created_at", -1).to_list(200)
-    return [fmt(r) for r in reviews]
+    # Enrich with employee name + round scores (D02, D03)
+    emp_ids = list({r.get("employee_id") for r in reviews if r.get("employee_id")})
+    emp_map = {}
+    if emp_ids:
+        async for e in db.employees.find({"id": {"$in": emp_ids}}, {"id": 1, "full_name": 1, "role_title": 1, "department": 1}):
+            emp_map[e.get("id")] = e
+    out = []
+    for r in reviews:
+        rec = fmt(r)
+        emp = emp_map.get(rec.get("employee_id"))
+        if emp:
+            rec["employee_name"] = emp.get("full_name")
+            rec["role_title"] = emp.get("role_title")
+            rec["department"] = emp.get("department")
+        for k in ("overall_score", "section_a_score", "section_b_score", "section_c_score"):
+            if rec.get(k) is not None:
+                try:
+                    rec[k] = round(float(rec[k]), 1)
+                except Exception:
+                    pass
+        out.append(rec)
+    return out
 
 
 @router.post("")
@@ -312,7 +333,20 @@ async def get_review(review_id: str, request: Request):
         r = await db.performance_reviews.find_one({"id": review_id})
     if not r:
         raise HTTPException(status_code=404, detail="Review not found")
-    return fmt(r)
+    rec = fmt(r)
+    # Enrich + round (D02 / D03)
+    emp = await db.employees.find_one({"id": rec.get("employee_id")})
+    if emp:
+        rec["employee_name"] = emp.get("full_name")
+        rec["role_title"] = emp.get("role_title")
+        rec["department"] = emp.get("department")
+    for k in ("overall_score", "section_a_score", "section_b_score", "section_c_score"):
+        if rec.get(k) is not None:
+            try:
+                rec[k] = round(float(rec[k]), 1)
+            except Exception:
+                pass
+    return rec
 
 
 @router.put("/{review_id}")

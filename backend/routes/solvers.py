@@ -180,3 +180,99 @@ async def activate_solver(solver_id: str, request: Request):
     if not result:
         raise HTTPException(status_code=404, detail="Solver not found")
     return fmt(result)
+
+
+
+@router.post("/{solver_id}/client-rating")
+async def submit_client_rating(solver_id: str, request: Request):
+    """Real-time client rating submission for a completed job (Fix 1).
+    Body: { job_id, accuracy (0-100), timeliness (0-100), overall (0-100), client_id, comment }
+    Writes the rating and recomputes the solver's 30-day / 90-day / all-time averages.
+    """
+    user = await get_current_user(request)
+    db = get_db()
+    body = await request.json()
+    for f in ("accuracy", "timeliness", "overall"):
+        v = body.get(f)
+        if v is None or not (0 <= float(v) <= 100):
+            raise HTTPException(status_code=400, detail=f"{f} must be a number 0–100")
+    rating_doc = {
+        "id": str(uuid.uuid4()),
+        "tenant_id": "solvit",
+        "solver_id": solver_id,
+        "job_id": body.get("job_id"),
+        "client_id": body.get("client_id"),
+        "accuracy": float(body["accuracy"]),
+        "timeliness": float(body["timeliness"]),
+        "overall": float(body["overall"]),
+        "comment": body.get("comment", ""),
+        "submitted_by": user["id"],
+        "voided": False,
+        "void_reason": None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.solver_ratings.insert_one(rating_doc)
+    await _recompute_solver_averages(db, solver_id)
+    return {"submitted": True, "rating_id": rating_doc["id"]}
+
+
+async def _recompute_solver_averages(db, solver_id: str):
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    cutoff_30 = (now - timedelta(days=30)).isoformat()
+    cutoff_90 = (now - timedelta(days=90)).isoformat()
+    all_ratings = await db.solver_ratings.find({"solver_id": solver_id, "voided": False}).to_list(1000)
+
+    def _avg(ratings, field):
+        if not ratings: return None
+        return round(sum(r[field] for r in ratings) / len(ratings), 1)
+
+    r_30 = [r for r in all_ratings if r["created_at"] >= cutoff_30]
+    r_90 = [r for r in all_ratings if r["created_at"] >= cutoff_90]
+    latest = max(all_ratings, key=lambda r: r["created_at"]) if all_ratings else None
+    update = {
+        "latest_client_rating": latest["overall"] if latest else None,
+        "latest_rating_at": latest["created_at"] if latest else None,
+        "client_rating_30d": _avg(r_30, "overall"),
+        "client_rating_90d": _avg(r_90, "overall"),
+        "accuracy_score": _avg(all_ratings, "accuracy"),
+        "timeliness_score": _avg(all_ratings, "timeliness"),
+        "client_rating_average": _avg(all_ratings, "overall"),
+        "updated_at": now.isoformat(),
+    }
+    try:
+        await db.solvers.update_one({"_id": ObjectId(solver_id)}, {"$set": update})
+    except Exception:
+        await db.solvers.update_one({"id": solver_id}, {"$set": update})
+
+
+@router.get("/{solver_id}/ratings")
+async def list_solver_ratings(solver_id: str, request: Request):
+    user = await get_current_user(request)
+    if user["role"] not in ("hr_admin", "hr_manager", "it_admin", "line_manager"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    db = get_db()
+    ratings = await db.solver_ratings.find({"solver_id": solver_id}).sort("created_at", -1).to_list(200)
+    return [fmt(r) for r in ratings]
+
+
+@router.post("/ratings/{rating_id}/void")
+async def void_rating(rating_id: str, request: Request):
+    """IT Admin only — void a rating with a mandatory reason (Fix 1)."""
+    user = await get_current_user(request)
+    if user["role"] != "it_admin":
+        raise HTTPException(status_code=403, detail="Only IT Admin can void ratings")
+    body = await request.json()
+    reason = (body.get("reason") or "").strip()
+    if len(reason) < 5:
+        raise HTTPException(status_code=400, detail="A void reason of ≥5 characters is required")
+    db = get_db()
+    rating = await db.solver_ratings.find_one_and_update(
+        {"id": rating_id},
+        {"$set": {"voided": True, "void_reason": reason, "voided_by": user["id"], "voided_at": datetime.now(timezone.utc).isoformat()}},
+        return_document=True
+    )
+    if not rating:
+        raise HTTPException(status_code=404, detail="Rating not found")
+    await _recompute_solver_averages(db, rating["solver_id"])
+    return {"voided": True}

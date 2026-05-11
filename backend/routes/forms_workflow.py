@@ -35,6 +35,7 @@ FORM_WORKFLOW_MATRIX = {
     "form-30": {"module": "M06", "module_name": "Solver Engagement", "workflow_trigger": "AR-SV-05: Quarterly auto-trigger", "completing_users_sequence": ["solver"], "required_signatures": [], "outcome_rule": "solver.pulse.submitted"},
     "form-31": {"module": "M07", "module_name": "Offboarding", "workflow_trigger": "Employee chooses to resign", "completing_users_sequence": ["employee"], "required_signatures": ["employee"], "outcome_rule": "resignation.submitted"},
     "form-32": {"module": "M11", "module_name": "Solver Recognition", "workflow_trigger": "AR-RK-06: Quarterly auto-create", "completing_users_sequence": ["line_manager", "finance"], "required_signatures": ["line_manager", "finance"], "outcome_rule": "solver_award.approved"},
+    "form-33": {"module": "M10+M12", "module_name": "Budget Governance — Annual Tier Confirmation", "workflow_trigger": "Finance Manager initiates annual gate confirmation", "completing_users_sequence": ["finance", "hr_admin"], "required_signatures": ["finance", "hr_admin"], "outcome_rule": "form_33_tier_confirmed"},
 }
 
 

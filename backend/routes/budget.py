@@ -368,6 +368,8 @@ async def create_allocation(request: Request):
 
     # Block overage
     summary = await allocations_summary(request)
+    if summary.get("remaining_kes", 0) <= 0:
+        raise HTTPException(status_code=400, detail="Allocations unavailable — people cost exceeds envelope. Update GP Actual or reduce cost to restore headroom.")
     if amount > summary["remaining_kes"]:
         raise HTTPException(status_code=400, detail=f"Amount exceeds remaining unallocated headroom (KES {summary['remaining_kes']:,})")
 

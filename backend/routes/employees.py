@@ -10,8 +10,8 @@ import uuid
 router = APIRouter(prefix="/employees", tags=["employees"])
 
 LIFECYCLE_STATES = ["Candidate", "Onboarding", "Probation", "Active", "On_Leave", "PIP", "Realignment", "Exiting", "Exited"]
-DEPARTMENTS = ["Operations", "Commercial", "Finance", "Technology", "HR_People", "Valuation"]
-ROLE_LEVELS = ["L1", "L2", "L3", "L4", "L5", "B1a", "B1b"]
+DEPARTMENTS = ["Operations", "Commercial & Business Development", "Finance", "Technology", "HR & People"]
+ROLE_LEVELS = ["L1", "L2", "L3", "L4", "L5"]
 EMPLOYMENT_TYPES = ["Full_Time", "Solver", "Consultant"]
 
 

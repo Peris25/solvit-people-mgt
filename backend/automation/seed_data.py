@@ -207,12 +207,49 @@ async def seed_all(db):
     await seed_pay_band_alerts(db)
     await seed_performance_reviews(db)
     await seed_notifications_and_stay_interviews(db)
+    await seed_policies(db)
     print("✅ All seed data loaded successfully")
+
+
+async def seed_policies(db):
+    """D21 — pre-load Stage 8 Policy Library entries."""
+    existing = await db.policies.count_documents({"tenant_id": "solvit"})
+    if existing >= 6:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    policies = [
+        {"title": "Employee Handbook",                                  "effective_date": "2026-01-01", "version": "1.0",
+         "summary": "Comprehensive guide to working at Solvit — benefits, conduct, processes and contacts."},
+        {"title": "Code of Conduct",                                    "effective_date": "2026-01-01", "version": "1.0",
+         "summary": "Aligned to the Five Non-Negotiables. Mandatory acknowledgement for all employees and solvers."},
+        {"title": "Disciplinary and Grievance Policy",                  "effective_date": "2026-01-01", "version": "1.0",
+         "summary": "Process for handling misconduct and employee-raised grievances. Includes show-cause, hearings, and appeals."},
+        {"title": "Leave Policy",                                       "effective_date": "2026-01-01", "version": "1.0",
+         "summary": "Entitlements, accrual rules, application process, and rollover terms per Kenyan Employment Act 2007."},
+        {"title": "Whistleblowing Policy",                              "effective_date": "2026-01-01", "version": "1.0",
+         "summary": "Confidential reporting of ethical concerns. No retaliation. Investigation procedure."},
+        {"title": "Anti-Harassment and Equal Opportunity Policy",       "effective_date": "2026-01-01", "version": "1.0",
+         "summary": "Zero tolerance for harassment, discrimination or unequal treatment. Reporting channels."},
+    ]
+    docs = []
+    for p in policies:
+        docs.append({
+            "id": str(uuid.uuid4()),
+            "tenant_id": "solvit",
+            **p,
+            "status": "Published",
+            "acknowledgement_required": True,
+            "created_at": now,
+            "updated_at": now,
+        })
+    if docs:
+        await db.policies.insert_many(docs)
+        print(f"✅ Seeded {len(docs)} policies")
 
 
 async def migrate_department_labels(db):
     """Remap historical/incorrect department labels to the 5 canonical Solvit
-    departments. Idempotent — safe to run on every boot."""
+    departments and remove UAT/test data + B1a/B1b employee levels."""
     REMAP = {
         "Leadership": "HR & People",
         "HR_People": "HR & People",
@@ -232,6 +269,32 @@ async def migrate_department_labels(db):
         total += res.modified_count
     if total:
         print(f"✅ Migrated {total} employees to canonical department labels")
+
+    # Remove UAT test fixtures from the employee database (Part 4 cleanup)
+    test_filter = {"tenant_id": "solvit", "$or": [
+        {"full_name": {"$regex": "^TEST_iter", "$options": "i"}},
+        {"work_email": {"$regex": "^test_iter", "$options": "i"}},
+    ]}
+    deleted = await db.employees.delete_many(test_filter)
+    if deleted.deleted_count:
+        print(f"✅ Removed {deleted.deleted_count} UAT test employee fixtures")
+
+    # Remove Untitled budget allocations (Part 4 cleanup)
+    unt = await db.budget_allocations.delete_many({
+        "tenant_id": "solvit",
+        "$or": [{"initiative_name": {"$regex": "^Untitled", "$options": "i"}},
+                {"initiative_name": ""}, {"initiative_name": None}]
+    })
+    if unt.deleted_count:
+        print(f"✅ Removed {unt.deleted_count} untitled budget allocations")
+
+    # Move B1a / B1b employees down to L5 (those legacy levels no longer assignable)
+    b1res = await db.employees.update_many(
+        {"tenant_id": "solvit", "role_level": {"$in": ["B1a", "B1b"]}},
+        {"$set": {"role_level": "L5"}}
+    )
+    if b1res.modified_count:
+        print(f"✅ Reassigned {b1res.modified_count} B1a/B1b employees to L5")
 
 
 async def seed_notifications_and_stay_interviews(db):

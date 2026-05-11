@@ -487,4 +487,25 @@ EXTRA_SCHEMAS = {
             ]},
         ]
     },
+    "form-33": {
+        "id": "form-33",
+        "title": "Annual Tier Confirmation",
+        "description": "Finance & Operations Manager confirms GP Actual and the active Performance Tier. On HR Admin countersignature, downstream bonus and salary-increase approvals unlock.",
+        "linked_modules": ["M10", "M13"],
+        "sections": [
+            {"id": "gp", "title": "GP Actual", "fields": [
+                {"id": "period", "label": "Budget Cycle Period (e.g. 2026)", "type": "text", "required": True},
+                {"id": "actual_gp_kes", "label": "GP Actual (KES)", "type": "number", "required": True},
+            ]},
+            {"id": "tier", "title": "Active Tier Selection", "fields": [
+                {"id": "active_tier", "label": "Active Tier", "type": "select", "options": ["Tier_1", "Tier_2"], "required": True},
+                {"id": "revenue_actual_kes", "label": "Annual Revenue Actual (KES)", "type": "number", "required": False},
+                {"id": "pbt_actual_kes", "label": "PBT Actual (KES)", "type": "number", "required": False},
+            ]},
+            {"id": "signoff", "title": "Confirmation", "fields": [
+                {"id": "confirmation_note", "label": "Confirmation note", "type": "textarea", "required": False},
+            ]},
+        ],
+        "outcome_rule": "form_33_tier_confirmed",
+    },
 }

@@ -167,6 +167,7 @@ DEFAULTS = {
         "exit_interview_due_days_after_resignation": "last_working_day",
         "attrition_target_pct": 10,
         "regrettable_definition": "Last review 9-box quadrant in [Star, Core Contributor]",
+        "rollover_leave_deadline_month_day": "03-31",
     },
     "recognition": {
         "events_per_year": 4,
@@ -209,6 +210,21 @@ DEFAULTS = {
     },
 }
 
+# Force-merge new defaults into existing DB rows on startup so config changes
+# (e.g. compassionate leave 14 days, rollover deadline, Solver tier labels)
+# take effect for existing tenants without a manual reset.
+MERGE_OVERRIDES = {
+    "lookups": {
+        "solver_tiers": ["Elite", "Active", "At Risk", "Inactive"],
+    },
+    "retention": {
+        "rollover_leave_deadline_month_day": "03-31",
+    },
+    "performance": {
+        "talent_density_target_pct": 85,
+    },
+}
+
 # Section-level write access. IT Admin always has write.
 WRITE_ACCESS = {
     "organisation":         ["it_admin"],
@@ -227,11 +243,22 @@ WRITE_ACCESS = {
 
 # --- Internal helpers -------------------------------------------------------
 async def _ensure_seeded(db, category: str):
-    """Idempotent — insert defaults the first time a category is requested."""
+    """Idempotent — insert defaults the first time a category is requested.
+    Also force-merges entries from MERGE_OVERRIDES on every call so config
+    corrections take effect for existing tenants without a manual reset."""
     if category not in DEFAULTS:
         raise HTTPException(status_code=404, detail=f"Unknown settings category '{category}'")
     existing = await db.system_settings.find_one({"tenant_id": "solvit", "category": category})
     if existing:
+        # Force-merge overrides (only if the existing value differs from the override)
+        overrides = MERGE_OVERRIDES.get(category) or {}
+        updates = {}
+        for k, v in overrides.items():
+            if existing.get("values", {}).get(k) != v:
+                updates[f"values.{k}"] = v
+        if updates:
+            await db.system_settings.update_one({"_id": existing["_id"]}, {"$set": updates})
+            existing = await db.system_settings.find_one({"_id": existing["_id"]})
         return existing
     doc = {
         "id": str(uuid.uuid4()),
