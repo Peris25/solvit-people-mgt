@@ -11,6 +11,10 @@ export default function Settings() {
   const [saved, setSaved] = useState(false);
   const [form, setForm] = useState({ llm_provider: '', llm_model: '', llm_api_key: '', email_provider: '', email_api_key: '', email_from_address: '', email_from_name: '', automation_enabled: true, ai_agent_enabled: true });
   const [tab, setTab] = useState('ai');
+  // For IT Admin the AI/Email/Automation tabs would 403 — start them on Email Delivery instead.
+  useEffect(() => {
+    if (user?.role === 'it_admin' && tab === 'ai') setTab('email_delivery');
+  }, [user, tab]);
 
   useEffect(() => { load(); }, []);
 
@@ -20,6 +24,11 @@ export default function Settings() {
       const res = await api.getSettings();
       setSettings(res.data);
       setForm(prev => ({ ...prev, ...res.data }));
+    } catch (err) {
+      // IT Admin and other non-HR roles get 403 on /api/settings — that's
+      // expected. Render an empty form and don't surface a runtime error.
+      if (err?.response?.status !== 403) console.warn('Settings load failed:', err);
+      setSettings({});
     } finally { setLoading(false); }
   };
 
@@ -64,7 +73,13 @@ export default function Settings() {
       </div>
 
       <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid rgba(25,25,25,0.1)', marginBottom: '24px' }}>
-        {[{ key: 'ai', label: 'AI Agent' }, { key: 'email', label: 'Email' }, { key: 'email_delivery', label: 'Email Delivery' }, { key: 'automation', label: 'Automation' }, { key: 'tour', label: 'Replay Tour' }, { key: 'audit', label: 'Audit Log' }].map(t => (
+        {[
+          ...(user?.role === 'it_admin' ? [] : [{ key: 'ai', label: 'AI Agent' }, { key: 'email', label: 'Email' }]),
+          ...(user?.role === 'it_admin' ? [{ key: 'email_delivery', label: 'Email Delivery' }] : [{ key: 'email_delivery', label: 'Email Delivery' }]),
+          ...(user?.role === 'it_admin' ? [] : [{ key: 'automation', label: 'Automation' }]),
+          { key: 'tour', label: 'Replay Tour' },
+          { key: 'audit', label: 'Audit Log' },
+        ].map(t => (
           <button key={t.key} data-testid={`settings-tab-${t.key}`} onClick={() => setTab(t.key)} style={{ padding: '10px 20px', backgroundColor: 'transparent', border: 'none', borderBottom: tab === t.key ? '2px solid #FF353F' : '2px solid transparent', marginBottom: '-2px', cursor: 'pointer', fontSize: '12px', fontWeight: tab === t.key ? 700 : 400, color: tab === t.key ? '#FF353F' : '#525252', fontFamily: 'Barlow', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
             {t.label}
           </button>

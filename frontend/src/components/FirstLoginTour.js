@@ -43,18 +43,21 @@ export default function FirstLoginTour() {
     setState(s => {
       const isLast = s.idx >= s.steps.length - 1;
       if (isLast) { finish(false); return { ...s, phase: 'idle' }; }
-      const newIdx = s.idx + 1;
-      const target = s.steps[newIdx]?.target;
-      if (target) navigate(target);
-      return { ...s, idx: newIdx };
+      return { ...s, idx: s.idx + 1 };
     });
   };
   const prev = () => setState(s => ({ ...s, idx: Math.max(0, s.idx - 1) }));
-  const startTour = () => {
-    setState(s => ({ ...s, phase: 'tour', idx: 0 }));
-    const first = state.steps[0]?.target;
-    if (first) navigate(first);
-  };
+  const startTour = () => setState(s => ({ ...s, phase: 'tour', idx: 0 }));
+
+  // Navigate as a side-effect when the active tour step changes — avoids
+  // setState-in-render warning that surfaces when navigation is invoked
+  // directly inside setState callbacks.
+  useEffect(() => {
+    if (state.phase !== 'tour') return;
+    const target = state.steps[state.idx]?.target;
+    if (target) navigate(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.phase, state.idx]);
 
   if (state.phase === 'idle') return null;
 

@@ -38,6 +38,39 @@ Build a full-stack People Management Platform for **Solvit Limited** (Kenyan tec
 
 ## Implemented (May 2025 → Feb 2026)
 
+### Iter 9 — UAT batch 2 (Documents · Data Import · Email Templates · Tour) ✅
+**Item 1 — Employee Personal Documents**
+- New `routes/documents.py` with categories/list/upload/download/delete + immutable audit log
+- Local filesystem storage `/app/backend/uploads/employee_docs/{empId}/` (S3 still backlog)
+- PDF / JPEG / PNG / DOCX up to 10MB; categories editable via Masters Settings → `lookups.document_categories`
+- Permissions: HR Admin full · Line Manager view-only for direct reports · Employee no access · IT Admin audit-only
+- Frontend: `DocumentsTab` added to `EmployeeProfile.js` (conditional on `canSeeDocs`); upload/delete modals with brand styling
+
+**Item 2 — Data Import**
+- New `routes/data_import.py` — generates three styled `.xlsx` templates (FTE Employee · Solver · Historical Performance) with `Data` + `Read Me` sheets, sample row (greyed), column-header tooltips
+- Row-level validation (required fields, DD/MM/YYYY dates, dropdown match, duplicate ID/email) → green/red preview
+- Excel error-report download endpoint; commit imports valid rows only or full batch; import_history log
+- Frontend: new `/data-import` route + sidebar nav (UploadCloud icon); tabs Upload · Templates · History
+
+**Item 3 — Customisable Email Templates**
+- New `routes/email_templates.py` seeds **63 templates** across 15 modules (Onboarding · Recruitment · Solvers · Performance · Surveys · Retention · L&D · Leave · Compensation · Recognition · Disciplinary · Policies · Budget · Compliance · System & Account)
+- CRUD + Preview (resolves merge tags with sensible defaults) + Reset to Default
+- Permissions: IT Admin edit · HR Admin view & preview · others denied
+- Frontend: `EmailTemplates.js` embedded in Masters Settings tab; lightweight contenteditable rich text (B/I/list/link/font-size); merge-tag clickable sidebar
+
+**Item 3E — Email Delivery (Mailtrap / O365)**
+- New `routes/email_delivery.py` with Testing (Mailtrap) / Production (Office 365 STARTTLS) modes
+- IT Admin can edit, switch (with confirmation + audit), Test Send (live SMTP) and view last-test status
+- HR Admin view-only
+- Frontend: `EmailDelivery.js` embedded in Settings → Email Delivery tab; active-mode banner (red for testing, green for production)
+
+**Item 4 — First-Login Onboarding Tour**
+- New `routes/onboarding_tour.py` — per-user `first_login_tour_completed` flag, IT Admin reset + config + completion report
+- Role-specific step lists: HR Admin (6) · Line Manager (5) · Employee (5) · Solver (4) · Finance (4) · Executive (4) · Board (3) · IT Admin (6)
+- Frontend: `FirstLoginTour.js` mounted globally in `Layout` — full-screen welcome modal + bottom-right tooltip steps; Skip & Replay supported; IT Admin controls in Masters Settings → Onboarding Tour tab
+
+**Testing — Iter 9:** **39/39 backend pytest pass** (21 new + 18 regression) · Frontend 100% pass on review-request UI checks · Two cosmetic warnings carried over from iter 8 (`borderLeft` shorthand and setState-during-render) — fixed in this iter for FirstLoginTour & EmailTemplates.
+
 ### Iter 8 — UAT Round 1 (UI Brand + Leave + PDF + Skills Matrix) ✅
 **Solvit Brand Identity sweep:**
 - Typography: Barlow (display) + Nunito Sans (body) loaded via Google Fonts; global CSS variables and overrides remap legacy `fontFamily: 'Arial'` inline styles to brand body font

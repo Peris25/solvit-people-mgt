@@ -73,7 +73,9 @@ export default function EmailTemplates() {
                 <button key={t.key} data-testid={`tpl-${t.key}`} onClick={() => openTemplate(t.key)} style={{
                   display: 'block', width: '100%', padding: '8px 16px', textAlign: 'left',
                   backgroundColor: selectedKey === t.key ? '#FEF2F2' : 'transparent',
-                  borderLeft: selectedKey === t.key ? '3px solid #FF353F' : '3px solid transparent',
+                  borderLeftWidth: '3px',
+                  borderLeftStyle: 'solid',
+                  borderLeftColor: selectedKey === t.key ? '#FF353F' : 'transparent',
                   border: 'none', cursor: 'pointer', fontSize: '11px',
                   fontWeight: selectedKey === t.key ? 700 : 400, color: '#191919',
                   fontFamily: 'Nunito Sans'
