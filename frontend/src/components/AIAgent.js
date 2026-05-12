@@ -75,6 +75,7 @@ export default function AIAgent({ onClose }) {
       setMessages(prev => [...prev, {
         id: Date.now() + 1, role: 'assistant', content: res.data.response,
         provider: res.data.provider,
+        proposed_action: res.data.proposed_action || null,
         timestamp: new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }),
       }]);
     } catch {
@@ -84,6 +85,43 @@ export default function AIAgent({ onClose }) {
         timestamp: new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }),
       }]);
     } finally { setLoading(false); }
+  };
+
+  const updateMessage = (id, patch) => setMessages(prev => prev.map(m => m.id === id ? { ...m, ...patch } : m));
+
+  const confirmAction = async (msg, edits) => {
+    const action = msg.proposed_action;
+    updateMessage(msg.id, { actionStatus: 'running' });
+    try {
+      const r = await api.executeAiAction(action.id, edits && Object.keys(edits).length ? edits : null);
+      updateMessage(msg.id, { actionStatus: r.data.outcome, actionResult: r.data.result, proposed_action: null });
+      setMessages(prev => [...prev, {
+        id: Date.now(), role: 'assistant',
+        content: r.data.outcome === 'executed'
+          ? `Done. ${action.kind.replace(/_/g, ' ')} completed.`
+          : `Action failed: ${r.data.result?.error || 'unknown error'}`,
+        provider: 'live',
+        timestamp: new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }),
+      }]);
+    } catch (err) {
+      updateMessage(msg.id, { actionStatus: 'failed', actionError: err?.response?.data?.detail || err.message });
+    }
+  };
+
+  const cancelAction = async (msg) => {
+    const action = msg.proposed_action;
+    try {
+      await api.cancelAiAction(action.id);
+      updateMessage(msg.id, { actionStatus: 'cancelled', proposed_action: null });
+      setMessages(prev => [...prev, {
+        id: Date.now(), role: 'assistant',
+        content: 'Cancelled. No action was taken.',
+        provider: 'live',
+        timestamp: new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }),
+      }]);
+    } catch (err) {
+      updateMessage(msg.id, { actionStatus: 'failed', actionError: err?.response?.data?.detail || err.message });
+    }
   };
 
   return (
@@ -123,6 +161,17 @@ export default function AIAgent({ onClose }) {
               fontSize: '12px', lineHeight: 1.6, fontFamily: 'Nunito Sans',
               whiteSpace: 'pre-wrap', wordBreak: 'break-word',
             }}>{msg.content}</div>
+            {msg.proposed_action && (
+              <ActionCard msg={msg} action={msg.proposed_action} onConfirm={confirmAction} onCancel={cancelAction} />
+            )}
+            {msg.actionStatus && (
+              <div data-testid={`action-status-${msg.actionStatus}`} style={{ marginTop: '4px', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: msg.actionStatus === 'executed' ? '#22C55E' : msg.actionStatus === 'cancelled' ? '#525252' : '#FF353F', fontFamily: 'Barlow' }}>
+                {msg.actionStatus === 'executed' && '✓ Executed'}
+                {msg.actionStatus === 'cancelled' && '· Cancelled'}
+                {msg.actionStatus === 'failed' && '✗ Failed'}
+                {msg.actionStatus === 'running' && 'Running…'}
+              </div>
+            )}
             <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '3px', display: 'flex', gap: '6px', alignItems: 'center' }}>
               <span>{msg.timestamp}</span>
               {msg.provider && msg.provider !== 'fallback' && (
@@ -171,4 +220,58 @@ export default function AIAgent({ onClose }) {
       </form>
     </div>
   );
+}
+
+function ActionCard({ msg, action, onConfirm, onCancel }) {
+  const [edits, setEdits] = React.useState({});
+  const riskColor = action.risk === 'high' ? '#FF353F' : action.risk === 'medium' ? '#F59E0B' : '#22C55E';
+  const editable = action.editable || {};
+  return (
+    <div data-testid={`action-card-${action.id}`} style={{
+      marginTop: '8px', width: '88%', backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.12)',
+      borderLeftWidth: '4px', borderLeftStyle: 'solid', borderLeftColor: riskColor, fontFamily: 'Nunito Sans',
+    }}>
+      <div style={{ padding: '8px 12px', backgroundColor: action.risk === 'high' ? '#FEE2E2' : action.risk === 'medium' ? '#FEF3C7' : '#DCFCE7', fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: riskColor, fontFamily: 'Barlow' }}>
+        Action proposed · {action.risk} risk · confirmation required
+      </div>
+      <div style={{ padding: '10px 14px', fontSize: '12px', color: '#191919', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: simpleMd(action.summary) }} />
+
+      {Object.keys(editable).length > 0 && (
+        <div style={{ padding: '0 14px 10px' }}>
+          {Object.entries(editable).map(([k, v]) => (
+            <div key={k} style={{ marginBottom: '8px' }}>
+              <label style={{ display: 'block', fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '3px', fontFamily: 'Barlow' }}>{k.replace(/_/g, ' ')}</label>
+              <textarea
+                data-testid={`action-edit-${k}`}
+                rows={2}
+                defaultValue={v}
+                onChange={e => setEdits(p => ({ ...p, [k]: e.target.value }))}
+                style={{ width: '100%', padding: '6px 8px', border: '1px solid rgba(25,25,25,0.15)', fontSize: '11px', fontFamily: 'Nunito Sans', boxSizing: 'border-box', resize: 'vertical' }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ padding: '8px 12px', borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: 'rgba(25,25,25,0.06)', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+        <button data-testid={`action-cancel-${action.id}`} onClick={() => onCancel(msg)}
+          style={{ padding: '6px 14px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '10px', fontWeight: 700, fontFamily: 'Barlow', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          {action.cancel_label || 'Cancel'}
+        </button>
+        <button data-testid={`action-confirm-${action.id}`} onClick={() => onConfirm(msg, edits)}
+          style={{ padding: '6px 14px', backgroundColor: riskColor, color: '#fff', border: 'none', cursor: 'pointer', fontSize: '10px', fontWeight: 700, fontFamily: 'Barlow', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          {action.confirm_label || 'Confirm'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Render a tiny subset of markdown (**bold** and *italic*) used in summaries. */
+function simpleMd(s) {
+  if (!s) return '';
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>');
 }

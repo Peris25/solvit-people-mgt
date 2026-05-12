@@ -38,6 +38,30 @@ Build a full-stack People Management Platform for **Solvit Limited** (Kenyan tec
 
 ## Implemented (May 2025 → Feb 2026)
 
+### Iter 11 — Actionable AI with confirmation prompts ✅
+**The AI Assistant is no longer read-only.** It now proposes write actions, surfaces a confirmation card, and only executes after explicit click.
+
+- New `routes/ai_actions.py` (action catalog) + extended `routes/ai_agent.py` (propose / execute / cancel / audit endpoints):
+  - `POST /api/ai-agent/chat` — when an action intent is detected, returns a `proposed_action` payload instead of routing to the LLM (deterministic, no hallucination risk).
+  - `POST /api/ai-agent/actions/{id}/execute` — executes the action (with optional `params_override` for HR-edited fields) and writes an immutable audit row.
+  - `POST /api/ai-agent/actions/{id}/cancel` — abandons the proposal.
+  - `GET /api/ai-agent/actions/audit` — full audit trail (HR + IT Admin).
+- **6 action types** wired with role-gated execution:
+  - `approve_leave` (low risk, green)
+  - `reject_leave` (medium risk, amber; editable reason)
+  - `send_recognition` (low risk; editable message)
+  - `send_email` (medium risk; uses the live Email Delivery mode — Mailtrap/O365; renders the chosen template + logs `email_send_log`)
+  - `mark_task_complete` (low risk)
+  - `assign_training` (low risk; editable training name)
+- Built-in safeguards:
+  - 30-minute action expiry (`expires_at` checked at execute time)
+  - Only the proposer can confirm their own pending action
+  - Role gating per action (`ACTION_REQUIRED_ROLES`)
+  - Edit-before-execute support for reason / message / training_name
+- Frontend `AIAgent.js`: renders `ActionCard` with risk-tinted banner (green / amber / red), inline editable textareas for the action's editable params, and Confirm / Cancel buttons. Outcome ("✓ Executed", "Cancelled", "✗ Failed") shown below the message.
+
+**Testing — Iter 11:** 7/7 new pytest cases pass + 46/46 iter 8-10 regression pass. End-to-end smoke confirmed the action card renders with the green banner, editable message field, and "Don't Send / Send Recognition" buttons.
+
 ### Iter 10 — AI Assistant full-platform copilot + legacy email removal ✅
 - **Legacy SendGrid/SMTP "Email" tab retired** from Settings. Email delivery is now configured exclusively under the new **Email Delivery** tab (Mailtrap testing / Office 365 production).
 - **AI Agent → "Solvit HR Assistant"** transformed into a full-platform copilot:

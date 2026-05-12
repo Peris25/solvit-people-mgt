@@ -8,6 +8,10 @@ Capabilities:
   balance", "pending probation reviews", etc).
 - Always grounds the LLM with a live platform snapshot + intent-specific deep
   dive context so answers reference current data, not hallucinated numbers.
+- ACTIONABLE: detects action intents (approve leave, recognise, send email,
+  assign training, mark task complete, reject leave) and emits a
+  `proposed_action` payload the frontend renders as a confirmation card. The
+  user must click Confirm before any write happens.
 """
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -15,6 +19,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
 from database import get_db
 from utils.auth import get_current_user
+from routes import ai_actions
 import os
 import uuid
 import re
@@ -372,6 +377,35 @@ async def chat_with_agent(msg: ChatMessage, request: Request):
         "created_at": datetime.now(timezone.utc).isoformat()
     })
 
+    # ----- Actionable intents short-circuit the LLM -----
+    intent = ai_actions.detect_intent(msg.message)
+    if intent and intent in ai_actions.INTENT_PROPOSERS:
+        if not ai_actions.can_execute(intent, user["role"]):
+            return {"conversation_id": conversation_id,
+                    "response": f"Your role does not permit the `{intent}` action.",
+                    "provider": "fallback"}
+        proposer = ai_actions.INTENT_PROPOSERS[intent]
+        proposed = await proposer(db, msg.message, user)
+        if proposed.get("error"):
+            await db.ai_conversations.insert_one({
+                "tenant_id": "solvit", "conversation_id": conversation_id, "role": "assistant",
+                "content": proposed["error"], "created_at": datetime.now(timezone.utc).isoformat()})
+            return {"conversation_id": conversation_id, "response": proposed["error"], "provider": "live"}
+        # Persist pending action so /execute can run it later
+        await db.ai_pending_actions.insert_one({
+            **proposed, "tenant_id": "solvit", "user_id": user["id"],
+            "conversation_id": conversation_id, "status": "pending",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        preface = f"Got it — I can do this for you. Please review and confirm:"
+        await db.ai_conversations.insert_one({
+            "tenant_id": "solvit", "conversation_id": conversation_id, "role": "assistant",
+            "content": preface + "\n\n" + proposed["summary"],
+            "created_at": datetime.now(timezone.utc).isoformat()})
+        return {"conversation_id": conversation_id, "response": preface,
+                "provider": "live", "proposed_action": proposed}
+
+    # ----- Read-only Q&A flow (existing) -----
     emergent_key = os.environ.get("EMERGENT_LLM_KEY")
     provider = (settings or {}).get("llm_provider") or "openai"
     model = (settings or {}).get("llm_model") or "gpt-5.2"
@@ -468,3 +502,95 @@ async def get_conversations(request: Request, limit: int = 20):
         {"tenant_id": "solvit", "user_id": user["id"]}
     ).sort("created_at", -1).limit(limit).to_list(limit)
     return [fmt(m) for m in messages]
+
+
+# ============================================================
+# Actionable AI — confirm / execute / cancel proposed actions
+# ============================================================
+
+@router.post("/actions/{action_id}/execute")
+async def execute_action(action_id: str, request: Request):
+    user = await get_current_user(request)
+    db = get_db()
+    pending = await db.ai_pending_actions.find_one({"id": action_id, "status": "pending"})
+    if not pending:
+        raise HTTPException(status_code=404, detail="Action not found or already processed")
+    if pending.get("user_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="Only the proposer can confirm this action")
+    if not ai_actions.can_execute(pending["kind"], user["role"]):
+        raise HTTPException(status_code=403, detail="Your role cannot execute this action")
+    expires = pending.get("expires_at")
+    if expires:
+        try:
+            if datetime.fromisoformat(expires.replace("Z", "+00:00")) < datetime.now(timezone.utc):
+                raise HTTPException(status_code=410, detail="This action has expired — please ask again")
+        except ValueError:
+            pass
+
+    # Allow the UI to PATCH editable params (e.g. reason text, message)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if isinstance(body, dict) and body.get("params_override"):
+        pending["params"].update(body["params_override"])
+
+    executor = ai_actions.EXECUTORS.get(pending["kind"])
+    if not executor:
+        raise HTTPException(status_code=400, detail=f"No executor registered for {pending['kind']}")
+    try:
+        result = await executor(db, pending["params"], user)
+    except Exception as e:
+        result = {"ok": False, "error": str(e)}
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.ai_pending_actions.update_one(
+        {"id": action_id},
+        {"$set": {"status": "executed" if result.get("ok") else "failed",
+                  "executed_at": now, "executed_by": user["id"], "result": result}}
+    )
+    await db.ai_actions_audit.insert_one({
+        "id": str(uuid.uuid4()), "tenant_id": "solvit",
+        "action_id": action_id, "kind": pending["kind"], "risk": pending.get("risk"),
+        "summary": pending.get("summary"), "params": pending.get("params"),
+        "result": result, "outcome": "executed" if result.get("ok") else "failed",
+        "by_user_id": user["id"], "by_user_name": user.get("full_name") or user.get("email"),
+        "by_role": user.get("role"),
+        "conversation_id": pending.get("conversation_id"),
+        "timestamp": now,
+    })
+    return {"action_id": action_id, "outcome": "executed" if result.get("ok") else "failed",
+            "result": result}
+
+
+@router.post("/actions/{action_id}/cancel")
+async def cancel_action(action_id: str, request: Request):
+    user = await get_current_user(request)
+    db = get_db()
+    pending = await db.ai_pending_actions.find_one({"id": action_id, "status": "pending"})
+    if not pending:
+        raise HTTPException(status_code=404, detail="Action not found")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.ai_pending_actions.update_one({"id": action_id},
+        {"$set": {"status": "cancelled", "cancelled_at": now, "cancelled_by": user["id"]}})
+    await db.ai_actions_audit.insert_one({
+        "id": str(uuid.uuid4()), "tenant_id": "solvit",
+        "action_id": action_id, "kind": pending["kind"], "risk": pending.get("risk"),
+        "summary": pending.get("summary"), "params": pending.get("params"),
+        "outcome": "cancelled", "by_user_id": user["id"],
+        "by_user_name": user.get("full_name") or user.get("email"),
+        "by_role": user.get("role"), "timestamp": now,
+    })
+    return {"action_id": action_id, "outcome": "cancelled"}
+
+
+@router.get("/actions/audit")
+async def actions_audit(request: Request, limit: int = 50):
+    user = await get_current_user(request)
+    if user["role"] not in ("hr_admin", "hr_manager", "it_admin"):
+        raise HTTPException(status_code=403, detail="HR / IT Admin only")
+    db = get_db()
+    rows = await db.ai_actions_audit.find({"tenant_id": "solvit"}).sort("timestamp", -1).to_list(min(limit, 200))
+    for r in rows:
+        r.pop("_id", None)
+    return rows

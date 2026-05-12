@@ -193,6 +193,10 @@ export const chatWithAgent = (data) => api.post('/ai-agent/chat', data);
 export const runComplianceCheck = () => api.get('/ai-agent/compliance-check');
 export const getAiSnapshot = () => api.get('/ai-agent/snapshot');
 export const aiEmployeeStatus = (query) => api.get('/ai-agent/employee-status', { params: { query } });
+export const executeAiAction = (actionId, paramsOverride = null) =>
+  api.post(`/ai-agent/actions/${actionId}/execute`, paramsOverride ? { params_override: paramsOverride } : {});
+export const cancelAiAction = (actionId) => api.post(`/ai-agent/actions/${actionId}/cancel`);
+export const aiActionsAudit = () => api.get('/ai-agent/actions/audit');
 export const getConversations = () => api.get('/ai-agent/conversations');
 
 // Forms
