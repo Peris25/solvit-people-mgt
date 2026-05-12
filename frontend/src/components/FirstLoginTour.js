@@ -67,16 +67,14 @@ export default function FirstLoginTour() {
   if (state.phase === 'welcome') {
     return (
       <div data-testid="tour-welcome" style={overlayStyle}>
-        <div style={{ width: '520px', backgroundColor: '#fff', textAlign: 'center', padding: '40px 36px', borderTop: '6px solid #FF353F' }}>
-          <div data-testid="tour-logo" style={{ width: '64px', height: '64px', backgroundColor: '#FF353F', margin: '0 auto 18px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ color: '#fff', fontWeight: 900, fontSize: '28px', fontFamily: 'Barlow' }}>S</span>
-          </div>
-          <h2 style={{ margin: 0, fontFamily: 'Barlow', fontWeight: 900, fontSize: '24px', letterSpacing: '-0.03em', color: '#191919' }}>{state.headline}</h2>
-          <p style={{ marginTop: '12px', fontSize: '14px', color: '#525252', lineHeight: 1.5 }}>{state.body_text}</p>
+        <div style={{ width: '520px', backgroundColor: tk.panelBg, color: tk.panelText, textAlign: 'center', padding: '40px 36px', borderTop: '6px solid #FF353F' }}>
+          <img data-testid="tour-logo" src="/solvit-logo.png" alt="Solvit" style={{ height: '44px', width: 'auto', display: 'block', margin: '0 auto 22px', objectFit: 'contain' }} />
+          <h2 style={{ margin: 0, fontFamily: 'Barlow', fontWeight: 900, fontSize: '24px', letterSpacing: '-0.03em' }}>{state.headline}</h2>
+          <p style={{ marginTop: '12px', fontSize: '14px', color: tk.tourStepMuted, lineHeight: 1.5 }}>{state.body_text}</p>
           <div style={{ marginTop: '28px', display: 'flex', gap: '12px', justifyContent: 'center' }}>
             <button data-testid="tour-start-btn" onClick={startTour} style={btnRed}>Start Tour</button>
           </div>
-          <button data-testid="tour-skip-btn" onClick={() => finish(true)} style={{ marginTop: '14px', background: 'none', border: 'none', color: '#525252', cursor: 'pointer', fontSize: '12px', textDecoration: 'underline', fontFamily: 'Nunito Sans' }}>Skip for now</button>
+          <button data-testid="tour-skip-btn" onClick={() => finish(true)} style={{ marginTop: '14px', background: 'none', border: 'none', color: tk.tourStepMuted, cursor: 'pointer', fontSize: '12px', textDecoration: 'underline', fontFamily: 'Nunito Sans' }}>Skip for now</button>
         </div>
       </div>
     );

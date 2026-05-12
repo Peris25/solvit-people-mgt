@@ -131,10 +131,10 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
 
   if (collapsed) {
     return (
-      <div style={{ width: '56px', backgroundColor: tk.sidebarBg, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 0', gap: '8px', zIndex: 50, minHeight: '100vh', borderRightWidth: '1px', borderRightStyle: 'solid', borderRightColor: tk.sidebarBorder }}>
-        <div data-testid="solvit-logo-mark" style={{ width: '36px', height: '36px', backgroundColor: '#FF353F', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginBottom: '16px' }} onClick={() => onToggle(false)}>
-          <span style={{ color: '#fff', fontWeight: 900, fontSize: '16px', fontFamily: 'Barlow' }}>S</span>
-        </div>
+      <div style={{ width: '56px', backgroundColor: tk.sidebarBg, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '14px 0', gap: '8px', zIndex: 50, minHeight: '100vh', borderRightWidth: '1px', borderRightStyle: 'solid', borderRightColor: tk.sidebarBorder }}>
+        <button data-testid="solvit-logo-mark" onClick={() => onToggle(false)} style={{ background: theme === 'dark' ? '#FFFFFF' : 'transparent', border: 'none', padding: theme === 'dark' ? '4px 6px' : '0', cursor: 'pointer', marginBottom: '12px' }}>
+          <img src="/solvit-logo.png" alt="Solvit" style={{ height: '24px', width: 'auto', objectFit: 'contain', display: 'block' }} />
+        </button>
         <button data-testid="sidebar-expand" onClick={() => onToggle(false)} style={{ background: 'none', border: 'none', color: tk.sidebarMuted, cursor: 'pointer', padding: '8px' }}>
           <Menu size={18} />
         </button>
@@ -145,18 +145,26 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
   return (
     <div style={{ width: '240px', backgroundColor: tk.sidebarBg, display: 'flex', flexDirection: 'column', minHeight: '100vh', fontFamily: 'Nunito Sans, sans-serif', flexShrink: 0, borderRightWidth: '1px', borderRightStyle: 'solid', borderRightColor: tk.sidebarBorder }}>
       {/* Logo */}
-      <div style={{ padding: '20px 20px 12px', borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: tk.sidebarBorder }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '32px', height: '32px', backgroundColor: '#FF353F', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <span style={{ color: '#fff', fontWeight: 900, fontSize: '16px', fontFamily: 'Barlow' }}>S</span>
+      <div style={{ padding: '20px 20px 14px', borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: tk.sidebarBorder }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0, flex: 1 }}>
+            <div style={{
+              padding: theme === 'dark' ? '6px 10px' : '0',
+              backgroundColor: theme === 'dark' ? '#FFFFFF' : 'transparent',
+              borderRadius: theme === 'dark' ? '4px' : 0,
+              display: 'inline-block',
+              alignSelf: 'flex-start',
+            }}>
+              <img
+                data-testid="solvit-logo"
+                src="/solvit-logo.png"
+                alt="Solvit"
+                style={{ height: '28px', width: 'auto', maxWidth: '160px', objectFit: 'contain', objectPosition: 'left center', display: 'block' }}
+              />
             </div>
-            <div>
-              <div style={{ color: tk.sidebarText, fontWeight: 900, fontSize: '14px', letterSpacing: '-0.03em', fontFamily: 'Barlow' }}>SOLVIT</div>
-              <div style={{ color: tk.sidebarSubtle, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>People Platform</div>
-            </div>
+            <div style={{ color: tk.sidebarSubtle, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.18em', fontFamily: 'Barlow', fontWeight: 700 }}>People Platform</div>
           </div>
-          <button data-testid="sidebar-collapse" onClick={() => onToggle(true)} style={{ background: 'none', border: 'none', color: tk.sidebarSubtle, cursor: 'pointer', padding: '4px' }}>
+          <button data-testid="sidebar-collapse" onClick={() => onToggle(true)} style={{ background: 'none', border: 'none', color: tk.sidebarSubtle, cursor: 'pointer', padding: '4px', flexShrink: 0 }}>
             <ChevronLeft size={16} />
           </button>
         </div>
