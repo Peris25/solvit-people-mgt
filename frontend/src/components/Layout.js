@@ -3,6 +3,7 @@ import { Outlet, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from './Sidebar';
 import AIAgent from './AIAgent';
+import FirstLoginTour from './FirstLoginTour';
 
 export default function Layout() {
   const { user } = useAuth();
@@ -29,6 +30,7 @@ export default function Layout() {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#F5F5F5', fontFamily: 'Nunito Sans, sans-serif' }}>
         <Outlet />
+        <FirstLoginTour />
       </div>
     );
   }
@@ -42,6 +44,7 @@ export default function Layout() {
         </main>
       </div>
       {aiOpen && <AIAgent onClose={() => setAiOpen(false)} />}
+      <FirstLoginTour />
     </div>
   );
 }

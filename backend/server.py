@@ -36,6 +36,11 @@ from routes.automation_routes import router as automation_router
 from routes.access import router as access_router
 from routes.masters_settings import router as masters_settings_router
 from routes.exports import router as exports_router
+from routes.documents import router as documents_router
+from routes.data_import import router as data_import_router
+from routes.email_templates import router as email_templates_router
+from routes.email_delivery import router as email_delivery_router
+from routes.onboarding_tour import router as onboarding_tour_router
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -77,6 +82,11 @@ app.include_router(automation_router, prefix=API_PREFIX)
 app.include_router(access_router, prefix=API_PREFIX)
 app.include_router(masters_settings_router, prefix=API_PREFIX)
 app.include_router(exports_router, prefix=API_PREFIX)
+app.include_router(documents_router, prefix=API_PREFIX)
+app.include_router(data_import_router, prefix=API_PREFIX)
+app.include_router(email_templates_router, prefix=API_PREFIX)
+app.include_router(email_delivery_router, prefix=API_PREFIX)
+app.include_router(onboarding_tour_router, prefix=API_PREFIX)
 
 
 @app.get("/api/health")

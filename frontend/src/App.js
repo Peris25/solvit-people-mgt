@@ -26,6 +26,7 @@ import MastersSettings from './pages/MastersSettings';
 import Forms from './pages/Forms';
 import EmployeeProfile from './pages/EmployeeProfile';
 import MyTasks from './pages/MyTasks';
+import DataImport from './pages/DataImport';
 import ErrorToast from './components/ErrorToast';
 import AccessGate from './components/AccessGate';
 
@@ -61,6 +62,7 @@ export default function App() {
             <Route path="masters" element={<MastersSettings />} />
             <Route path="forms" element={<Forms />} />
             <Route path="my-tasks" element={<MyTasks />} />
+            <Route path="data-import" element={<DataImport />} />
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

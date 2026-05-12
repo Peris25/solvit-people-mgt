@@ -6,6 +6,8 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../services/api';
 import ValueEditor, { prettify } from '../components/MastersValueEditor';
+import EmailTemplates from '../components/EmailTemplates';
+import OnboardingTourConfig from '../components/OnboardingTourConfig';
 
 const CATEGORIES = [
   { key: 'organisation',         label: 'Organisation' },
@@ -19,6 +21,8 @@ const CATEGORIES = [
   { key: 'recognition',          label: 'Recognition & Rewards' },
   { key: 'notifications',        label: 'Notifications & Automation' },
   { key: 'lookups',              label: 'Lookup Tables' },
+  { key: 'email_templates',      label: 'Email Templates', custom: true },
+  { key: 'onboarding_tour',      label: 'Onboarding Tour', custom: true },
 ];
 
 export default function MastersSettings() {
@@ -36,9 +40,18 @@ export default function MastersSettings() {
   useEffect(() => {
     if (!canRead) { setLoading(false); return; }
     Promise.all([api.listMastersSettings(), api.getAllMastersSettings()])
-      .then(([m, all]) => { setMeta(m.data); setEdits(all.data || {}); })
+      .then(([m, all]) => {
+        // Inject pseudo-write rights for the custom tabs so the UI doesn't gate them via the standard backend matrix.
+        const meta = m.data || {};
+        if (meta.write_access) {
+          meta.write_access.email_templates = user?.role === 'it_admin';
+          meta.write_access.onboarding_tour = user?.role === 'it_admin';
+        }
+        setMeta(meta);
+        setEdits(all.data || {});
+      })
       .finally(() => setLoading(false));
-  }, [canRead]);
+  }, [canRead, user]);
 
   const loadAudit = async () => {
     const r = await api.getMastersAudit({ category: tab });
@@ -118,17 +131,21 @@ export default function MastersSettings() {
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {savingMsg && <span style={{ fontSize: '11px', color: '#22C55E', fontWeight: 700 }}>{savingMsg}</span>}
-          {showResetBtn && (
+          {showResetBtn && tab !== 'email_templates' && tab !== 'onboarding_tour' && (
             <button data-testid="btn-reset-defaults" onClick={reset} style={{ padding: '8px 14px', border: '1px solid rgba(25,25,25,0.2)', background: 'transparent', cursor: 'pointer', fontSize: '11px', fontWeight: 700 }}>Reset to defaults</button>
           )}
-          {writable && (
+          {writable && tab !== 'email_templates' && tab !== 'onboarding_tour' && (
             <button data-testid="btn-save-settings" onClick={save} style={{ padding: '8px 18px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Save</button>
           )}
         </div>
       </div>
 
-      <div data-testid={`masters-form-${tab}`} style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '16px 20px' }}>
-        {Object.entries(currentValues).map(([k, v]) => (
+      <div data-testid={`masters-form-${tab}`} style={{ backgroundColor: tab === 'email_templates' || tab === 'onboarding_tour' ? 'transparent' : '#fff', border: tab === 'email_templates' || tab === 'onboarding_tour' ? 'none' : '1px solid rgba(25,25,25,0.08)', padding: tab === 'email_templates' || tab === 'onboarding_tour' ? 0 : '16px 20px' }}>
+        {tab === 'email_templates' ? (
+          <EmailTemplates />
+        ) : tab === 'onboarding_tour' ? (
+          <OnboardingTourConfig />
+        ) : Object.entries(currentValues).map(([k, v]) => (
           <div key={k} style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '16px', alignItems: 'flex-start', padding: '12px 0', borderBottom: '1px solid rgba(25,25,25,0.05)' }}>
             <label style={{ fontSize: '12px', fontWeight: 700, color: '#191919', paddingTop: '8px' }}>{prettify(k)}</label>
             <ValueEditor

@@ -238,4 +238,55 @@ export const updateTask = (id, data) => api.put(`/automation/tasks/${id}`, data)
 export const getNotifications = () => api.get('/automation/notifications');
 export const markNotificationRead = (id) => api.put(`/automation/notifications/${id}/read`);
 
+// Documents
+export const getDocumentCategories = () => api.get('/documents/categories');
+export const getEmployeeDocuments = (empId) => api.get(`/documents/employee/${empId}`);
+export const uploadEmployeeDocument = (empId, formData) =>
+  api.post(`/documents/employee/${empId}/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+export const deleteEmployeeDocument = (docId) => api.delete(`/documents/${docId}`);
+export const documentDownloadUrl = (docId) => {
+  const base = (process.env.REACT_APP_BACKEND_URL || '').replace(/\/$/, '');
+  return `${base}/api/documents/${docId}/download`;
+};
+export const getDocumentAuditLog = (params) => api.get('/documents/audit-log', { params });
+
+// Data Import
+export const dataImportTemplateUrl = (kind) => {
+  const base = (process.env.REACT_APP_BACKEND_URL || '').replace(/\/$/, '');
+  return `${base}/api/data-import/template/${kind}`;
+};
+export const validateImport = (formData) =>
+  api.post('/data-import/validate', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+export const executeImport = (data) => api.post('/data-import/import', data);
+export const getImportHistory = () => api.get('/data-import/history');
+export const importHistoryDownloadUrl = (id) => {
+  const base = (process.env.REACT_APP_BACKEND_URL || '').replace(/\/$/, '');
+  return `${base}/api/data-import/history/${id}/download`;
+};
+export const downloadErrorReport = (rows) =>
+  api.post('/data-import/error-report', { rows }, { responseType: 'blob' });
+
+// Email Templates
+export const listEmailTemplates = () => api.get('/email-templates');
+export const getEmailTemplate = (key) => api.get(`/email-templates/${key}`);
+export const updateEmailTemplate = (key, data) => api.put(`/email-templates/${key}`, data);
+export const resetEmailTemplate = (key) => api.post(`/email-templates/${key}/reset`);
+export const previewEmailTemplate = (key, merge_values = {}) => api.post(`/email-templates/${key}/preview`, { merge_values });
+
+// Email Delivery
+export const getEmailDelivery = () => api.get('/email-delivery');
+export const updateEmailDeliveryMode = (mode, data) => api.put(`/email-delivery/${mode}`, data);
+export const switchEmailDeliveryMode = (mode) => api.post('/email-delivery/switch', { mode });
+export const sendEmailDeliveryTest = (to) => api.post('/email-delivery/test-send', { to });
+export const getEmailDeliveryAudit = () => api.get('/email-delivery/audit');
+
+// Onboarding Tour
+export const getMyTour = () => api.get('/onboarding-tour/me');
+export const completeTour = (skipped = false) => api.post('/onboarding-tour/complete', { skipped });
+export const replayTour = () => api.post('/onboarding-tour/replay');
+export const getTourConfig = () => api.get('/onboarding-tour/config');
+export const updateTourConfig = (data) => api.put('/onboarding-tour/config', data);
+export const resetTourForUser = (userId) => api.post(`/onboarding-tour/reset/${userId}`);
+export const getTourReport = () => api.get('/onboarding-tour/report');
+
 export default api;

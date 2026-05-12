@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import EmailDelivery from '../components/EmailDelivery';
 
 export default function Settings() {
   const { user } = useAuth();
@@ -63,12 +64,21 @@ export default function Settings() {
       </div>
 
       <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid rgba(25,25,25,0.1)', marginBottom: '24px' }}>
-        {[{ key: 'ai', label: 'AI Agent' }, { key: 'email', label: 'Email' }, { key: 'automation', label: 'Automation' }, { key: 'audit', label: 'Audit Log' }].map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)} style={{ padding: '10px 20px', backgroundColor: 'transparent', border: 'none', borderBottom: tab === t.key ? '2px solid #FF353F' : '2px solid transparent', marginBottom: '-2px', cursor: 'pointer', fontSize: '12px', fontWeight: tab === t.key ? 700 : 400, color: tab === t.key ? '#FF353F' : '#525252', fontFamily: 'Arial', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+        {[{ key: 'ai', label: 'AI Agent' }, { key: 'email', label: 'Email' }, { key: 'email_delivery', label: 'Email Delivery' }, { key: 'automation', label: 'Automation' }, { key: 'tour', label: 'Replay Tour' }, { key: 'audit', label: 'Audit Log' }].map(t => (
+          <button key={t.key} data-testid={`settings-tab-${t.key}`} onClick={() => setTab(t.key)} style={{ padding: '10px 20px', backgroundColor: 'transparent', border: 'none', borderBottom: tab === t.key ? '2px solid #FF353F' : '2px solid transparent', marginBottom: '-2px', cursor: 'pointer', fontSize: '12px', fontWeight: tab === t.key ? 700 : 400, color: tab === t.key ? '#FF353F' : '#525252', fontFamily: 'Barlow', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
             {t.label}
           </button>
         ))}
       </div>
+
+      {tab === 'email_delivery' && <EmailDelivery />}
+      {tab === 'tour' && (
+        <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '24px', maxWidth: '600px' }}>
+          <h3 style={{ margin: '0 0 8px', fontFamily: 'Barlow', fontWeight: 900 }}>Replay Platform Tour</h3>
+          <p style={{ color: '#525252', fontSize: '13px', marginTop: 0 }}>Re-run the first-login walkthrough at any time.</p>
+          <button data-testid="replay-tour-btn" onClick={async () => { await api.replayTour(); window.location.href = '/dashboard'; }} style={{ padding: '10px 22px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Barlow' }}>Replay Tour</button>
+        </div>
+      )}
 
       {loading ? <div style={{ padding: '48px', textAlign: 'center' }}>Loading...</div> : (
         <form onSubmit={save} style={{ maxWidth: '600px' }}>

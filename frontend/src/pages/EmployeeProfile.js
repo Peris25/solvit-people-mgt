@@ -38,6 +38,13 @@ export default function EmployeeProfile() {
     { k: 'idp', l: 'IDP' },
   ];
 
+  // Documents tab — HR Admin/HR Manager full, Line Manager view-only for direct reports
+  const canSeeDocs = ['hr_admin', 'hr_manager'].includes(user?.role)
+    || (user?.role === 'line_manager' && e.line_manager_id && [user?.employee_id, user?.id].includes(e.line_manager_id));
+  if (canSeeDocs) {
+    TABS.push({ k: 'documents', l: 'Documents' });
+  }
+
   return (
     <div data-testid="employee-profile-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
       {/* Header card */}
@@ -78,6 +85,7 @@ export default function EmployeeProfile() {
       {tab === 'recognitions' && <RecognitionsList items={profile.recognitions} />}
       {tab === 'training' && <TrainingList items={profile.trainings} />}
       {tab === 'idp' && <IDPView idp={profile.idp} employeeId={id} onSaved={() => api.getEmployeeProfile(id).then(r => setProfile(r.data))} />}
+      {tab === 'documents' && <DocumentsTab employeeId={id} user={user} />}
     </div>
   );
 }
@@ -333,6 +341,148 @@ function IDPView({ idp, employeeId, onSaved }) {
           <button data-testid="save-idp-btn" type="submit" disabled={saving} style={{ padding: '10px 24px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>{saving ? 'Saving...' : 'Save IDP'}</button>
         </div>
       </form>
+    </div>
+  );
+}
+
+
+// ----- Documents Tab -----
+function DocumentsTab({ employeeId, user }) {
+  const [docs, setDocs] = useState([]);
+  const [cats, setCats] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [file, setFile] = useState(null);
+  const [category, setCategory] = useState('');
+  const [categoryLabel, setCategoryLabel] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const canWrite = ['hr_admin', 'hr_manager'].includes(user?.role);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [d, c] = await Promise.all([api.getEmployeeDocuments(employeeId), api.getDocumentCategories()]);
+      setDocs(d.data || []);
+      setCats(c.data?.categories || []);
+      if (!category && c.data?.categories?.length) setCategory(c.data.categories[0]);
+    } finally { setLoading(false); }
+  };
+  useEffect(() => { load(); }, [employeeId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const submitUpload = async (ev) => {
+    ev.preventDefault();
+    if (!file || !category) return;
+    if (file.size > 10 * 1024 * 1024) { alert('File exceeds 10MB limit'); return; }
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('category', category);
+    if (category === 'Other' && categoryLabel) fd.append('category_label', categoryLabel);
+    setUploading(true);
+    try {
+      await api.uploadEmployeeDocument(employeeId, fd);
+      setShowUpload(false);
+      setFile(null); setCategoryLabel('');
+      load();
+    } catch (err) {
+      alert('Upload failed: ' + (err?.response?.data?.detail || err.message));
+    } finally { setUploading(false); }
+  };
+
+  const doDelete = async () => {
+    const id = confirmDelete?.id;
+    if (!id) return;
+    await api.deleteEmployeeDocument(id);
+    setConfirmDelete(null);
+    load();
+  };
+
+  return (
+    <div data-testid="documents-tab" style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
+      <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h3 style={{ margin: 0, fontFamily: 'Barlow', fontWeight: 900, letterSpacing: '-0.02em', fontSize: '16px' }}>Personal Documents</h3>
+          <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#525252' }}>PDF, JPEG, PNG, DOCX up to 10MB · Categories editable in Masters Settings</p>
+        </div>
+        {canWrite && (
+          <button data-testid="upload-doc-btn" onClick={() => setShowUpload(true)} style={{ padding: '8px 16px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Barlow' }}>+ Upload</button>
+        )}
+      </div>
+
+      {loading ? <div style={{ padding: '32px', textAlign: 'center', color: '#525252' }}>Loading…</div> : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+          <thead><tr style={{ backgroundColor: '#F5F5F5' }}>
+            {['Category', 'File Name', 'Uploaded', 'Uploaded By', 'Actions'].map(h =>
+              <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', fontWeight: 700, fontFamily: 'Barlow' }}>{h}</th>
+            )}
+          </tr></thead>
+          <tbody>
+            {docs.map((d, i) => (
+              <tr key={d.id} data-testid={`doc-row-${d.id}`} style={{ borderBottom: '1px solid rgba(25,25,25,0.05)', backgroundColor: i % 2 === 0 ? '#fff' : '#FAFAFA' }}>
+                <td style={{ padding: '10px 14px', fontWeight: 700 }}>{d.category}{d.category === 'Other' && d.category_label ? ` · ${d.category_label}` : ''}</td>
+                <td style={{ padding: '10px 14px', color: '#525252' }}>{d.file_name}</td>
+                <td style={{ padding: '10px 14px', color: '#525252' }}>{d.uploaded_at ? new Date(d.uploaded_at).toLocaleDateString('en-GB') : '—'}</td>
+                <td style={{ padding: '10px 14px', color: '#525252' }}>{d.uploaded_by_name || '—'}</td>
+                <td style={{ padding: '10px 14px' }}>
+                  <a data-testid={`view-doc-${d.id}`} href={api.documentDownloadUrl(d.id)} target="_blank" rel="noreferrer" style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid rgba(25,25,25,0.2)', color: '#191919', textDecoration: 'none', fontFamily: 'Barlow', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>View</a>
+                  {canWrite && <button data-testid={`delete-doc-${d.id}`} onClick={() => setConfirmDelete(d)} style={{ marginLeft: '6px', padding: '4px 10px', fontSize: '10px', border: '1px solid #FF353F', color: '#FF353F', background: 'transparent', cursor: 'pointer', fontFamily: 'Barlow', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Delete</button>}
+                </td>
+              </tr>
+            ))}
+            {docs.length === 0 && <tr><td colSpan={5} style={{ padding: '32px', textAlign: 'center', color: '#9CA3AF' }}>No documents uploaded yet.</td></tr>}
+          </tbody>
+        </table>
+      )}
+
+      {showUpload && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <form onSubmit={submitUpload} style={{ backgroundColor: '#fff', width: '480px', border: '1px solid rgba(25,25,25,0.15)' }}>
+            <div style={{ padding: '16px 22px', borderBottom: '1px solid rgba(25,25,25,0.08)' }}>
+              <h3 style={{ margin: 0, fontFamily: 'Barlow', fontWeight: 900 }}>Upload Document</h3>
+            </div>
+            <div style={{ padding: '20px 22px', display: 'grid', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px', fontFamily: 'Barlow' }}>Category</label>
+                <select data-testid="upload-category" required value={category} onChange={e => setCategory(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px' }}>
+                  {cats.map(c => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+              {category === 'Other' && (
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px', fontFamily: 'Barlow' }}>Free-text label</label>
+                  <input data-testid="upload-category-label" value={categoryLabel} onChange={e => setCategoryLabel(e.target.value)} placeholder="Describe the document type" style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
+                </div>
+              )}
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px', fontFamily: 'Barlow' }}>File (PDF, JPEG, PNG, DOCX · max 10MB)</label>
+                <input data-testid="upload-file-input" type="file" accept=".pdf,.jpg,.jpeg,.png,.docx,application/pdf,image/jpeg,image/png,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required onChange={e => setFile(e.target.files[0])} style={{ width: '100%', padding: '8px 0', fontSize: '13px' }} />
+                {file && <div style={{ marginTop: '4px', fontSize: '11px', color: '#525252' }}>{file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB</div>}
+              </div>
+            </div>
+            <div style={{ padding: '14px 22px', borderTop: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button type="button" onClick={() => { setShowUpload(false); setFile(null); }} style={{ padding: '10px 20px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '12px' }}>Cancel</button>
+              <button data-testid="upload-submit-btn" type="submit" disabled={uploading || !file} style={{ padding: '10px 22px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Barlow', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{uploading ? 'Uploading…' : 'Upload'}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div data-testid="confirm-delete-modal" style={{ backgroundColor: '#fff', width: '420px', border: '1px solid rgba(25,25,25,0.15)' }}>
+            <div style={{ padding: '16px 22px', borderBottom: '1px solid rgba(25,25,25,0.08)' }}>
+              <h3 style={{ margin: 0, fontFamily: 'Barlow', fontWeight: 900 }}>Delete Document?</h3>
+            </div>
+            <div style={{ padding: '20px 22px', fontSize: '13px', color: '#525252' }}>
+              You are about to permanently delete <strong style={{ color: '#191919' }}>{confirmDelete.file_name}</strong> ({confirmDelete.category}). This action is logged for audit and cannot be undone.
+            </div>
+            <div style={{ padding: '14px 22px', borderTop: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button onClick={() => setConfirmDelete(null)} style={{ padding: '10px 20px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '12px' }}>Cancel</button>
+              <button data-testid="confirm-delete-btn" onClick={doDelete} style={{ padding: '10px 22px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Barlow', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

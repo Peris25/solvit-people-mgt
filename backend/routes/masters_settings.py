@@ -207,6 +207,18 @@ DEFAULTS = {
         "training_categories":["Technical", "Leadership", "Compliance", "Role-specific"],
         "project_status":     ["Not Started", "In Progress", "Completed", "On Hold"],
         "solver_tiers":       ["Elite", "Active", "At Risk", "Inactive"],
+        "document_categories": [
+            "National ID / Passport",
+            "Signed Employment Contract",
+            "Academic Certificates",
+            "NSSF Card / Registration",
+            "NHIF Card / Registration",
+            "Bank Account Details Letter",
+            "KRA PIN Certificate",
+            "Disciplinary Letter",
+            "Performance Improvement Plan",
+            "Other",
+        ],
     },
 }
 
