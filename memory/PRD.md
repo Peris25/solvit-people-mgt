@@ -38,6 +38,13 @@ Build a full-stack People Management Platform for **Solvit Limited** (Kenyan tec
 
 ## Implemented (May 2025 → Feb 2026)
 
+### Iter 12 — Light mode (default) + Dark mode toggle ✅
+- New `ThemeContext` with `theme: 'light' | 'dark'`, localStorage persistence (`solvit_theme`) and `<html data-theme>` attribute switch.
+- **Light mode** (new default) — white sidebar with subtle right border, `#FFEEEE` pink-tint active background + red text + left red bar (matches the reference image exactly), muted grey section labels, light borders throughout.
+- **Dark mode** (former default) — preserved as a one-click alternative; sun/moon toggle button in sidebar footer next to the Sign Out button.
+- Theme-aware components: `Sidebar.js`, `AIAgent.js` header, `FirstLoginTour.js` step tooltip. All other surfaces (cards, modals, forms) already use white / `#F5F5F5` which look correct in both modes.
+- Token catalogue in `themeTokens()` makes adding new theme-aware surfaces a one-line lookup.
+
 ### Iter 11 — Actionable AI with confirmation prompts ✅
 **The AI Assistant is no longer read-only.** It now proposes write actions, surfaces a confirmation card, and only executes after explicit click.
 

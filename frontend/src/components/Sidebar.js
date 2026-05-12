@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTheme, themeTokens } from '../context/ThemeContext';
 import {
   Bell, LogOut, Brain,
   LayoutDashboard, Users, Zap, Target, Rocket,
@@ -8,7 +9,7 @@ import {
   Palmtree, Wallet, Award, Scale, FileText,
   TrendingUp, CheckCircle2, CalendarDays, FileEdit,
   ListChecks, Settings as SettingsIcon, Cog, ChevronLeft, Menu,
-  UploadCloud
+  UploadCloud, Sun, Moon
 } from 'lucide-react';
 import * as api from '../services/api';
 
@@ -63,6 +64,8 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { theme, toggle: toggleTheme } = useTheme();
+  const tk = themeTokens(theme);
   const [notifications, setNotifications] = useState([]);
   const [showNotif, setShowNotif] = useState(false);
 
@@ -128,11 +131,11 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
 
   if (collapsed) {
     return (
-      <div style={{ width: '56px', backgroundColor: '#191919', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 0', gap: '8px', zIndex: 50, minHeight: '100vh' }}>
+      <div style={{ width: '56px', backgroundColor: tk.sidebarBg, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 0', gap: '8px', zIndex: 50, minHeight: '100vh', borderRightWidth: '1px', borderRightStyle: 'solid', borderRightColor: tk.sidebarBorder }}>
         <div data-testid="solvit-logo-mark" style={{ width: '36px', height: '36px', backgroundColor: '#FF353F', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginBottom: '16px' }} onClick={() => onToggle(false)}>
           <span style={{ color: '#fff', fontWeight: 900, fontSize: '16px', fontFamily: 'Barlow' }}>S</span>
         </div>
-        <button data-testid="sidebar-expand" onClick={() => onToggle(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', padding: '8px' }}>
+        <button data-testid="sidebar-expand" onClick={() => onToggle(false)} style={{ background: 'none', border: 'none', color: tk.sidebarMuted, cursor: 'pointer', padding: '8px' }}>
           <Menu size={18} />
         </button>
       </div>
@@ -140,38 +143,38 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
   }
 
   return (
-    <div style={{ width: '240px', backgroundColor: '#191919', display: 'flex', flexDirection: 'column', minHeight: '100vh', fontFamily: 'Nunito Sans, sans-serif', flexShrink: 0 }}>
+    <div style={{ width: '240px', backgroundColor: tk.sidebarBg, display: 'flex', flexDirection: 'column', minHeight: '100vh', fontFamily: 'Nunito Sans, sans-serif', flexShrink: 0, borderRightWidth: '1px', borderRightStyle: 'solid', borderRightColor: tk.sidebarBorder }}>
       {/* Logo */}
-      <div style={{ padding: '20px 20px 12px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <div style={{ padding: '20px 20px 12px', borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: tk.sidebarBorder }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ width: '32px', height: '32px', backgroundColor: '#FF353F', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <span style={{ color: '#fff', fontWeight: 900, fontSize: '16px', fontFamily: 'Barlow' }}>S</span>
             </div>
             <div>
-              <div style={{ color: '#fff', fontWeight: 900, fontSize: '14px', letterSpacing: '-0.03em', fontFamily: 'Barlow' }}>SOLVIT</div>
-              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>People Platform</div>
+              <div style={{ color: tk.sidebarText, fontWeight: 900, fontSize: '14px', letterSpacing: '-0.03em', fontFamily: 'Barlow' }}>SOLVIT</div>
+              <div style={{ color: tk.sidebarSubtle, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>People Platform</div>
             </div>
           </div>
-          <button data-testid="sidebar-collapse" onClick={() => onToggle(true)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', padding: '4px' }}>
+          <button data-testid="sidebar-collapse" onClick={() => onToggle(true)} style={{ background: 'none', border: 'none', color: tk.sidebarSubtle, cursor: 'pointer', padding: '4px' }}>
             <ChevronLeft size={16} />
           </button>
         </div>
       </div>
 
       {/* User info */}
-      <div style={{ padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', position: 'relative' }}>
+      <div style={{ padding: '12px 20px', borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: tk.sidebarBorder, position: 'relative' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: ROLE_COLORS[user?.role] || '#525252', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <span style={{ color: '#fff', fontWeight: 700, fontSize: '12px' }}>{user?.full_name?.[0] || 'U'}</span>
           </div>
           <div style={{ overflow: 'hidden', flex: 1 }}>
-            <div style={{ color: '#fff', fontSize: '12px', fontWeight: 700, letterSpacing: '-0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.full_name || user?.email}</div>
+            <div style={{ color: tk.sidebarText, fontSize: '12px', fontWeight: 700, letterSpacing: '-0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.full_name || user?.email}</div>
             <div style={{ backgroundColor: ROLE_COLORS[user?.role] || '#525252', color: '#fff', fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1px 6px', display: 'inline-block', marginTop: '2px' }}>
               {ROLE_LABELS[user?.role] || user?.role}
             </div>
           </div>
-          <button data-testid="notif-bell" onClick={() => setShowNotif(s => !s)} style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: '6px', color: 'rgba(255,255,255,0.7)' }}>
+          <button data-testid="notif-bell" onClick={() => setShowNotif(s => !s)} style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: '6px', color: tk.sidebarMuted }}>
             <Bell size={16} />
             {unread > 0 && (
               <span data-testid="notif-badge" style={{ position: 'absolute', top: '-2px', right: '-2px', backgroundColor: '#FF353F', color: '#fff', fontSize: '9px', fontWeight: 900, padding: '1px 5px', minWidth: '14px', textAlign: 'center', lineHeight: 1.2 }}>{unread > 99 ? '99+' : unread}</span>
@@ -206,7 +209,7 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
         {filteredMenu.map(section => (
           <div key={section.section} style={{ marginBottom: '4px' }}>
-            <div style={{ padding: '8px 20px 4px', fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)' }}>{section.section}</div>
+            <div style={{ padding: '8px 20px 4px', fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.2em', color: tk.sidebarSubtle }}>{section.section}</div>
             {section.items.map(item => {
               const Icon = item.Icon;
               const active = isActive(item.path);
@@ -217,17 +220,16 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
                   onClick={() => navigate(item.path)}
                   style={{
                     width: '100%', padding: '9px 20px', display: 'flex', alignItems: 'center', gap: '12px',
-                    backgroundColor: active ? 'rgba(255,53,63,0.15)' : 'transparent',
-                    borderLeft: active ? '3px solid #FF353F' : '3px solid transparent',
+                    backgroundColor: active ? tk.sidebarActiveBg : 'transparent',
                     border: 'none',
-                    borderLeftColor: active ? '#FF353F' : 'transparent',
                     borderLeftStyle: 'solid', borderLeftWidth: '3px',
-                    color: active ? '#fff' : 'rgba(255,255,255,0.6)',
+                    borderLeftColor: active ? '#FF353F' : 'transparent',
+                    color: active ? tk.sidebarActiveText : tk.sidebarMuted,
                     cursor: 'pointer', textAlign: 'left', fontSize: '12px',
                     fontFamily: 'Nunito Sans, sans-serif',
-                    transition: 'all 0.15s'
+                    transition: 'background-color 0.15s, color 0.15s'
                   }}
-                  onMouseEnter={e => { if (!active) e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.06)'; }}
+                  onMouseEnter={e => { if (!active) e.currentTarget.style.backgroundColor = tk.sidebarHoverBg; }}
                   onMouseLeave={e => { if (!active) e.currentTarget.style.backgroundColor = 'transparent'; }}
                 >
                   <Icon size={ICON_SIZE} strokeWidth={active ? 2.4 : 2} />
@@ -241,11 +243,11 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
 
       {/* AI Agent toggle */}
       {(user?.role === 'hr_admin' || user?.role === 'hr_manager') && (
-        <div style={{ padding: '12px 20px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+        <div style={{ padding: '12px 20px', borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: tk.sidebarBorder }}>
           <button
             data-testid="ai-agent-toggle"
             onClick={onAIToggle}
-            style={{ width: '100%', padding: '10px 14px', backgroundColor: aiOpen ? '#FF353F' : 'rgba(255,53,63,0.15)', color: aiOpen ? '#fff' : '#FF353F', border: '1px solid rgba(255,53,63,0.4)', cursor: 'pointer', fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', fontFamily: 'Barlow, sans-serif', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', transition: 'all 0.2s' }}
+            style={{ width: '100%', padding: '10px 14px', backgroundColor: aiOpen ? '#FF353F' : 'rgba(255,53,63,0.12)', color: aiOpen ? '#fff' : '#FF353F', border: '1px solid rgba(255,53,63,0.35)', cursor: 'pointer', fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', fontFamily: 'Barlow, sans-serif', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', transition: 'all 0.2s' }}
           >
             <Brain size={14} />
             AI HR Agent
@@ -253,9 +255,13 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
         </div>
       )}
 
-      {/* Logout */}
-      <div style={{ padding: '12px 20px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-        <button data-testid="logout-btn" onClick={handleLogout} style={{ width: '100%', padding: '8px 12px', backgroundColor: 'transparent', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', fontSize: '11px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: 'Barlow, sans-serif', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', transition: 'all 0.2s' }}>
+      {/* Theme toggle + Logout */}
+      <div style={{ padding: '12px 20px', borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: tk.sidebarBorder, display: 'flex', gap: '8px' }}>
+        <button data-testid="theme-toggle" onClick={toggleTheme} title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+          style={{ flex: '0 0 auto', padding: '8px 12px', backgroundColor: 'transparent', color: tk.sidebarMuted, borderWidth: '1px', borderStyle: 'solid', borderColor: tk.sidebarBorder, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {theme === 'light' ? <Moon size={14} /> : <Sun size={14} />}
+        </button>
+        <button data-testid="logout-btn" onClick={handleLogout} style={{ flex: 1, padding: '8px 12px', backgroundColor: 'transparent', color: tk.sidebarMuted, borderWidth: '1px', borderStyle: 'solid', borderColor: tk.sidebarBorder, cursor: 'pointer', fontSize: '11px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: 'Barlow, sans-serif', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', transition: 'all 0.2s' }}>
           <LogOut size={12} />
           Sign Out
         </button>

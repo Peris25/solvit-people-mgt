@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useTheme, themeTokens } from '../context/ThemeContext';
 import { X, Send, RefreshCw, Sparkles } from 'lucide-react';
 import * as api from '../services/api';
 
@@ -17,6 +18,8 @@ const QUICK_PROMPTS = [
 
 export default function AIAgent({ onClose }) {
   const { user } = useAuth();
+  const { theme } = useTheme();
+  const tk = themeTokens(theme);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -131,21 +134,21 @@ export default function AIAgent({ onClose }) {
       display: 'flex', flexDirection: 'column', zIndex: 200,
       fontFamily: 'Nunito Sans, sans-serif', boxShadow: '-4px 0 24px rgba(0,0,0,0.08)',
     }}>
-      <div style={{ padding: '16px 20px', borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: 'rgba(25,25,25,0.1)', backgroundColor: '#191919', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ padding: '16px 20px', borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: 'rgba(25,25,25,0.1)', backgroundColor: tk.aiHeaderBg, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{ width: '32px', height: '32px', backgroundColor: '#FF353F', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Sparkles size={16} color="#fff" />
           </div>
           <div>
-            <div style={{ color: '#fff', fontWeight: 900, fontSize: '14px', letterSpacing: '-0.03em', fontFamily: 'Barlow' }}>Solvit HR Assistant</div>
-            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Barlow' }}>Full-platform copilot</div>
+            <div style={{ color: tk.aiHeaderText, fontWeight: 900, fontSize: '14px', letterSpacing: '-0.03em', fontFamily: 'Barlow' }}>Solvit HR Assistant</div>
+            <div style={{ color: tk.aiHeaderMuted, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Barlow' }}>Full-platform copilot</div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button data-testid="ai-refresh" onClick={runInitialBrief} title="Refresh daily brief" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: '4px' }}>
+          <button data-testid="ai-refresh" onClick={runInitialBrief} title="Refresh daily brief" style={{ background: 'none', border: 'none', color: tk.aiHeaderMuted, cursor: 'pointer', padding: '4px' }}>
             <RefreshCw size={14} />
           </button>
-          <button data-testid="ai-close" onClick={onClose} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: '4px' }}>
+          <button data-testid="ai-close" onClick={onClose} style={{ background: 'none', border: 'none', color: tk.aiHeaderMuted, cursor: 'pointer', padding: '4px' }}>
             <X size={16} />
           </button>
         </div>
