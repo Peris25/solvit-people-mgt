@@ -74,7 +74,7 @@ export default function Settings() {
 
       <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid rgba(25,25,25,0.1)', marginBottom: '24px' }}>
         {[
-          ...(user?.role === 'it_admin' ? [] : [{ key: 'ai', label: 'AI Agent' }, { key: 'email', label: 'Email' }]),
+          ...(user?.role === 'it_admin' ? [] : [{ key: 'ai', label: 'AI Agent' }]),
           ...(user?.role === 'it_admin' ? [{ key: 'email_delivery', label: 'Email Delivery' }] : [{ key: 'email_delivery', label: 'Email Delivery' }]),
           ...(user?.role === 'it_admin' ? [] : [{ key: 'automation', label: 'Automation' }]),
           { key: 'tour', label: 'Replay Tour' },
@@ -133,69 +133,10 @@ export default function Settings() {
 
           {tab === 'email' && (
             <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '24px' }}>
-              <h3 style={{ fontWeight: 900, fontSize: '16px', marginBottom: '20px', color: '#191919' }}>Email Notifications</h3>
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Email Provider</label>
-                <select data-testid="email-provider" value={form.email_provider || ''} onChange={e => setForm(p => ({ ...p, email_provider: e.target.value }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', outline: 'none' }}>
-                  <option value="">None (in-app only)</option>
-                  <option value="sendgrid">SendGrid</option>
-                  <option value="smtp">SMTP</option>
-                </select>
-              </div>
-              {form.email_provider === 'sendgrid' && (
-                <>
-                  <div style={{ marginBottom: '16px' }}>
-                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>SendGrid API Key</label>
-                    <input type="password" value={form.email_api_key || ''} onChange={e => setForm(p => ({ ...p, email_api_key: e.target.value }))} placeholder="SG...." style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
-                    <p style={{ fontSize: '11px', color: '#525252', marginTop: '4px' }}>Get an API key at sendgrid.com → Settings → API Keys (Mail Send permission).</p>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>From Email</label>
-                      <input value={form.email_from_address || ''} onChange={e => setForm(p => ({ ...p, email_from_address: e.target.value }))} placeholder="hr@solvit.co.ke" style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>From Name</label>
-                      <input value={form.email_from_name || ''} onChange={e => setForm(p => ({ ...p, email_from_name: e.target.value }))} placeholder="Solvit HR" style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
-                    </div>
-                  </div>
-                </>
-              )}
-              {form.email_provider === 'smtp' && (
-                <>
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>SMTP Host</label>
-                      <input value={form.smtp_host || ''} onChange={e => setForm(p => ({ ...p, smtp_host: e.target.value }))} placeholder="smtp.gmail.com" style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Port</label>
-                      <input type="number" value={form.smtp_port || 587} onChange={e => setForm(p => ({ ...p, smtp_port: parseInt(e.target.value) || 587 }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
-                    </div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Username</label>
-                      <input value={form.smtp_username || ''} onChange={e => setForm(p => ({ ...p, smtp_username: e.target.value }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Password</label>
-                      <input type="password" value={form.smtp_password || ''} onChange={e => setForm(p => ({ ...p, smtp_password: e.target.value }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
-                    </div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>From Email</label>
-                      <input value={form.email_from_address || ''} onChange={e => setForm(p => ({ ...p, email_from_address: e.target.value }))} placeholder="hr@solvit.co.ke" style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>From Name</label>
-                      <input value={form.email_from_name || ''} onChange={e => setForm(p => ({ ...p, email_from_name: e.target.value }))} placeholder="Solvit HR" style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
-                    </div>
-                  </div>
-                </>
-              )}
-              {form.email_provider && <EmailTestButton />}
+              <h3 style={{ fontWeight: 900, fontSize: '16px', marginBottom: '12px', color: '#191919', fontFamily: 'Barlow' }}>Email Notifications — Retired</h3>
+              <p style={{ fontSize: '13px', color: '#525252', margin: 0 }}>
+                Email delivery is now configured under the <strong>Email Delivery</strong> tab (Mailtrap for testing, Office 365 for production). The legacy SendGrid / SMTP form has been removed.
+              </p>
             </div>
           )}
 

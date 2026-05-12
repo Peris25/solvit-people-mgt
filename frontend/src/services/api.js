@@ -191,6 +191,8 @@ export const resetDemoData = () => api.post('/settings/reset-demo-data');
 // AI Agent
 export const chatWithAgent = (data) => api.post('/ai-agent/chat', data);
 export const runComplianceCheck = () => api.get('/ai-agent/compliance-check');
+export const getAiSnapshot = () => api.get('/ai-agent/snapshot');
+export const aiEmployeeStatus = (query) => api.get('/ai-agent/employee-status', { params: { query } });
 export const getConversations = () => api.get('/ai-agent/conversations');
 
 // Forms

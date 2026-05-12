@@ -38,6 +38,17 @@ Build a full-stack People Management Platform for **Solvit Limited** (Kenyan tec
 
 ## Implemented (May 2025 → Feb 2026)
 
+### Iter 10 — AI Assistant full-platform copilot + legacy email removal ✅
+- **Legacy SendGrid/SMTP "Email" tab retired** from Settings. Email delivery is now configured exclusively under the new **Email Delivery** tab (Mailtrap testing / Office 365 production).
+- **AI Agent → "Solvit HR Assistant"** transformed into a full-platform copilot:
+  - New backend tools: `snapshot_headcount`, `snapshot_leave`, `snapshot_performance`, `snapshot_recruitment`, `snapshot_solvers`, `snapshot_training`, `snapshot_recognition`, `snapshot_disciplinary`, `snapshot_budget`, `snapshot_onboarding`, `compliance_status`
+  - Intent classifier routes the user question to the right modules and packs a compact (<3KB) live brief into the LLM context — no hallucinated stats
+  - New `lookup_employee_status` resolves a name from the user message and returns recent leave / reviews / training / open disciplinary cases for that person
+  - New endpoints: `/api/ai-agent/snapshot` (one-call daily brief) and `/api/ai-agent/employee-status?query=`
+  - Re-written `SYSTEM_PROMPT` covering every HR remit (employees · leave · performance · recruitment · onboarding · L&D · recognition · disciplinary · compensation · budget · surveys · retention · projects · policies · solvers · compliance) with clear scope boundaries (read-only, suggest exact click paths)
+- **Frontend AIAgent panel** rebuilt with brand-aligned UI (Barlow/Nunito Sans, sparkles header, wider 420px panel), 9 quick prompts, daily-brief loaded on open showing live numbers from `/api/ai-agent/snapshot`.
+- **Testing — Iter 10:** 7/7 new pytest cases pass + 39/39 iter 8 & 9 regression pass.
+
 ### Iter 9 — UAT batch 2 (Documents · Data Import · Email Templates · Tour) ✅
 **Item 1 — Employee Personal Documents**
 - New `routes/documents.py` with categories/list/upload/download/delete + immutable audit log

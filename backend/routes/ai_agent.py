@@ -1,11 +1,23 @@
+"""Solvit HR AI Assistant — full-platform HR copilot.
+
+Capabilities:
+- Live read access across every module (employees, leave, performance, training,
+  recruitment, solvers, recognition, disciplinary, budget, onboarding,
+  compliance, surveys, projects, retention, policies).
+- Status look-ups by employee or team ("status of John's review", "Sarah's leave
+  balance", "pending probation reviews", etc).
+- Always grounds the LLM with a live platform snapshot + intent-specific deep
+  dive context so answers reference current data, not hallucinated numbers.
+"""
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
-from typing import Optional
-from datetime import datetime, timezone
+from typing import Optional, List, Dict, Any
+from datetime import datetime, timezone, timedelta
 from database import get_db
 from utils.auth import get_current_user
 import os
 import uuid
+import re
 
 router = APIRouter(prefix="/ai-agent", tags=["ai_agent"])
 
@@ -23,16 +35,236 @@ def fmt(doc):
     return doc
 
 
-async def get_llm_settings(db):
-    """Get configured LLM settings"""
-    settings = await db.platform_settings.find_one({"tenant_id": "solvit"})
-    if not settings:
+# -------------------- DATA FETCHERS (tools the LLM is grounded with) --------------------
+
+async def snapshot_headcount(db) -> Dict[str, Any]:
+    emps = await db.employees.find({"tenant_id": "solvit"}).to_list(2000)
+    active = [e for e in emps if (e.get("lifecycle_state") or "Active") not in ("Terminated", "Exited")]
+    by_dept = {}
+    by_state = {}
+    for e in active:
+        by_dept[e.get("department") or "Unassigned"] = by_dept.get(e.get("department") or "Unassigned", 0) + 1
+        by_state[e.get("lifecycle_state") or "Active"] = by_state.get(e.get("lifecycle_state") or "Active", 0) + 1
+    return {
+        "total_active_fte": len(active),
+        "total_records": len(emps),
+        "by_department": by_dept,
+        "by_state": by_state,
+    }
+
+
+async def snapshot_leave(db) -> Dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    iso_today = now.date().isoformat()
+    pending = await db.leave_requests.count_documents({"tenant_id": "solvit", "status": {"$in": ["Pending_Manager", "Pending_HR"]}})
+    approved_this_month = await db.leave_requests.count_documents({
+        "tenant_id": "solvit", "status": "Approved",
+        "created_at": {"$gte": now.replace(day=1).isoformat()}
+    })
+    # On leave today
+    on_leave = await db.leave_requests.find({
+        "tenant_id": "solvit", "status": "Approved",
+        "start_date": {"$lte": iso_today}, "end_date": {"$gte": iso_today}
+    }).to_list(50)
+    on_leave_names = []
+    for lr in on_leave[:10]:
+        emp = await db.employees.find_one({"id": lr.get("employee_id")})
+        on_leave_names.append((emp or {}).get("full_name") or lr.get("employee_id"))
+    return {
+        "pending_approval": pending,
+        "approved_this_month": approved_this_month,
+        "on_leave_today_count": len(on_leave),
+        "on_leave_today_names": on_leave_names,
+    }
+
+
+async def snapshot_performance(db) -> Dict[str, Any]:
+    total = await db.performance_reviews.count_documents({"tenant_id": "solvit"})
+    by_status = {}
+    cursor = db.performance_reviews.find({"tenant_id": "solvit"}, {"status": 1, "nine_box_placement": 1})
+    by_nb = {}
+    async for r in cursor:
+        s = r.get("status") or "Unknown"
+        by_status[s] = by_status.get(s, 0) + 1
+        nb = r.get("nine_box_placement")
+        if nb:
+            by_nb[nb] = by_nb.get(nb, 0) + 1
+    return {"total_reviews": total, "by_status": by_status, "nine_box_distribution": by_nb}
+
+
+async def snapshot_recruitment(db) -> Dict[str, Any]:
+    reqs = await db.recruitment_requests.find({"tenant_id": "solvit"}).to_list(500) if "recruitment_requests" in await db.list_collection_names() else []
+    cands = await db.candidates.find({"tenant_id": "solvit"}).to_list(500) if "candidates" in await db.list_collection_names() else []
+    by_stage = {}
+    for c in cands:
+        s = c.get("stage") or "New"
+        by_stage[s] = by_stage.get(s, 0) + 1
+    return {
+        "open_requisitions": len([r for r in reqs if (r.get("status") or "Open") not in ("Closed", "Hired", "Cancelled")]),
+        "total_requisitions": len(reqs),
+        "candidates_total": len(cands),
+        "candidates_by_stage": by_stage,
+    }
+
+
+async def snapshot_solvers(db) -> Dict[str, Any]:
+    rows = await db.solvers.find({"tenant_id": "solvit"}).to_list(2000)
+    by_tier = {}
+    by_state = {}
+    for s in rows:
+        by_tier[s.get("performance_tier") or "—"] = by_tier.get(s.get("performance_tier") or "—", 0) + 1
+        by_state[s.get("lifecycle_state") or "Active"] = by_state.get(s.get("lifecycle_state") or "Active", 0) + 1
+    return {"total": len(rows), "by_tier": by_tier, "by_state": by_state}
+
+
+async def snapshot_training(db) -> Dict[str, Any]:
+    rows = await db.training_requests.find({"tenant_id": "solvit"}).to_list(500) if "training_requests" in await db.list_collection_names() else []
+    by_status = {}
+    for r in rows:
+        s = r.get("status") or "Pending"
+        by_status[s] = by_status.get(s, 0) + 1
+    return {"total": len(rows), "by_status": by_status}
+
+
+async def snapshot_recognition(db) -> Dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    first = now.replace(day=1).isoformat()
+    return {
+        "this_month": await db.recognitions.count_documents({"tenant_id": "solvit", "created_at": {"$gte": first}}),
+        "total": await db.recognitions.count_documents({"tenant_id": "solvit"}),
+    }
+
+
+async def snapshot_disciplinary(db) -> Dict[str, Any]:
+    rows = await db.disciplinary_cases.find({"tenant_id": "solvit"}).to_list(500) if "disciplinary_cases" in await db.list_collection_names() else []
+    by_status = {}
+    by_severity = {}
+    for r in rows:
+        by_status[r.get("status") or "Open"] = by_status.get(r.get("status") or "Open", 0) + 1
+        by_severity[r.get("severity") or "—"] = by_severity.get(r.get("severity") or "—", 0) + 1
+    return {"total": len(rows), "by_status": by_status, "by_severity": by_severity}
+
+
+async def snapshot_budget(db) -> Dict[str, Any]:
+    alloc = await db.budget_allocations.find({"tenant_id": "solvit"}).sort("year", -1).to_list(5)
+    rows = [{"year": a.get("year"), "tier_unlocked": a.get("tier_unlocked"),
+             "envelope_kes": a.get("envelope_kes"), "spent_kes": a.get("spent_kes"),
+             "remaining_kes": a.get("remaining_kes")} for a in alloc]
+    return {"recent": rows}
+
+
+async def snapshot_onboarding(db) -> Dict[str, Any]:
+    emps = await db.employees.find({"tenant_id": "solvit", "lifecycle_state": {"$in": ["Probation", "Onboarding"]}}).to_list(200)
+    return {"in_onboarding_or_probation": len(emps),
+            "names": [e.get("full_name") for e in emps[:10]]}
+
+
+async def compliance_status(db) -> List[str]:
+    now = datetime.now(timezone.utc)
+    day = now.day
+    issues: List[str] = []
+    # Probation reviews due
+    emps = await db.employees.find({"tenant_id": "solvit", "lifecycle_state": "Probation"}).to_list(50)
+    for emp in emps:
+        start = emp.get("start_date")
+        if start:
+            try:
+                start_dt = datetime.fromisoformat(start)
+                d = (now - start_dt.replace(tzinfo=timezone.utc)).days
+                if 25 <= d <= 28: issues.append(f"PROBATION: {emp.get('full_name')} — Month-1 review due soon")
+                elif 53 <= d <= 56: issues.append(f"PROBATION: {emp.get('full_name')} — Month-2 review due soon")
+                elif 81 <= d <= 84: issues.append(f"PROBATION: {emp.get('full_name')} — Month-3 FINAL review due in 3 days")
+            except Exception:
+                pass
+    # Pay bands
+    pay_bands = await db.pay_bands.find({"tenant_id": "solvit"}).to_list(20) if "pay_bands" in await db.list_collection_names() else []
+    band_map = {pb.get("band"): pb for pb in pay_bands}
+    for emp in await db.employees.find({"tenant_id": "solvit", "lifecycle_state": "Active"}).to_list(500):
+        level = emp.get("role_level") or emp.get("job_level")
+        salary = emp.get("current_salary_kes") or emp.get("salary_kes") or 0
+        if level in band_map and salary and salary < band_map[level].get("min_kes", 0):
+            issues.append(f"PAY BAND: {emp.get('full_name')} at {level} — KES {salary:,.0f} is below minimum")
+    # Statutory deadlines
+    if 8 <= day < 15: issues.append(f"NSSF/SHA remittance due in {15 - day} day(s) (15th cut-off)")
+    if 2 <= day < 9:  issues.append(f"PAYE filing due in {9 - day} day(s) (9th cut-off)")
+    return issues or ["All compliance checks passed."]
+
+
+# -------------------- ENTITY-SPECIFIC LOOK-UPS --------------------
+
+async def lookup_employee_status(db, query: str) -> Optional[Dict[str, Any]]:
+    """Resolve a partial name and return a one-page status summary."""
+    # Try to extract a likely name from the user's question
+    tokens = [t for t in re.findall(r"[A-Z][a-z]+", query)]
+    if not tokens:
         return None
-    return settings
+    # Search by full_name regex
+    pattern = "|".join(re.escape(t) for t in tokens[:3])
+    emp = await db.employees.find_one({"tenant_id": "solvit", "full_name": {"$regex": pattern, "$options": "i"}})
+    if not emp:
+        return None
+    emp_id = emp.get("id") or str(emp.get("_id"))
+    # Recent leave
+    leaves = await db.leave_requests.find({"tenant_id": "solvit", "employee_id": emp_id}).sort("created_at", -1).to_list(3)
+    # Recent reviews
+    reviews = await db.performance_reviews.find({"tenant_id": "solvit", "employee_id": emp_id}).sort("created_at", -1).to_list(2)
+    # Recent training requests
+    trainings = await db.training_requests.find({"tenant_id": "solvit", "employee_id": emp_id}).sort("created_at", -1).to_list(2) if "training_requests" in await db.list_collection_names() else []
+    # Active disciplinary
+    discipline = await db.disciplinary_cases.find({"tenant_id": "solvit", "employee_id": emp_id, "status": {"$ne": "Closed"}}).to_list(5) if "disciplinary_cases" in await db.list_collection_names() else []
+    return {
+        "id": emp_id,
+        "full_name": emp.get("full_name"),
+        "role_title": emp.get("role_title") or emp.get("job_title"),
+        "department": emp.get("department"),
+        "lifecycle_state": emp.get("lifecycle_state"),
+        "start_date": emp.get("start_date"),
+        "line_manager_id": emp.get("line_manager_id"),
+        "recent_leave": [{"type": l.get("leave_type"), "status": l.get("status"),
+                          "start": l.get("start_date"), "end": l.get("end_date"),
+                          "days": l.get("working_days")} for l in leaves],
+        "recent_reviews": [{"cycle": r.get("cycle_type") or r.get("cycle_label"),
+                            "year": r.get("cycle_year"), "status": r.get("status"),
+                            "overall_score": r.get("overall_score"),
+                            "nine_box": r.get("nine_box_placement")} for r in reviews],
+        "recent_trainings": [{"name": t.get("title") or t.get("name"), "status": t.get("status")} for t in trainings],
+        "open_disciplinary": [{"summary": d.get("summary"), "severity": d.get("severity"), "status": d.get("status")} for d in discipline],
+    }
+
+
+# -------------------- INTENT ROUTER --------------------
+
+INTENT_KEYWORDS = {
+    "headcount":   ["headcount", "how many employees", "fte count", "team size", "by department", "department"],
+    "leave":       ["leave", "annual leave", "sick", "maternity", "paternity", "off duty", "on holiday", "rollover"],
+    "performance": ["performance", "review", "9-box", "nine box", "rating", "score", "kpi"],
+    "recruitment": ["recruit", "candidate", "requisition", "hiring", "interview", "offer"],
+    "solver":      ["solver", "inspector", "tier", "field team"],
+    "training":    ["training", "l&d", "learning", "development", "course", "idp", "skill"],
+    "recognition": ["recognition", "kudos", "shout out", "shout-out", "peer recognition"],
+    "discipline":  ["discipline", "disciplinary", "warning", "pip", "hearing"],
+    "budget":      ["budget", "envelope", "headroom", "salary increase", "bonus pool", "tier 1", "tier 2"],
+    "onboarding":  ["onboarding", "probation", "new hire", "induction", "check-in"],
+    "compliance":  ["compliance", "nssf", "sha", "paye", "deadline", "statutory", "remittance"],
+    "policy":      ["policy", "policies", "handbook", "rules", "procedure", "guideline"],
+}
+
+
+def classify_intents(message: str) -> List[str]:
+    m = message.lower()
+    hits = []
+    for intent, kws in INTENT_KEYWORDS.items():
+        if any(k in m for k in kws):
+            hits.append(intent)
+    return hits
+
+
+def has_entity_question(message: str) -> bool:
+    m = message.lower()
+    return any(p in m for p in ["status of", "what about", "where is", "how is", "show me", "check on"]) or bool(re.search(r"[A-Z][a-z]+ '?s\b", message))
 
 
 async def search_policies(db, query: str) -> str:
-    """Simple policy search for RAG"""
     policies = await db.policies.find(
         {"tenant_id": "solvit", "$or": [
             {"title": {"$regex": query, "$options": "i"}},
@@ -41,136 +273,128 @@ async def search_policies(db, query: str) -> str:
         ]}
     ).to_list(5)
     if not policies:
-        return "No relevant policies found."
-    result = []
-    for p in policies:
-        result.append(f"**{p.get('title')}** (v{p.get('version', '1.0')}, effective {p.get('effective_date', 'N/A')}): {p.get('description', '')}")
-    return "\n\n".join(result)
+        return "No policies matched that query."
+    return "\n\n".join(
+        f"**{p.get('title')}** (v{p.get('version','1.0')}, effective {p.get('effective_date','—')}): {p.get('description') or (p.get('content','')[:240])}"
+        for p in policies
+    )
 
 
-async def get_compliance_status(db) -> str:
-    """Get compliance guardian status"""
-    now = datetime.now(timezone.utc)
-    month = now.month
-    day = now.day
+async def build_context(db, message: str) -> str:
+    """Return a markdown brief of relevant live data — kept compact (<3KB)."""
+    intents = classify_intents(message)
+    parts: List[str] = []
+    # Always include a tiny snapshot
+    hc = await snapshot_headcount(db)
+    parts.append(f"PLATFORM SNAPSHOT:\n- Active FTE: {hc['total_active_fte']}\n- Departments: {', '.join(f'{k}={v}' for k,v in sorted(hc['by_department'].items()))}\n- Lifecycle: {', '.join(f'{k}={v}' for k,v in hc['by_state'].items())}")
 
-    issues = []
+    if "leave" in intents:
+        lv = await snapshot_leave(db)
+        parts.append(f"LEAVE:\n- Pending approval: {lv['pending_approval']}\n- Approved this month: {lv['approved_this_month']}\n- On leave today: {lv['on_leave_today_count']} ({', '.join(lv['on_leave_today_names']) or 'none'})")
+    if "performance" in intents:
+        pf = await snapshot_performance(db)
+        parts.append(f"PERFORMANCE:\n- Total reviews: {pf['total_reviews']}\n- By status: {pf['by_status']}\n- 9-box: {pf['nine_box_distribution']}")
+    if "recruitment" in intents:
+        rc = await snapshot_recruitment(db)
+        parts.append(f"RECRUITMENT:\n- Open requisitions: {rc['open_requisitions']}\n- Candidates: {rc['candidates_total']}\n- By stage: {rc['candidates_by_stage']}")
+    if "solver" in intents:
+        sv = await snapshot_solvers(db)
+        parts.append(f"SOLVERS:\n- Total: {sv['total']}\n- By tier: {sv['by_tier']}\n- By state: {sv['by_state']}")
+    if "training" in intents:
+        tr = await snapshot_training(db)
+        parts.append(f"TRAINING / L&D:\n- Total requests: {tr['total']}\n- By status: {tr['by_status']}")
+    if "recognition" in intents:
+        rg = await snapshot_recognition(db)
+        parts.append(f"RECOGNITION:\n- This month: {rg['this_month']}\n- All-time: {rg['total']}")
+    if "discipline" in intents:
+        ds = await snapshot_disciplinary(db)
+        parts.append(f"DISCIPLINARY:\n- Total cases: {ds['total']}\n- By status: {ds['by_status']}\n- By severity: {ds['by_severity']}")
+    if "budget" in intents:
+        bg = await snapshot_budget(db)
+        parts.append(f"BUDGET:\n{bg['recent']}")
+    if "onboarding" in intents:
+        ob = await snapshot_onboarding(db)
+        parts.append(f"ONBOARDING / PROBATION:\n- In progress: {ob['in_onboarding_or_probation']} ({', '.join(ob['names']) or 'none'})")
+    if "compliance" in intents:
+        issues = await compliance_status(db)
+        parts.append("COMPLIANCE:\n- " + "\n- ".join(issues))
+    if "policy" in intents:
+        parts.append("RELEVANT POLICIES:\n" + await search_policies(db, message))
 
-    # Check probation reviews due
-    from dateutil.relativedelta import relativedelta
-    emps = await db.employees.find({"tenant_id": "solvit", "lifecycle_state": "Probation"}).to_list(50)
-    for emp in emps:
-        start = emp.get("start_date")
-        if start:
-            try:
-                start_dt = datetime.fromisoformat(start)
-                days_in_probation = (now - start_dt.replace(tzinfo=timezone.utc)).days
-                if 25 <= days_in_probation <= 28:
-                    issues.append(f"PROBATION REVIEW DUE: {emp.get('full_name')} — Month 1 review due soon")
-                elif 53 <= days_in_probation <= 56:
-                    issues.append(f"PROBATION REVIEW DUE: {emp.get('full_name')} — Month 2 review due soon")
-                elif 81 <= days_in_probation <= 84:
-                    issues.append(f"PROBATION REVIEW DUE: {emp.get('full_name')} — Month 3 FINAL review due in 3 days")
-            except Exception:
-                pass
+    # Entity-specific look-up
+    if has_entity_question(message):
+        info = await lookup_employee_status(db, message)
+        if info:
+            parts.append(f"EMPLOYEE DETAIL — {info['full_name']}:\n{info}")
+    return "\n\n".join(parts)
 
-    # Check pay band compliance
-    pay_bands = await db.pay_bands.find({"tenant_id": "solvit"}).to_list(10)
-    band_map = {pb["band"]: pb for pb in pay_bands}
-    all_emps = await db.employees.find({"tenant_id": "solvit", "lifecycle_state": "Active"}).to_list(200)
-    for emp in all_emps:
-        level = emp.get("role_level")
-        salary = emp.get("current_salary_kes", 0) or 0
-        if level in band_map and salary < band_map[level]["min_kes"]:
-            issues.append(f"PAY BAND ALERT: {emp.get('full_name')} at {level} — salary KES {salary:,} is below minimum KES {band_map[level]['min_kes']:,}")
 
-    # Check NSSF/SHA remittance
-    if day >= 8 and day < 15:
-        days_remaining = 15 - day
-        issues.append(f"NSSF/SHA DEADLINE: {days_remaining} days remaining (15th of month)")
+SYSTEM_PROMPT = (
+    "You are the Solvit HR AI Assistant, the trusted copilot for the HR & Administration "
+    "team at Solvit Limited — a Kenyan tech-enabled vehicle inspection company. You assist "
+    "the HR Admin (Jessica) and HR Manager across the FULL HR remit: employees, leave, "
+    "performance, recruitment, onboarding, L&D, recognition, disciplinary, compensation, "
+    "budget, surveys, retention, projects, policies, solvers, and compliance.\n\n"
+    "Operating principles:\n"
+    "1. Ground every answer in the LIVE platform snapshot provided in the context. Never "
+    "   invent numbers, statuses, or names.\n"
+    "2. When asked about a person, use the EMPLOYEE DETAIL block if present.\n"
+    "3. Confirm the status of any in-flight item by quoting the live status text (e.g. "
+    "   'Pending_Manager', 'Approved', 'Pending HR') verbatim.\n"
+    "4. Be proactive: surface upcoming deadlines (probation reviews, NSSF/SHA/PAYE, "
+    "   contract anniversaries) without being asked when they're relevant.\n"
+    "5. Use KES for money, DD/MM/YYYY for dates, EAT for times, and reference the Kenyan "
+    "   Employment Act 2007 where appropriate.\n"
+    "6. Suggest the EXACT screen / button HR should click to complete the task (e.g. "
+    "   'open /leave → Team Leave tab → Approve').\n"
+    "7. If the user asks you to take an action that requires a click (approve, reject, "
+    "   send), explain the steps; you can fetch data, not yet perform write operations. "
+    "   Be transparent about this boundary.\n"
+    "8. Keep answers concise (≤ 8 lines) unless the user asks for detail. Use bullet "
+    "   points, no emojis."
+)
 
-    if day >= 2 and day < 9:
-        days_remaining = 9 - day
-        issues.append(f"PAYE FILING DEADLINE: {days_remaining} days remaining (9th of month)")
 
-    if not issues:
-        return "All compliance checks passed. No urgent issues found."
-    return "\n".join(f"⚠️ {issue}" for issue in issues)
-
+# -------------------- ROUTES --------------------
 
 @router.post("/chat")
 async def chat_with_agent(msg: ChatMessage, request: Request):
     user = await get_current_user(request)
     if user["role"] not in ["hr_admin", "hr_manager"]:
-        raise HTTPException(status_code=403, detail="Only HR Admin can use AI Agent")
+        raise HTTPException(status_code=403, detail="Only HR Admin/Manager can use the AI Assistant")
     db = get_db()
-    settings = await get_llm_settings(db)
+    settings = await db.platform_settings.find_one({"tenant_id": "solvit"})
     conversation_id = msg.conversation_id or str(uuid.uuid4())
 
-    # Save user message
     await db.ai_conversations.insert_one({
-        "tenant_id": "solvit",
-        "conversation_id": conversation_id,
-        "role": "user",
-        "content": msg.message,
-        "user_id": user["id"],
+        "tenant_id": "solvit", "conversation_id": conversation_id, "role": "user",
+        "content": msg.message, "user_id": user["id"],
         "created_at": datetime.now(timezone.utc).isoformat()
     })
 
-    # Determine intent
-    message_lower = msg.message.lower()
-    is_policy_query = any(word in message_lower for word in ["policy", "leave", "conduct", "rules", "handbook", "procedure", "guideline"])
-    is_compliance_check = any(word in message_lower for word in ["compliance", "nssf", "sha", "paye", "probation", "overdue", "deadline", "check"])
-
-    response_text = ""
-
-    # Try to use configured LLM (or default to Emergent LLM Key + gpt-5.2)
     emergent_key = os.environ.get("EMERGENT_LLM_KEY")
-    provider = (settings.get("llm_provider") if settings else None) or "openai"
-    model = (settings.get("llm_model") if settings else None) or "gpt-5.2"
-    api_key = (settings.get("llm_api_key") if settings else None) or emergent_key
+    provider = (settings or {}).get("llm_provider") or "openai"
+    model = (settings or {}).get("llm_model") or "gpt-5.2"
+    api_key = (settings or {}).get("llm_api_key") or emergent_key
+
+    context = await build_context(db, msg.message)
+    response_text = ""
 
     if api_key:
         try:
-            # Build context
-            context_parts = []
-            if is_policy_query:
-                policy_context = await search_policies(db, msg.message)
-                context_parts.append(f"RELEVANT POLICIES:\n{policy_context}")
-            if is_compliance_check:
-                compliance_context = await get_compliance_status(db)
-                context_parts.append(f"COMPLIANCE STATUS:\n{compliance_context}")
-
-            system_prompt = """You are the Solvit HR AI Agent, an intelligent assistant for the HR & Administration team at Solvit Limited, a Kenyan vehicle inspection company. 
-
-You help HR with:
-1. Policy Q&A — answering questions about company policies using the policy library
-2. Compliance Guardian — proactive alerts about probation deadlines, pay band compliance, NSSF/SHA/PAYE deadlines
-3. Employee lifecycle guidance
-4. Performance and retention insights
-
-Always be concise, professional, and Kenya-specific (use KES, DD/MM/YYYY dates, reference Kenyan Employment Act 2007 where relevant).
-For compliance alerts, be proactive and specific. For policy queries, cite the relevant policy."""
-
-            user_message = msg.message
-            if context_parts:
-                user_message = f"Context:\n{chr(10).join(context_parts)}\n\nUser question: {msg.message}"
-
             from emergentintegrations.llm.chat import LlmChat, UserMessage
-            chat = LlmChat(api_key=api_key, session_id=conversation_id, system_message=system_prompt).with_model(provider, model)
-            response = await chat.send_message(UserMessage(text=user_message))
-            response_text = response if isinstance(response, str) else (response.content if hasattr(response, 'content') else str(response))
+            chat = LlmChat(api_key=api_key, session_id=conversation_id, system_message=SYSTEM_PROMPT).with_model(provider, model)
+            user_message = f"Live platform context (use this — do not hallucinate):\n{context}\n\nHR question: {msg.message}"
+            resp = await chat.send_message(UserMessage(text=user_message))
+            response_text = resp if isinstance(resp, str) else (resp.content if hasattr(resp, "content") else str(resp))
         except Exception as e:
-            print(f"AI Agent LLM error: {e}")
-            response_text = await _fallback_response(db, msg.message, is_policy_query, is_compliance_check)
+            print(f"AI Assistant LLM error: {e}")
+            response_text = _fallback_brief(context, msg.message)
     else:
-        response_text = await _fallback_response(db, msg.message, is_policy_query, is_compliance_check)
+        response_text = _fallback_brief(context, msg.message)
 
-    # Save assistant response
     await db.ai_conversations.insert_one({
-        "tenant_id": "solvit",
-        "conversation_id": conversation_id,
-        "role": "assistant",
+        "tenant_id": "solvit", "conversation_id": conversation_id, "role": "assistant",
         "content": response_text,
         "created_at": datetime.now(timezone.utc).isoformat()
     })
@@ -178,28 +402,17 @@ For compliance alerts, be proactive and specific. For policy queries, cite the r
     return {
         "conversation_id": conversation_id,
         "response": response_text,
-        "provider": (settings.get("llm_provider") if settings else None) or ("openai-emergent" if os.environ.get("EMERGENT_LLM_KEY") and api_key else "fallback")
+        "provider": provider if api_key else "fallback",
     }
 
 
-async def _fallback_response(db, message: str, is_policy_query: bool, is_compliance_check: bool) -> str:
-    """Deterministic fallback when LLM not configured"""
-    if is_compliance_check:
-        return await get_compliance_status(db)
-    if is_policy_query:
-        policy_context = await search_policies(db, message)
-        return f"Here is what I found in the Policy Library:\n\n{policy_context}\n\nTo get more detailed AI-powered responses, configure your LLM provider in Settings."
-    # General helpful response
-    compliance = await get_compliance_status(db)
-    return f"""I'm the Solvit HR AI Agent. I can help you with:
-
-1. **Policy Q&A** — Ask me about any company policy
-2. **Compliance Checks** — Ask me about upcoming deadlines
-
-**Current Compliance Status:**
-{compliance}
-
-_Note: Configure your LLM provider (OpenAI/Anthropic/Gemini) in Settings for full AI capabilities._"""
+def _fallback_brief(context: str, message: str) -> str:
+    """Used when no LLM key is configured — returns a structured live-data brief."""
+    return (
+        f"AI Assistant (deterministic mode — no LLM configured).\n\nHere is the live platform "
+        f"context most relevant to your question:\n\n{context}\n\n"
+        f"_Configure an LLM provider under Masters Settings → AI to unlock conversational answers._"
+    )
 
 
 @router.get("/compliance-check")
@@ -208,8 +421,43 @@ async def run_compliance_check(request: Request):
     if user["role"] not in ["hr_admin", "hr_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
-    status = await get_compliance_status(db)
-    return {"status": status, "checked_at": datetime.now(timezone.utc).isoformat()}
+    issues = await compliance_status(db)
+    return {"status": "\n".join(issues), "issues": issues, "checked_at": datetime.now(timezone.utc).isoformat()}
+
+
+@router.get("/snapshot")
+async def daily_brief(request: Request):
+    """Single-call daily brief for the HR Admin landing page."""
+    user = await get_current_user(request)
+    if user["role"] not in ["hr_admin", "hr_manager"]:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    db = get_db()
+    return {
+        "headcount": await snapshot_headcount(db),
+        "leave": await snapshot_leave(db),
+        "performance": await snapshot_performance(db),
+        "recruitment": await snapshot_recruitment(db),
+        "solvers": await snapshot_solvers(db),
+        "training": await snapshot_training(db),
+        "recognition": await snapshot_recognition(db),
+        "disciplinary": await snapshot_disciplinary(db),
+        "budget": await snapshot_budget(db),
+        "onboarding": await snapshot_onboarding(db),
+        "compliance_issues": await compliance_status(db),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/employee-status")
+async def employee_status(request: Request, query: str):
+    user = await get_current_user(request)
+    if user["role"] not in ["hr_admin", "hr_manager", "line_manager"]:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    db = get_db()
+    info = await lookup_employee_status(db, query)
+    if not info:
+        raise HTTPException(status_code=404, detail="No employee matched that query")
+    return info
 
 
 @router.get("/conversations")
