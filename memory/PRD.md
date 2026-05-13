@@ -38,6 +38,26 @@ Build a full-stack People Management Platform for **Solvit Limited** (Kenyan tec
 
 ## Implemented (May 2025 → Feb 2026)
 
+### Iter 13 — Role Architecture & Mandatory Line Manager (UAT fixes) ✅
+**Additive Role Layering:**
+- Sidebar restructured: "Finance & Admin" section is gated to `role='finance'` only; "Budget & Operations" section visible to HR Admin / HR Manager / Executive only; IT Admin sees no Finance or Budget sections.
+- Finance also receives the Line-Manager team layer (Performance, Leave, L&D, Projects, Recognition, Disciplinary, Calendar).
+
+**Mandatory Line Manager (every employee, end to end):**
+- `EmployeeCreate.line_manager_id` is now a required `str`. Pydantic returns 422 when missing.
+- `POST /api/employees` validates the supplied id exists (400 'Selected Line Manager not found.' otherwise).
+- HR Admin → Add Employee modal includes the required `[data-testid=employee-lm-picker]` with inline error `[data-testid=employee-lm-error]` and stable `[data-testid=employee-save]` submit.
+
+**Auto-populated read-only Line Manager on Leave:**
+- New `GET /api/employees/me` returns the caller's own employee row enriched with `line_manager_name`.
+- Apply-for-Leave modal pre-fills `line_manager_id` from `/me` and renders a read-only badge `[data-testid=leave-lm-readonly]` instead of a picker (with `[data-testid=leave-lm-missing]` fallback if HR hasn't set one yet).
+
+**Board Chair + Reporting Tree:**
+- Board Chair seeded as a real `employees` record (board_only=true, role_title='Board Chair').
+- New `LINE_MANAGER_TREE` + `enforce_line_manager_hierarchy()` runs on every boot and idempotently applies the canonical reporting tree (MD/ED → Board Chair; Sarah/Jessica/Isaac/Lillian → MD; David/Grace/Daniel → Sarah; James → David; Mary → Lillian; John → Isaac; Robert/Stephen → David). Any unmapped legacy employee with no LM defaults to Sarah.
+
+**Tests — Iter 13:** 22/22 backend pytest (13 regression from iter 12 + 9 new); 100% on frontend UAT cases (leave readonly, LM-required inline error, sidebar gating for IT Admin / Finance / HR Admin).
+
 ### Iter 12 — Light mode (default) + Dark mode toggle ✅
 - New `ThemeContext` with `theme: 'light' | 'dark'`, localStorage persistence (`solvit_theme`) and `<html data-theme>` attribute switch.
 - **Light mode** (new default) — white sidebar with subtle right border, `#FFEEEE` pink-tint active background + red text + left red bar (matches the reference image exactly), muted grey section labels, light borders throughout.
