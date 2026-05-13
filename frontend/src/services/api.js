@@ -219,8 +219,7 @@ export const getVoluntaryAttrition = () => api.get('/retention/voluntary-attriti
 export const getTalentDensity = (cycle_year) => api.get('/performance/talent-density', { params: { cycle_year } });
 export const getReviewPanel = (employee_id) => api.get(`/performance/review-panel/${employee_id}`);
 
-// Access Matrix
-export const getAccessMatrix = () => api.get('/access/matrix');
+// Access Matrix (full helpers also defined near the top of this file)
 export const checkModuleAccess = (module_id) => api.get(`/access/check/${module_id}`);
 
 // Masters Settings
