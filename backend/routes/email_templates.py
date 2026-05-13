@@ -374,7 +374,7 @@ async def preview_template(key: str, request: Request):
         "interview_datetime": "15/06/2026 10:00 EAT",
         "filing_name": "PAYE", "days_ahead": "7",
         "full_name": "Jane Doe", "email": "jane.doe@solvit.co.ke",
-        "temp_password": "Welcome2026!", "login_url": "https://solvit.co.ke/login",
+        "temp_password": "<<sample-temp-pw>>", "login_url": "https://solvit.co.ke/login",
         "new_salary_kes": "135,000", "effective_date": "01/03/2026",
         "from_name": "Peer Reviewer", "message": "Outstanding work on Q1 targets!",
         "years": "5",

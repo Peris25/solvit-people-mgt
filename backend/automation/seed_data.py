@@ -1,19 +1,25 @@
 """Seed initial data for the Solvit People Platform"""
+import os
 from datetime import datetime, timezone
 from utils.auth import hash_password
 import uuid
 
+# Demo seed password — sourced from .env so it can be rotated per environment
+# without changing source code. Defaults to a known dev value so local-only
+# bootstraps still work without configuration.
+DEMO_SEED_PASSWORD = os.environ.get("DEMO_SEED_PASSWORD", "ChangeMe@2026")
+
 
 DEMO_USERS = [
-    {"email": "jessica@solvit.co.ke", "full_name": "Jessica Mwangi", "role": "hr_admin", "department": "HR & People", "password": "Solvit@2026"},
-    {"email": "manager@solvit.co.ke", "full_name": "David Ochieng", "role": "line_manager", "department": "Operations", "password": "Solvit@2026"},
-    {"email": "finance@solvit.co.ke", "full_name": "Sarah Njoroge", "role": "finance", "department": "Finance", "password": "Solvit@2026"},
-    {"email": "employee@solvit.co.ke", "full_name": "James Kamau", "role": "employee", "department": "Commercial & Business Development", "password": "Solvit@2026"},
-    {"email": "solver@solvit.co.ke", "full_name": "Peter Njoroge", "role": "solver", "department": None, "password": "Solvit@2026"},
-    {"email": "md@solvit.co.ke", "full_name": "Michael Omondi", "role": "executive", "department": "Operations", "password": "Solvit@2026"},
-    {"email": "itadmin@solvit.co.ke", "full_name": "Isaac Karanja", "role": "it_admin", "department": "Technology", "password": "Solvit@2026"},
-    {"email": "ed@solvit.co.ke", "full_name": "Esther Wanjala", "role": "executive", "department": "Operations", "password": "Solvit@2026"},
-    {"email": "board@solvit.co.ke", "full_name": "Board Chair", "role": "board", "department": None, "password": "Solvit@2026"},
+    {"email": "jessica@solvit.co.ke", "full_name": "Jessica Mwangi", "role": "hr_admin", "department": "HR & People", "password": DEMO_SEED_PASSWORD},
+    {"email": "manager@solvit.co.ke", "full_name": "David Ochieng", "role": "line_manager", "department": "Operations", "password": DEMO_SEED_PASSWORD},
+    {"email": "finance@solvit.co.ke", "full_name": "Sarah Njoroge", "role": "finance", "department": "Finance", "password": DEMO_SEED_PASSWORD},
+    {"email": "employee@solvit.co.ke", "full_name": "James Kamau", "role": "employee", "department": "Commercial & Business Development", "password": DEMO_SEED_PASSWORD},
+    {"email": "solver@solvit.co.ke", "full_name": "Peter Njoroge", "role": "solver", "department": None, "password": DEMO_SEED_PASSWORD},
+    {"email": "md@solvit.co.ke", "full_name": "Michael Omondi", "role": "executive", "department": "Operations", "password": DEMO_SEED_PASSWORD},
+    {"email": "itadmin@solvit.co.ke", "full_name": "Isaac Karanja", "role": "it_admin", "department": "Technology", "password": DEMO_SEED_PASSWORD},
+    {"email": "ed@solvit.co.ke", "full_name": "Esther Wanjala", "role": "executive", "department": "Operations", "password": DEMO_SEED_PASSWORD},
+    {"email": "board@solvit.co.ke", "full_name": "Board Chair", "role": "board", "department": None, "password": DEMO_SEED_PASSWORD},
 ]
 
 PAY_BANDS = [

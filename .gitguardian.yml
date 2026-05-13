@@ -1,0 +1,35 @@
+# GitGuardian configuration
+# https://docs.gitguardian.com/ggshield-docs/reference/config
+#
+# Suppresses confirmed false positives so genuine incidents stand out.
+version: 2
+
+# Files / paths to skip entirely
+paths-ignore:
+  # Email templates contain {{temp_password}} merge-tag placeholders + a sample
+  # preview value used by the template editor — they never carry real secrets.
+  - backend/routes/email_templates.py
+  # The PostHog Project API key in this file is a *public* (phc_) write-only
+  # ingest key, designed to be embedded client-side per PostHog's docs.
+  - frontend/public/index.html
+  # Pytest fixtures use the seed demo password for end-to-end auth flow tests.
+  # The actual seeded password is sourced from DEMO_SEED_PASSWORD in .env;
+  # the literal in test files is intentional and matches the documented dev
+  # default. Real secrets never live here.
+  - backend/tests/
+  - "**/__pycache__/**"
+  - "**/.venv/**"
+  - "**/node_modules/**"
+
+# Specific secret detectors to disable globally
+secret:
+  ignored-detectors:
+    - PostHog Project API Key  # phc_ public keys are safe to embed
+
+  # Per-incident ignores (fallback, e.g. if you can't ignore the whole file)
+  ignored-matches:
+    - name: PostHog public project key in SPA bootstrap
+      match: phc_xAvL2Iq4tFmANRE7kzbKwaSqp1HJjN7x48s3vr0CMjs
+
+# Whether to abort the commit / pipeline when a secret is found
+exit-zero: false
