@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 13 retest after enforce_line_manager_hierarchy() fix. Backend: 22/22 pytest tests pass (13 regression from iter_12 + 9 new in test_iteration_13.py). /api/employees/me line_manager_name now resolves correctly for all 6 UAT accounts: jessica->Michael Omondi, manager(David)->Sarah Njoroge, finance(Sarah)->Michael Omondi, employee(James)->David Ochieng, md->Board Chair, ed->Board Chair. Mandatory LM rules confirmed: 422 missing, 400 invalid, 201 valid + persistence. Frontend: leave-lm-readonly correctly shows 'David Ochieng' for employee@solvit.co.ke; employee-lm-error inline message 'Line Manager is required for approval routing. Please select one.' fires correctly when Save clicked without LM; sidebar gating regression confirmed for IT Admin (no Finance/Budget sections), Finance (Finance & Admin visible), HR Admin (Budget & Operations visible, no Finance & Admin).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_13.py",
+    "/app/test_reports/pytest/iteration_13.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "enforce_line_manager_hierarchy() in automation/seed_data.py — verified working end-to-end via pytest hierarchy parametrization. Recommend retaining the boot-time log line 'Reporting tree: corrected line_manager_id for N employees' as an operational signal.",
+    "Employees.js Add modal: the Line Manager picker is a custom DIV (not a native <select>), so automated tests must click+select from a popover. Consider exposing a hidden <select data-testid='employee-lm-picker-select'> for testability, or document the popover item testid (e.g., data-testid='employee-lm-option-<id>'). Current functional flow validated manually + backend POST is covered by pytest."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_13.py"
+  ],
+  "success_rate": {"backend": "100% (22/22)", "frontend": "100% on UAT cases (leave readonly, LM-required inline error, sidebar gating x3)"},
+  "test_credentials": "All from /app/memory/test_credentials.md, password Solvit@2026. Verified working for jessica, manager, finance, employee, md, ed, itadmin.",
+  "seed_data_creation": "Created 2 test employees with prefix uat13- (uat13-ok-lm-<ts>@solvit.co.ke role_title='Test', uat13-lm-empty-<ts> was rejected as expected). Harmless.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 13 closed all open UAT items from iteration 12. The seed/migration hierarchy bug is fixed via enforce_line_manager_hierarchy() and verified across all 6 accounts. If future work touches automation/seed_data.py or routes/employees.py, re-run /app/backend/tests/test_iteration_13.py to regression-check the hierarchy. The HR Add Employee positive submit path through the custom-DIV LM picker is the only flow not auto-tested by Playwright (selection of a popover item); main agent may add a stable data-testid='employee-lm-option-<id>' on each LM option for full automation coverage.",
+  "rca_of_the_issue": "Previous iteration 12 root-cause was a one-time backfill in migrate_department_labels that swept all 23 employees to a single LM id. Main agent introduced enforce_line_manager_hierarchy() which idempotently re-applies the canonical LINE_MANAGER_TREE (email->email map) on every boot. Backend pytest parametrization across all 6 UAT accounts now confirms correct resolution, including the Board Chair root for MD/ED."
+}

@@ -304,10 +304,10 @@ export default function Employees() {
                   </div>
                 </div>
               </div>
-              {error && <div style={{ color: '#FF353F', fontSize: '12px', marginTop: '12px', padding: '8px', border: '1px solid #FF353F', backgroundColor: 'rgba(255,53,63,0.05)' }}>{error}</div>}
+              {error && <div data-testid="employee-lm-error" style={{ color: '#FF353F', fontSize: '12px', marginTop: '12px', padding: '8px', border: '1px solid #FF353F', backgroundColor: 'rgba(255,53,63,0.05)' }}>{error}</div>}
               <div style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                 <button type="button" onClick={() => setShowForm(false)} style={{ padding: '10px 20px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Arial' }}>Cancel</button>
-                <button data-testid="save-employee-btn" type="submit" disabled={saving} style={{ padding: '10px 24px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Arial', opacity: saving ? 0.7 : 1 }}>
+                <button data-testid="employee-save" type="submit" disabled={saving} style={{ padding: '10px 24px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Arial', opacity: saving ? 0.7 : 1 }}>
                   {saving ? 'Saving...' : 'Save Employee'}
                 </button>
               </div>

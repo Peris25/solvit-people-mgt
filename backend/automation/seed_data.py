@@ -203,12 +203,79 @@ async def seed_all(db):
     await seed_holidays(db)
     await seed_demo_employees(db)
     await migrate_department_labels(db)
+    await enforce_line_manager_hierarchy(db)
     await seed_exit_interview(db)
     await seed_pay_band_alerts(db)
     await seed_performance_reviews(db)
     await seed_notifications_and_stay_interviews(db)
     await seed_policies(db)
     print("✅ All seed data loaded successfully")
+
+
+# Canonical reporting tree by email — single source of truth, applied on every
+# boot. Idempotent: overwrites any existing line_manager_id mismatch.
+LINE_MANAGER_TREE = {
+    # MD + ED → Board Chair
+    "md@solvit.co.ke": "board@solvit.co.ke",
+    "ed@solvit.co.ke": "board@solvit.co.ke",
+    # MD's 4 direct reports
+    "finance@solvit.co.ke": "md@solvit.co.ke",
+    "jessica@solvit.co.ke": "md@solvit.co.ke",
+    "itadmin@solvit.co.ke": "md@solvit.co.ke",
+    "growth.captain@solvit.co.ke": "md@solvit.co.ke",
+    # Reports to Finance & Operations Manager
+    "grace.akinyi@solvit.co.ke": "finance@solvit.co.ke",
+    "tsm@solvit.co.ke": "finance@solvit.co.ke",
+    # Senior Operations Lead → Sarah
+    "manager@solvit.co.ke": "finance@solvit.co.ke",
+    # Account Manager → Senior Operations Lead (David)
+    "employee@solvit.co.ke": "manager@solvit.co.ke",
+    # Senior Account Manager → Growth Captain
+    "mary.wanjiru@solvit.co.ke": "growth.captain@solvit.co.ke",
+    # IT Support → IT Manager
+    "john.mwenda@solvit.co.ke": "itadmin@solvit.co.ke",
+    # Valuation Officer → David
+    "robert.kiprotich@solvit.co.ke": "manager@solvit.co.ke",
+    "s.kiragu@solvit.co.ke": "manager@solvit.co.ke",
+}
+
+
+async def enforce_line_manager_hierarchy(db):
+    """Idempotently apply the canonical reporting tree from LINE_MANAGER_TREE on
+    every boot. Fixes any drift introduced by partial seeds, manual edits, or
+    legacy data. Also defaults every other unmapped employee (without an LM)
+    to the Finance & Operations Manager so approval routing always resolves.
+    """
+    # Resolve every known email → stored id
+    by_email = {}
+    async for e in db.employees.find({"tenant_id": "solvit"}):
+        by_email[e.get("work_email")] = e.get("id") or str(e.get("_id"))
+
+    fixed = 0
+    for emp_email, lm_email in LINE_MANAGER_TREE.items():
+        emp_id = by_email.get(emp_email)
+        lm_id = by_email.get(lm_email)
+        if not emp_id or not lm_id:
+            continue
+        res = await db.employees.update_one(
+            {"work_email": emp_email, "tenant_id": "solvit",
+             "$or": [{"line_manager_id": {"$ne": lm_id}}, {"line_manager_id": {"$exists": False}}]},
+            {"$set": {"line_manager_id": lm_id}},
+        )
+        if res.modified_count:
+            fixed += 1
+    # For anyone not in the canonical tree (unmapped legacy / demo extras),
+    # default to Sarah (Finance & Operations Manager) if they have no LM.
+    sarah_id = by_email.get("finance@solvit.co.ke")
+    if sarah_id:
+        await db.employees.update_many(
+            {"tenant_id": "solvit",
+             "work_email": {"$nin": list(LINE_MANAGER_TREE.values()) + ["board@solvit.co.ke"]},
+             "$or": [{"line_manager_id": None}, {"line_manager_id": ""}, {"line_manager_id": {"$exists": False}}]},
+            {"$set": {"line_manager_id": sarah_id}},
+        )
+    if fixed:
+        print(f"✅ Reporting tree: corrected line_manager_id for {fixed} employees")
 
 
 async def seed_policies(db):
