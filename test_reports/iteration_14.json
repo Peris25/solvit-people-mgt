@@ -1,0 +1,60 @@
+{
+  "summary": "Iteration 14 — Line Manager dashboard widget + line_manager visibility scope tested end-to-end. Backend: 10/12 pytest pass (4/4 widget RBAC+shape, 4/4 employees scope, 1/1 leave scope). Frontend: LineManagerDashboard renders fully for manager@solvit.co.ke (line-manager-dashboard, all 4 tiles, lm-flight-risk with 4 segments, lm-direct-reports table lists James Kamau + Robert Kiprotich, tile-leave→/leave, tile-mytasks→/my-tasks, row-click→/employees/<id>). HR Admin still shows operational dashboard; Employee still shows EmployeeDashboard. THREE backend bugs discovered in the click-through flow from the new widget — see action_items.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /api/employees/{id}/profile",
+        "issue": "Returns 403 'Not allowed' for line_manager even on their own direct report (e.g. David viewing James Kamau). Frontend /employees/:id page calls this endpoint first and shows 'Employee not found'. Breaks the click-through experience from the new LM dashboard (lm-report-<id> rows).",
+        "priority": "HIGH"
+      },
+      {
+        "endpoint": "GET /api/dashboard/line-manager vs GET /api/employees",
+        "issue": "ID inconsistency: widget returns UUIDs for team members (e.g. James Kamau = '9e19b14f-...'), but /api/employees serializer returns ObjectIds as `id` for the same person (James Kamau = '6a0317a53cab1d886500984b'). Likely cause: employee docs have both UUID `id` and Mongo `_id`; the list serializer overwrites `id` with str(_id) while the widget uses the stored UUID. /api/employees/{id}/profile uses the lookup but returns the ObjectId in payload. This silently desyncs the URL the LM dashboard navigates to vs what other pages expect.",
+        "priority": "HIGH"
+      },
+      {
+        "endpoint": "GET /api/employees and GET /api/employees/{id}",
+        "issue": "Responses LEAK MongoDB `_id` field (violates project rule). Every row in /api/employees as manager has both `id` and `_id` carrying the same ObjectId string.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "LineManagerDashboard → /employees/<report_id>",
+        "issue": "Clicking lm-report-<id> rows navigates to /employees/<UUID> which renders 'Employee not found' because (a) /api/employees/{id}/profile 403s for line_manager and (b) widget UUID doesn't match the ObjectId returned by /api/employees. End-user experience: every direct-report row link looks broken.",
+        "affected_selectors": ["[data-testid^=\"lm-report-\"]"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_14.py",
+    "/app/test_reports/pytest/iteration_14.xml"
+  ],
+  "action_items": [
+    "Backend: allow line_manager to GET /api/employees/{id}/profile for their own record and their direct reports (currently 403). Same scope rule already exists for /api/employees list and /api/leave — extend it to the profile endpoint.",
+    "Backend: fix the ID inconsistency between /api/dashboard/line-manager (UUID `id`) and /api/employees (ObjectId as `id`). Pick one canonical id (UUID is preferred per the rest of the schema, e.g. line_manager_id values are UUIDs). The /api/employees list serializer is currently overwriting `id` with str(_id).",
+    "Backend: strip `_id` from /api/employees and /api/employees/{id} responses (violates the no-Mongo-_id rule).",
+    "Frontend (optional): once backend is fixed, /employees/:id should gracefully fall back to /api/employees/{id} when /profile 403s, so LM and finance roles aren't shown 'Employee not found' for records they CAN list."
+  ],
+  "critical_code_review_comments": [
+    "/app/backend/routes/dashboard.py: widget uses `r.get('id') or str(r.get('_id'))` — correct, returns UUID. But /app/backend/routes/employees.py list endpoint is returning `_id` and likely overwriting `id` with str(_id). This is a serializer bug that desyncs IDs across endpoints.",
+    "RBAC layering: scope enforcement was added to list endpoints (employees, leave) but not to /api/employees/{id}/profile, so the LM dashboard's primary click-through fails. Whenever a list endpoint gains a new scope, the detail/profile endpoints of the same resource should mirror it.",
+    "Widget code path is solid: data-testid coverage is complete (line-manager-dashboard, lm-tile-team/leave/reviews/mytasks, lm-flight-risk, lm-risk-bar-<level>, lm-direct-reports, lm-report-<id>). Loading + error states (lm-dashboard-loading, lm-dashboard-err) are present.",
+    "Test file /app/backend/tests/test_iteration_14.py covers widget shape, RBAC (manager/solver/hr_admin/it_admin), employees scope (manager/hr_admin/finance/employee), leave scope, ID consistency, _id leak and profile reachability — reusable as a regression suite."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_14.py"
+  ],
+  "success_rate": {"backend": "83% (10/12) — 2 failures are NEW bugs revealed by integration regression tests", "frontend": "100% on widget UI; click-through to /employees/:id breaks due to backend 403"},
+  "test_credentials": "All from /app/memory/test_credentials.md, password Solvit@2026. Verified: manager@, solver@, jessica@, itadmin@, employee@, finance@.",
+  "seed_data_creation": "None for iter 14. (test_iteration_13.py still creates 1 employee with prefix uat13- per run; harmless.)",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All 8 review_request bullets verified at the surface level. Two REGRESSION tests added on top: TestIdConsistency::test_widget_ids_match_employees_list_ids and TestIdConsistency::test_employees_list_does_not_leak_mongodb_id — both FAIL today and document the underlying bug. Re-run /app/backend/tests/test_iteration_14.py once main agent fixes the employees serializer + opens up /api/employees/{id}/profile to line_manager scope. Frontend re-verify by logging in as manager@solvit.co.ke, clicking a row in lm-direct-reports — should land on a populated profile, not 'Employee not found'.",
+  "rca_of_the_issue": "ROOT CAUSE (3 bugs, 1 family): the employees collection stores both a UUID `id` field (used as the canonical identifier across leave/performance/line_manager_id references) AND a Mongo `_id`. The /api/employees list serializer is currently letting `_id` through into JSON AND overwriting `id` with str(_id). The new dashboard widget correctly reads the UUID stored in the doc, so the two endpoints disagree on identity. On top of that, /api/employees/{id}/profile was never extended with the new line_manager scope from iter 14, so even when the UUID resolves to the right record, the LM is blocked with 403. Fix order: (1) employees serializer — drop _id, keep UUID id; (2) /profile endpoint — allow self + direct reports for line_manager (mirror list rule, ideally extract _scope_for_line_manager helper to reuse)."
+}

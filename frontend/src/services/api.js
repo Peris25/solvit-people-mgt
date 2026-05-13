@@ -56,6 +56,7 @@ export const getMe = () => api.get('/auth/me');
 export const getEmployees = (params) => api.get('/employees', { params });
 export const getEmployee = (id) => api.get(`/employees/${id}`);
 export const getMyEmployee = () => api.get('/employees/me');
+export const getLineManagerWidget = () => api.get('/dashboard/line-manager');
 export const getEmployeeProfile = (id) => api.get(`/employees/${id}/profile`);
 export const createEmployee = (data) => api.post('/employees', data);
 export const updateEmployee = (id, data) => api.put(`/employees/${id}`, data);

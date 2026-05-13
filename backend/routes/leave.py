@@ -87,8 +87,14 @@ async def list_leave_requests(request: Request, employee_id: Optional[str] = Non
     if user["role"] == "employee":
         query["employee_id"] = user.get("employee_id", user["id"])
     elif user["role"] == "line_manager":
-        direct_reports = await db.employees.find({"line_manager_id": user.get("employee_id", user["id"])}).to_list(100)
+        # Resolve the LM's own employees.id (not users.id) for accurate scoping.
+        me = await db.employees.find_one({"tenant_id": "solvit", "work_email": (user.get("email") or "").lower()})
+        my_emp_id = (me.get("id") or str(me.get("_id"))) if me else None
+        direct_reports = await db.employees.find({"line_manager_id": my_emp_id}).to_list(200) if my_emp_id else []
         ids = [str(e.get("id", str(e["_id"]))) for e in direct_reports]
+        # Include the LM's own leave requests too
+        if my_emp_id:
+            ids.append(my_emp_id)
         query["employee_id"] = {"$in": ids}
     requests = await db.leave_requests.find(query).sort("created_at", -1).to_list(200)
     return [fmt(r) for r in requests]

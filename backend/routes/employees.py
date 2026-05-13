@@ -124,6 +124,18 @@ async def seed_demo_employees_endpoint(request: Request):
     return {"status": "success", "inserted": inserted, "message": f"{inserted} demo employees added covering all lifecycle states"}
 
 
+async def _my_employee_id(db, user) -> Optional[str]:
+    """Resolve the calling user's own employees.id from their work email.
+    Returns None if the user has no matching employee record (system role)."""
+    emp = await db.employees.find_one({
+        "tenant_id": "solvit",
+        "work_email": (user.get("email") or "").lower(),
+    })
+    if not emp:
+        return None
+    return emp.get("id") or str(emp.get("_id"))
+
+
 @router.get("/me")
 async def get_my_employee(request: Request):
     """Return the current authenticated user's own employee record.
@@ -177,7 +189,18 @@ async def list_employees(request: Request, lifecycle_state: Optional[str] = None
     elif user["role"] == "solver":
         return []
     elif user["role"] == "line_manager":
-        query["line_manager_id"] = user.get("employee_id", user["id"])
+        # Line managers see THEIR OWN record + records of their direct reports.
+        # Matches line_manager_id against the manager's employees.id (NOT the
+        # users.id, which differ).
+        my_emp_id = await _my_employee_id(db, user)
+        if not my_emp_id:
+            return []
+        lm_scope = [{"id": my_emp_id}, {"line_manager_id": my_emp_id}]
+        if "$or" in query:
+            # Preserve the existing search $or — combine with scope using $and
+            query["$and"] = [{"$or": query.pop("$or")}, {"$or": lm_scope}]
+        else:
+            query["$or"] = lm_scope
     elif user["role"] == "finance":
         # Finance only sees compensation data
         pass
