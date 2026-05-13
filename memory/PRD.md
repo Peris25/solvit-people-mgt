@@ -38,6 +38,24 @@ Build a full-stack People Management Platform for **Solvit Limited** (Kenyan tec
 
 ## Implemented (May 2025 → Feb 2026)
 
+### Iter 16 — Finance Leave Bug Fix + Roles & Permissions admin ✅
+**Bug fix — Finance was locked out of Leave:**
+- Root cause #1: `<AccessGate module="M18">` wrapped the `/leave` route; the access matrix had `M18.finance = None`, so the gate blocked Finance before render. Aligned with the additive role rule by setting `M18.finance = Manage (own_team)`. M04 and M14 also corrected for Finance (employee base layer per role rule).
+- Root cause #2: `Leave.js` was using `user.id` (users-collection id) as `myEmpId`, which differs from the actual `employees.id` for Finance/HR Admin. Now resolved from `GET /api/employees/me`.
+
+**New module — Roles & Permissions (IT Admin only, under Tools):**
+- New backend endpoints in `routes/access.py`:
+  - `GET /api/access/matrix` — now returns `module_labels`, `role_labels`, `roles_order` alongside the matrix.
+  - `GET /api/access/users` — IT Admin only, lists every user with role.
+  - `PUT /api/access/users/{id}/role` — IT Admin only, validates against canonical ROLES, writes an audit log entry. HR Admin gets 403.
+  - `GET /api/access/roles` — canonical role list with display labels.
+- New frontend page `/roles-permissions` (`pages/RolesPermissions.js`):
+  - **Tab 1 — Access Matrix**: read-only 19×9 module/role grid with Full / Manage / Read / — chips, scope qualifiers shown beneath cells; destructive-action list pinned at bottom.
+  - **Tab 2 — User Assignments**: every platform user with a `role` dropdown. Change → confirm dialog → audited PUT → flash banner.
+- Sidebar: new `Tools → Roles & Permissions` nav item (IT Admin only) using `KeyRound` icon.
+
+**Tests — Iter 16:** 14/14 backend pytest pass (M18 access for all 9 roles, /me-based leave submission, /access/matrix shape, /access/users IT-Admin gating, PUT role-change with audit, invalid role 400). Frontend testids verified by code review.
+
 ### Iter 15 — Line Manager Dashboard + strict LM visibility scope ✅
 **New "My Team" widget (`/dashboard` for `role=line_manager`):**
 - New page `LineManagerDashboard.js` replacing the generic HR Kanban for LM users.
