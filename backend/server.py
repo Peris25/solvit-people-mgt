@@ -108,6 +108,9 @@ async def startup():
     await db.tasks.create_index([("tenant_id", 1), ("status", 1)])
     # Seed initial data
     await seed_all(db)
+    # Hydrate runtime access overrides + custom roles from MongoDB
+    from utils.access_matrix import load_runtime_state
+    await load_runtime_state(db)
     # Start automation engine
     await automation_engine.start(db)
     logger.info("✅ Solvit People Platform started successfully")

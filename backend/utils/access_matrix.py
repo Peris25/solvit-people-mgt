@@ -228,8 +228,109 @@ DESTRUCTIVE_ACTIONS = {
 
 
 def get_module_access(module_id: str, role: str) -> dict | None:
-    """Return access entry for (module, role) or None if no access."""
+    """Return access entry for (module, role) or None if no access.
+
+    Resolution order:
+      1) Runtime override in RUNTIME_OVERRIDES[(module, role)] (set by IT Admin
+         via PUT /api/access/matrix/cell — see routes/access.py).
+      2) Custom-role default from CUSTOM_ROLE_DEFINITIONS (created by IT Admin
+         via POST /api/access/roles — inherits from `inherits_from` role for
+         any module not explicitly overridden).
+      3) Static ACCESS_MATRIX (the seed defaults).
+    """
+    key = (module_id, role)
+    if key in RUNTIME_OVERRIDES:
+        return RUNTIME_OVERRIDES[key] or None
+    if role in CUSTOM_ROLE_DEFINITIONS:
+        cdef = CUSTOM_ROLE_DEFINITIONS[role]
+        # Custom roles inherit a base role's matrix wholesale; explicit
+        # per-cell overrides are stored in RUNTIME_OVERRIDES.
+        inherit = cdef.get("inherits_from") or "employee"
+        return ACCESS_MATRIX.get(module_id, {}).get(inherit)
     return ACCESS_MATRIX.get(module_id, {}).get(role)
+
+
+# ============================================================================
+# Runtime override store — populated from MongoDB on startup. Mutated by the
+# /access/matrix/cell endpoint and read by every gatekeeper synchronously.
+# ============================================================================
+# Maps (module_id, role) → {"level": "Full|Manage|Read", "scope": str|None}
+# A value of None means an explicit "remove access" override.
+RUNTIME_OVERRIDES: dict[tuple[str, str], dict | None] = {}
+
+# Maps role_key → {"label": str, "description": str, "inherits_from": str}
+CUSTOM_ROLE_DEFINITIONS: dict[str, dict] = {}
+
+
+def apply_override(module_id: str, role: str, entry: dict | None) -> None:
+    """Set or clear a single matrix cell at runtime."""
+    if entry is None:
+        RUNTIME_OVERRIDES.pop((module_id, role), None)
+    else:
+        # Normalize: only persist level + scope keys, drop anything else.
+        norm = {"level": entry.get("level")}
+        if entry.get("scope"):
+            norm["scope"] = entry["scope"]
+        RUNTIME_OVERRIDES[(module_id, role)] = norm
+
+
+def add_custom_role(key: str, label: str, description: str = "", inherits_from: str = "employee") -> None:
+    CUSTOM_ROLE_DEFINITIONS[key] = {
+        "label": label,
+        "description": description,
+        "inherits_from": inherits_from,
+    }
+
+
+def remove_custom_role(key: str) -> None:
+    CUSTOM_ROLE_DEFINITIONS.pop(key, None)
+    # Clean up any orphan overrides for this role
+    for mod, role in list(RUNTIME_OVERRIDES.keys()):
+        if role == key:
+            RUNTIME_OVERRIDES.pop((mod, role), None)
+
+
+async def load_runtime_state(db) -> None:
+    """Hydrate RUNTIME_OVERRIDES and CUSTOM_ROLE_DEFINITIONS from MongoDB.
+
+    Called once at server startup so role-based gating reflects any persisted
+    IT Admin customizations immediately.
+    """
+    RUNTIME_OVERRIDES.clear()
+    CUSTOM_ROLE_DEFINITIONS.clear()
+    async for doc in db.permission_overrides.find({"tenant_id": "solvit"}):
+        mod = doc.get("module_id")
+        role = doc.get("role")
+        if not mod or not role:
+            continue
+        if doc.get("removed"):
+            RUNTIME_OVERRIDES[(mod, role)] = None
+        else:
+            entry = {"level": doc.get("level")}
+            if doc.get("scope"):
+                entry["scope"] = doc["scope"]
+            RUNTIME_OVERRIDES[(mod, role)] = entry
+    async for r in db.custom_roles.find({"tenant_id": "solvit"}):
+        CUSTOM_ROLE_DEFINITIONS[r["key"]] = {
+            "label": r.get("label", r["key"]),
+            "description": r.get("description", ""),
+            "inherits_from": r.get("inherits_from", "employee"),
+        }
+
+
+def effective_matrix() -> dict:
+    """Build the effective module × role matrix including overrides and custom
+    role columns. Returned to the frontend by GET /api/access/matrix.
+    """
+    base_roles = list(ROLES)
+    all_roles = base_roles + list(CUSTOM_ROLE_DEFINITIONS.keys())
+    out: dict[str, dict] = {}
+    for mod in ACCESS_MATRIX.keys():
+        row = {}
+        for r in all_roles:
+            row[r] = get_module_access(mod, r)
+        out[mod] = row
+    return out
 
 
 def enforce_module(module_id: str, role: str, required_level: str = "Read") -> dict:

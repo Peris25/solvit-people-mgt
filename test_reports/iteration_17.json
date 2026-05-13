@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 17 — Editable Roles & Permissions matrix + custom-role create/delete. Full backend (19/19 new pytest + 14/14 iter-16 regression) and full frontend Playwright e2e PASSED. Backend: PUT /api/access/matrix/cell as IT Admin sets M07 employee = Read:own_record and GET /api/access/check/M07 as employee@ confirms; non-IT-Admin 403; invalid module/role/level all 400. DELETE /api/access/matrix/cell reverts cell to seed default (M07 employee → None); deleted=1. POST /api/access/roles creates ops_lead inheriting from line_manager, no _id leak; duplicate 400; invalid inherits_from 400; non-IT-Admin 403. GET /api/access/matrix includes ops_lead in roles_order, role_labels, custom_roles array, system_roles, valid_levels, and a column in matrix.M01 with inherited Manage:own_reports. PUT /api/access/users/{id}/role accepts custom role and persists. DELETE /api/access/roles/ops_lead rebases assigned user to employee; system role delete 400; unknown role 404. Frontend: Logged in as itadmin@, navigated Tools → Roles & Permissions, confirmed three tabs (Access Matrix / User Assignments / Custom Roles), clicked matrix-cell-M07-employee → cell-editor modal opened, changed level=Read scope=own_record, saved (cell shows 'READ :own_record'), re-opened and reset (cell shows '—'). Switched to Custom Roles tab, created qa_lead inheriting from line_manager (custom-role-qa_lead row appears), switched to Access Matrix tab — matrix-col-qa_lead header shows 'QA LEAD CUSTOM' and matrix-cell-M01-qa_lead shows 'MANAGE :own_reports' (inherited). Deleted qa_lead — row removed and matrix column gone. All flows green.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_17.py",
+    "/app/test_reports/pytest/iteration_17.xml",
+    "/app/backend/tests/test_iteration_16.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "access_matrix.py — apply_override(entry=None) pops the key, while DB persistence stores {removed: true} as an explicit revoke marker. load_runtime_state correctly hydrates these as RUNTIME_OVERRIDES[(mod,role)] = None which then short-circuits to None in get_module_access. Consistent.",
+    "DELETE /matrix/cell uses RUNTIME_OVERRIDES.pop directly (bypassing apply_override). That is correct because we want to clear, not store an explicit None.",
+    "POST /api/access/roles strips/normalizes key (lowercase, underscores) — good. Frontend NewRoleModal does the same on input, so server-side normalization is defensive belt-and-braces.",
+    "DELETE /api/access/roles/{key} rebases users on this role to 'employee' (modified_count returned) and also deletes any per-cell overrides for the role — clean cascade.",
+    "GET /api/access/matrix returns matrix.M{xx}.{custom_role} via effective_matrix() which uses get_module_access — custom roles return inherited base-role entry unless an explicit RUNTIME_OVERRIDE exists. This means after creating a custom role, the UI immediately shows full inherited rows without an N+M write. Good.",
+    "Frontend RolesPermissions.js — uses window.confirm() for destructive actions (delete role, reset cell, change user role). Acceptable for an admin-only IT page, but consider replacing with a styled modal for consistency.",
+    "Frontend uses inline style tokens defined at module bottom — readable and colocated. No issues."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_17.py"
+  ],
+  "success_rate": {
+    "backend": "100% (19/19 iter17 + 14/14 iter16 regression)",
+    "frontend": "100% (all matrix-edit + custom-role create/inherit/delete flows verified e2e via Playwright as itadmin@)"
+  },
+  "test_credentials": "All from /app/memory/test_credentials.md, password Solvit@2026.",
+  "seed_data_creation": "None persisted — all test custom roles (ops_lead, qa_lead) and the M07 employee override are cleaned up by the test module fixture and the frontend test itself.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_iteration_17.py is the canonical regression for editable matrix + custom roles. Set REACT_APP_BACKEND_URL before pytest. The module-scoped autouse _cleanup fixture removes any leftover ops_lead/qa_lead custom roles and M07 employee override at setup and teardown. For UI use selectors: [data-testid=roles-tab-matrix|users|roles], [data-testid=matrix-cell-{mod}-{role}], [data-testid=cell-editor], [data-testid=cell-level-select|cell-scope-input|cell-save|cell-reset], [data-testid=new-role-btn|new-role-modal|new-role-key|new-role-label|new-role-inherits|new-role-create], [data-testid=custom-role-{key}|delete-role-{key}], [data-testid=matrix-col-{role}]. window.confirm() prompts must be auto-accepted via page.once('dialog', ...).",
+  "rca_of_the_issue": "Iter-17 user-reported bug 'unable to edit permissions and create/edit roles' is FIXED. Backend now persists overrides to permission_overrides + custom_roles collections and mirrors them into in-process RUNTIME_OVERRIDES + CUSTOM_ROLE_DEFINITIONS via load_runtime_state() on startup. Frontend RolesPermissions.js exposes three tabs with CellEditor and NewRoleModal wired to PUT/DELETE /api/access/matrix/cell and POST/DELETE /api/access/roles via api.js helpers. All round-trips verified: edit→save→effective access reflected in /api/access/check; reset→default restored; new role→column appears in matrix with inherited permissions; delete role→column gone + assigned users rebased to employee."
+}
