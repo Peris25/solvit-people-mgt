@@ -18,29 +18,41 @@ const ICON_SIZE = 15;
 const MENU_ITEMS = [
   { section: 'Core', items: [
     { path: '/dashboard',   label: 'Dashboard',    Icon: LayoutDashboard, roles: ['hr_admin','hr_manager','executive','line_manager','finance','employee','solver','board','it_admin'] },
-    { path: '/employees',   label: 'Employees',    Icon: Users,           roles: ['hr_admin','hr_manager','line_manager','finance','employee','executive'] },
+    { path: '/employees',   label: 'Employees',    Icon: Users,           roles: ['hr_admin','hr_manager','line_manager','finance','executive'] },
     { path: '/solvers',     label: 'Solvers',      Icon: Zap,             roles: ['hr_admin','hr_manager','line_manager','solver','executive'] },
     { path: '/recruitment', label: 'Recruitment',  Icon: Target,          roles: ['hr_admin','hr_manager','line_manager','executive'] },
     { path: '/onboarding',  label: 'Onboarding',   Icon: Rocket,          roles: ['hr_admin','hr_manager','line_manager','employee','solver'] },
   ]},
+  // Line Manager team views — visible to anyone with the manager layer
+  // (`line_manager` OR `finance` since Finance & Admin includes the LM layer).
   { section: 'Performance', items: [
-    { path: '/performance', label: 'Performance',  Icon: BarChart3,       roles: ['hr_admin','hr_manager','line_manager','employee','executive'] },
+    { path: '/performance', label: 'Performance',  Icon: BarChart3,       roles: ['hr_admin','hr_manager','line_manager','finance','employee','executive'] },
     { path: '/surveys',     label: 'Surveys',      Icon: ClipboardList,   roles: ['hr_admin','hr_manager','employee','solver','executive'] },
     { path: '/retention',   label: 'Retention',    Icon: ShieldCheck,     roles: ['hr_admin','hr_manager','executive'] },
-    { path: '/lnd',         label: 'L&D',          Icon: BookOpen,        roles: ['hr_admin','hr_manager','line_manager','employee'] },
-    { path: '/projects',    label: 'Projects',     Icon: Briefcase,       roles: ['hr_admin','hr_manager','line_manager','employee'] },
+    { path: '/lnd',         label: 'L&D',          Icon: BookOpen,        roles: ['hr_admin','hr_manager','line_manager','finance','employee'] },
+    { path: '/projects',    label: 'Projects',     Icon: Briefcase,       roles: ['hr_admin','hr_manager','line_manager','finance','employee'] },
   ]},
   { section: 'HR Operations', items: [
-    { path: '/leave',        label: 'Leave',        Icon: Palmtree,       roles: ['hr_admin','hr_manager','line_manager','employee'] },
+    { path: '/leave',        label: 'Leave',        Icon: Palmtree,       roles: ['hr_admin','hr_manager','line_manager','finance','employee'] },
     { path: '/compensation', label: 'Compensation', Icon: Wallet,         roles: ['hr_admin','hr_manager','finance','executive'] },
     { path: '/recognition',  label: 'Recognition',  Icon: Award,          roles: ['hr_admin','hr_manager','line_manager','finance','employee','solver'] },
-    { path: '/disciplinary', label: 'Disciplinary', Icon: Scale,          roles: ['hr_admin','hr_manager','line_manager','employee'] },
+    { path: '/disciplinary', label: 'Disciplinary', Icon: Scale,          roles: ['hr_admin','hr_manager','line_manager','finance','employee'] },
     { path: '/policies',     label: 'Policies',     Icon: FileText,       roles: ['hr_admin','hr_manager','line_manager','finance','employee','solver','executive'] },
   ]},
-  { section: 'Finance & Admin', items: [
-    { path: '/budget',     label: 'Budget',         Icon: TrendingUp,    roles: ['hr_admin','hr_manager','finance','executive'] },
-    { path: '/compliance', label: 'Compliance',     Icon: CheckCircle2,  roles: ['hr_admin','hr_manager','finance'] },
+  // "Budget & Operations" section is the HR & Admin view — Budget label maps to the HR envelope split (R&R / L&D), NOT the Finance panel.
+  { section: 'Budget & Operations', items: [
+    { path: '/budget',     label: 'Budget',         Icon: TrendingUp,    roles: ['hr_admin','hr_manager','executive'] },
+    { path: '/compliance', label: 'Compliance',     Icon: CheckCircle2,  roles: ['hr_admin','hr_manager'] },
     { path: '/calendar',   label: 'Calendar',       Icon: CalendarDays,  roles: ['hr_admin','hr_manager','line_manager','finance'] },
+  ]},
+  // "Finance & Admin" is gated to the `finance` role ONLY (per UAT Fix 4).
+  // The same `/budget` path renders as Finance's full panel when accessed by Finance — guarded server-side.
+  { section: 'Finance & Admin', items: [
+    { path: '/budget',     label: 'Finance Panel',  Icon: TrendingUp,    roles: ['finance'] },
+    { path: '/compliance', label: 'Compliance',     Icon: CheckCircle2,  roles: ['finance'] },
+    { path: '/compensation', label: 'Compensation', Icon: Wallet,        roles: ['finance'] },
+  ]},
+  { section: 'Tools', items: [
     { path: '/forms',      label: 'Forms',          Icon: FileEdit,      roles: ['hr_admin','hr_manager','line_manager','finance','employee','solver'] },
     { path: '/my-tasks',   label: 'My Tasks',       Icon: ListChecks,    roles: ['hr_admin','hr_manager','line_manager','employee','solver','finance','executive','it_admin'] },
     { path: '/data-import', label: 'Data Import',    Icon: UploadCloud,   roles: ['hr_admin','hr_manager','it_admin'] },
