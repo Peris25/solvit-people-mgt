@@ -38,6 +38,26 @@ Build a full-stack People Management Platform for **Solvit Limited** (Kenyan tec
 
 ## Implemented (May 2025 → Feb 2026)
 
+### Iter 15 — Line Manager Dashboard + strict LM visibility scope ✅
+**New "My Team" widget (`/dashboard` for `role=line_manager`):**
+- New page `LineManagerDashboard.js` replacing the generic HR Kanban for LM users.
+- Top-brief tiles: Direct Reports · Pending Leave · Open Reviews · My Open Tasks (each clickable to drill down).
+- Team Flight Risk bar (Critical / High / Elevated / Healthy split).
+- Direct Reports table with per-person lifecycle_state, flight_risk_level, pending_leave, open_reviews, days_since_last_review, last_performance_score. Row click → `/employees/<id>`.
+
+**New backend endpoint `GET /api/dashboard/line-manager`:**
+- Returns `manager_employee_id`, `team[]`, `team_size`, `pending_leave`, `flight_risk_summary`, `open_reviews`, `my_open_tasks`. Scoped to the caller's own employees.id; gated to `line_manager / hr_admin / hr_manager / it_admin`.
+
+**Strict visibility scope for `line_manager` role:**
+- `/api/employees` list now matches `line_manager_id` against the LM's own employees.id (was incorrectly matching against users.id before). LM sees ONLY self + direct reports.
+- `/api/employees/{id}` and `/api/employees/{id}/profile` mirror the same scope — LM gets 403 for employees they don't manage, 200 for self or direct reports.
+- `/api/leave` list scope fixed to include the LM's own requests + their direct reports (previously dropped both).
+
+**Serializer hygiene (caught during iter 14 testing):**
+- `fmt()` now preserves the canonical UUID `id` and pops Mongo `_id` from every employees response. Previously the list endpoint was leaking `_id` AND overwriting the UUID `id` with the ObjectId, desyncing identifiers between the new widget (UUID) and other endpoints (ObjectId).
+
+**Tests — Iter 15:** 18/18 backend pytest pass on the consolidated iter 14 regression suite (widget shape & RBAC, employees scope across 7 roles, leave scope, UUID consistency, no `_id` leak, LM profile/detail scope). 9/9 mandatory-LM regression from iter 13 still green. Frontend: end-to-end LM → click direct report → profile renders successfully.
+
 ### Iter 13 — Role Architecture & Mandatory Line Manager (UAT fixes) ✅
 **Additive Role Layering:**
 - Sidebar restructured: "Finance & Admin" section is gated to `role='finance'` only; "Budget & Operations" section visible to HR Admin / HR Manager / Executive only; IT Admin sees no Finance or Budget sections.
