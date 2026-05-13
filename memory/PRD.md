@@ -38,6 +38,24 @@ Build a full-stack People Management Platform for **Solvit Limited** (Kenyan tec
 
 ## Implemented (May 2025 → Feb 2026)
 
+### Iter 17 — Editable Permissions Matrix + Custom Roles ✅
+**Live-editable access matrix:**
+- New runtime overlay store (`RUNTIME_OVERRIDES`, `CUSTOM_ROLE_DEFINITIONS` in `utils/access_matrix.py`) — mutated synchronously by IT Admin actions, persisted to MongoDB `permission_overrides` + `custom_roles` collections, and re-hydrated on every server boot via `load_runtime_state(db)`.
+- `get_module_access()` now resolves through the overlay → custom-role inheritance → static `ACCESS_MATRIX`. Enforcement on all existing routes is unchanged (still synchronous) and picks up overrides immediately.
+
+**New backend endpoints (IT Admin only, audited):**
+- `PUT  /api/access/matrix/cell` — set/override one cell (level, scope, or null to revoke).
+- `DELETE /api/access/matrix/cell` — drop the override, returns cell to seed default.
+- `POST /api/access/roles` — create a custom role with inheritance from a base role.
+- `DELETE /api/access/roles/{key}` — delete a custom role; any users assigned to it auto-rebase to `employee`. Per-cell overrides for the role are cascade-deleted.
+- `/api/access/matrix` now returns `custom_roles`, `system_roles`, `valid_levels` and the **effective** matrix (with overlays applied + custom-role columns inherited).
+
+**Frontend `/roles-permissions` redesigned:**
+- Three tabs: **Access Matrix** (click any cell → inline editor with Level + Scope + Save/Reset), **User Assignments** (now includes any custom role in the dropdown), **Custom Roles** (table with delete + "New Role" modal that picks an inheritance base role).
+- Custom-role columns in the matrix are tagged with a small `CUSTOM` badge.
+
+**Tests — Iter 17:** 19/19 new pytest + 14/14 iter-16 regression. Frontend e2e (Playwright) green for edit→save→effective access reflected in `/access/check`; reset→default restored; new role column appears with inherited permissions; delete role removes column and rebases assigned users.
+
 ### Iter 16 — Finance Leave Bug Fix + Roles & Permissions admin ✅
 **Bug fix — Finance was locked out of Leave:**
 - Root cause #1: `<AccessGate module="M18">` wrapped the `/leave` route; the access matrix had `M18.finance = None`, so the gate blocked Finance before render. Aligned with the additive role rule by setting `M18.finance = Manage (own_team)`. M04 and M14 also corrected for Finance (employee base layer per role rule).
