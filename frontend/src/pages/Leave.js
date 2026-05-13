@@ -29,7 +29,10 @@ const fmtPeriod = (s, e) => {
 
 export default function Leave() {
   const { user } = useAuth();
-  const myEmpId = user?.employee_id || user?.id;
+  // Canonical employee.id resolved from /api/employees/me. user.id refers to
+  // the users-collection id which can differ from employees.id (e.g. Finance,
+  // HR Admin), so always prefer the resolved id when available.
+  const [myEmpId, setMyEmpId] = useState(user?.employee_id || user?.id);
   const isLM = user?.role === 'line_manager';
   const isHR = ['hr_admin', 'hr_manager'].includes(user?.role);
   const canDecide = isLM || isHR;
@@ -59,25 +62,27 @@ export default function Leave() {
       const [r, t] = await Promise.all([api.getLeaveRequests(), api.getLeaveTypes()]);
       setRequests(r.data || []);
       setTypes(t.data || {});
-      if (myEmpId) {
-        try {
-          const b = await api.getLeaveBalances(myEmpId);
-          setBalances(b.data);
-        } catch { /* no balances */ }
-        try {
-          const ro = await api.getLeaveRollover(myEmpId);
-          setRollover(ro.data);
-        } catch { /* no rollover */ }
-      }
-      // Resolve the current user's own employee record to auto-fill the
-      // read-only Line Manager on the Apply form (UAT Fix).
+      // Resolve canonical employee.id first so subsequent calls use the right id.
+      let resolvedEmpId = myEmpId;
       try {
         const me = await api.getMyEmployee();
+        resolvedEmpId = me.data?.id || resolvedEmpId;
+        setMyEmpId(resolvedEmpId);
         const lmId = me.data?.line_manager_id || '';
         const lmName = me.data?.line_manager_name || '';
         setMyLM({ id: lmId, name: lmName });
         setForm(p => ({ ...p, line_manager_id: lmId }));
       } catch { /* user has no employee record (e.g. IT Admin) */ }
+      if (resolvedEmpId) {
+        try {
+          const b = await api.getLeaveBalances(resolvedEmpId);
+          setBalances(b.data);
+        } catch { /* no balances */ }
+        try {
+          const ro = await api.getLeaveRollover(resolvedEmpId);
+          setRollover(ro.data);
+        } catch { /* no rollover */ }
+      }
     } finally { setLoading(false); }
   }, [myEmpId]);
 

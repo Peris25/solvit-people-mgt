@@ -28,6 +28,7 @@ import Forms from './pages/Forms';
 import EmployeeProfile from './pages/EmployeeProfile';
 import MyTasks from './pages/MyTasks';
 import DataImport from './pages/DataImport';
+import RolesPermissions from './pages/RolesPermissions';
 import ErrorToast from './components/ErrorToast';
 import AccessGate from './components/AccessGate';
 
@@ -65,6 +66,7 @@ export default function App() {
             <Route path="forms" element={<Forms />} />
             <Route path="my-tasks" element={<MyTasks />} />
             <Route path="data-import" element={<DataImport />} />
+            <Route path="roles-permissions" element={<RolesPermissions />} />
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

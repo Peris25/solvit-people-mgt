@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 16 — BUG FIX (Finance + Leave/M18) and NEW Roles & Permissions admin module retested. Backend: 14/14 pytest pass on test_iteration_16.py covering: (a) /api/access/check/M18 for finance returns level=Manage scope=own_team; (b) /api/employees/me returns employee.id and POST /api/leave with that id succeeds with status containing 'Pending'; (c) M18 regression — HR Admin=Full, Line Manager=Manage, Employee=Manage, Executive=Manage, Solver=None; (d) /api/access/matrix returns module_labels, role_labels, roles_order (9), matrix (19), destructive_actions, with matrix.M18.finance.level == 'Manage'; (e) /api/access/users returns >=9 platform users (all 9 seed emails present) for IT Admin, 403 for HR Admin; (f) PUT /api/access/users/{id}/role: IT Admin success, role reverts cleanly, HR Admin 403, invalid role 400. Frontend automation could not complete a full click-through because the preview pod sleeps between runs (Emergent loading-preview iframe shows 'Wake up servers'/'Launch App' wrapper) — but code-level inspection of /app/frontend/src/pages/RolesPermissions.js confirms every required data-testid is present: roles-permissions-page, roles-tab-matrix, roles-tab-users, matrix-row-<mod>, matrix-col-<role>, matrix-cell-M18-finance, user-row-<id>, role-select-<id>, roles-flash, roles-not-allowed, roles-refresh, plus matrix-tab/users-tab. nav-roles-permissions is wired in Sidebar.js. The /leave AccessGate fix is verified at the backend layer (M18 finance now Manage), which is the same call the AccessGate makes.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_16.py",
+    "/app/test_reports/pytest/iteration_16.xml"
+  ],
+  "action_items": [
+    "Main agent: please self-verify the Roles & Permissions UI by logging in as itadmin@solvit.co.ke and navigating Tools → Roles & Permissions; preview pod sleep cycles prevented this testing agent from completing the click-through e2e. Backend is fully green so any UI failure would be a rendering/wiring issue only."
+  ],
+  "critical_code_review_comments": [
+    "access.py uses ObjectId(user_id) try/except fallback — fine, but consider also accepting 'id' field consistently. Currently works since seeded users have Mongo _id only.",
+    "PUT /api/access/users/{id}/role short-circuits with {unchanged: true} when old==new; this returns 200 with no audit entry — intentional and reasonable.",
+    "Audit log written includes old_role/new_role/target_email — good. Performed_by uses actor['id'] from get_current_user. Verify actor['id'] is set (it is, since utils/auth.py maps _id to id).",
+    "access_matrix.py M18 finance = Manage:own_team aligns with the additive role rule and now matches what the matrix endpoint returns. The fix is consistent across matrix + check endpoints.",
+    "/api/access/users response uses str(u['_id']) as id — frontend role-select-<id> data-testid will match; consistent with PUT /access/users/{id}/role which also accepts ObjectId or uuid 'id' field."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_16.py"
+  ],
+  "success_rate": {
+    "backend": "100% (14/14 iter16 pytest pass)",
+    "frontend": "Not fully exercised via Playwright due to preview pod sleep — code-level review only; UI testids confirmed present"
+  },
+  "test_credentials": "All from /app/memory/test_credentials.md, password Solvit@2026. Used: itadmin@, jessica@, manager@, finance@, employee@, solver@, md@, ed@, board@.",
+  "seed_data_creation": "One Pending leave request created by finance@ (TEST_iter16 finance leave) — harmless. test_itadmin_can_change_and_revert toggles solver→employee→solver leaving role unchanged.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_iteration_16.py is the canonical regression for access matrix + Roles & Permissions endpoints. Re-runnable as: export REACT_APP_BACKEND_URL=<frontend .env value> && pytest backend/tests/test_iteration_16.py. The Emergent preview iframe wrapper requires clicking 'Wake up servers' (in frame_locator iframe[src*=loading-preview]) then 'Launch App' before any UI test; if the pod has been idle, repeat both clicks. For UI testing of RolesPermissions.js use selectors: [data-testid=nav-roles-permissions], [data-testid=roles-permissions-page], [data-testid=roles-tab-matrix], [data-testid=roles-tab-users], [data-testid=matrix-cell-M18-finance], tr containing 'solver@solvit.co.ke' → child select element for Peter role change.",
+  "rca_of_the_issue": "Root cause of iter-15 Finance/Leave bug confirmed fixed: (1) /leave page is wrapped in <AccessGate module='M18'> in App.js, and ACCESS_MATRIX['M18']['finance'] was None — gate blocked render. Fix verified: access_matrix.py now has M18 finance = _level('Manage','own_team') and /api/access/check/M18 as finance returns access.level='Manage' (backend test passed). (2) Leave.js previously used user.id (users collection _id) as employee_id, which differs from employees.id for Finance/HR Admin — POST /api/leave would reject as 'not your record'. Fix verified: finance POST /api/leave with employee_id=GET /api/employees/me.id succeeded with status containing 'Pending' (backend test passed). New module: access.py adds GET /access/users (IT Admin only, returns 9+ users with role), PUT /access/users/{id}/role (IT Admin only, validates against ROLES list, writes audit_logs entry). All endpoint tests pass."
+}

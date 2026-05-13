@@ -69,7 +69,7 @@ ACCESS_MATRIX = {
         "hr_admin":     _level("Full"),
         "hr_manager":   _level("Full"),
         "line_manager": _level("Manage", "own_team"),
-        "finance":      None,
+        "finance":      _level("Manage", "own_record"),
         "employee":     _level("Manage", "own_record"),
         "solver":       _level("Manage", "own_record"),
         "executive":    None,
@@ -159,7 +159,7 @@ ACCESS_MATRIX = {
         "hr_admin":     _level("Full"),
         "hr_manager":   _level("Full"),
         "line_manager": _level("Read",   "own_cases"),
-        "finance":      None,
+        "finance":      _level("Read",   "own_record"),
         "employee":     _level("Read",   "own_record"),
         "solver":       None,
         "executive":    None,
@@ -195,10 +195,13 @@ ACCESS_MATRIX = {
         "hr_admin":     _level("Full"),
         "hr_manager":   _level("Full"),
         "line_manager": _level("Manage", "own_team"),
-        "finance":      None,
+        # Additive layer rule: Finance is a Finance & Operations Manager. They get
+        # Manage with own_team (approve direct reports' leave) — and as employees
+        # themselves they can always apply leave for their own record.
+        "finance":      _level("Manage", "own_team"),
         "employee":     _level("Manage", "own_record"),
         "solver":       None,
-        "executive":    None,
+        "executive":    _level("Manage", "own_record"),
     },
     "M19": {  # Statutory Compliance Register
         "hr_admin":     _level("Read"),
