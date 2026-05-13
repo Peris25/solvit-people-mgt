@@ -1,0 +1,25 @@
+{
+  "summary": "Iteration 15 retest — All three bugs from iter 14 are FIXED. Backend: 18/18 pytest pass on test_iteration_14.py (added 6 new retest cases covering /api/employees/{id} UUID, no _id leak across 7 roles, LM /profile direct-report 200, LM /profile non-report 403, LM /id non-report 403, widget↔employees UUID consistency). Iter 13 mandatory-LM regression still green (9/9). Frontend: as manager@solvit.co.ke /dashboard renders LineManagerDashboard, clicking lm-report-<UUID> for James Kamau navigates to /employees/<UUID> and the profile page renders fully (name, role, employment, performance) — no 'Employee not found'. All 9 review_request bullets PASS.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_14.py",
+    "/app/backend/tests/test_iteration_13.py",
+    "/app/test_reports/pytest/iteration_15.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "fmt() in /app/backend/routes/employees.py now correctly preserves UUID `id` and strips Mongo `_id` (line 65-74). Verified against 7 role accounts.",
+    "get_employee_profile and get_employee both use _my_employee_id() to resolve the LM's canonical employees.id and gate access on emp.line_manager_id == my_emp_id. This mirrors the list scope rule cleanly.",
+    "create_employee now refetches the inserted doc and routes it through fmt() before returning — so create responses also use UUID id and don't leak _id.",
+    "Suggestion (non-blocking): consider extracting a shared `_lm_can_access(emp, my_emp_id)` helper since the same is_self||is_direct_report check is repeated in get_employee, get_employee_profile, and the list scope — DRY improvement, no functional bug."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration_14.py"],
+  "success_rate": {"backend": "100% (18/18 iter14 + 9/9 iter13)", "frontend": "100% (LM dashboard → profile click-through works)"},
+  "test_credentials": "All from /app/memory/test_credentials.md, password Solvit@2026. Used: manager@, jessica@, finance@, employee@, solver@, itadmin@, board@.",
+  "seed_data_creation": "None added by iter 15. test_iteration_13.py still creates 1 employee per run (uat13- prefix, harmless).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 14 regression suite at /app/backend/tests/test_iteration_14.py is now the canonical regression for employees-list serializer + LM scope. Includes 18 tests across TestLineManagerWidget, TestEmployeesScope, TestLeaveScope, TestIdConsistency, TestLineManagerScope. Re-runnable as `pytest backend/tests/test_iteration_14.py` (needs REACT_APP_BACKEND_URL env var since the .env isn't auto-loaded for pytest).",
+  "rca_of_the_issue": "All three iter-14 bugs were rooted in two small misses in /app/backend/routes/employees.py: (a) fmt() did `doc['id'] = str(doc['_id'])` unconditionally and did not pop _id, so both the list serializer leaked _id and overwrote the canonical UUID id; (b) get_employee and get_employee_profile only enforced role-level access (employee==self) but never reproduced the line_manager list-scope rule for the single-resource endpoints. Fix applied: fmt() now keeps UUID and pops _id; both single-resource endpoints use _my_employee_id() helper + match emp.line_manager_id == my_emp_id. Verified end-to-end: widget UUID == /api/employees row UUID == /api/employees/{id}.id == /api/employees/{id}/profile.employee.id, and David can view James/Robert (200) but is 403d on Mary Wanjiru and Sarah Njoroge."
+}

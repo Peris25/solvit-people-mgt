@@ -184,9 +184,102 @@ class TestIdConsistency:
         # Frontend page calls /api/employees/{id}/profile then /api/employees/{id}
         r_simple = s.get(f"{BASE}/api/employees/{report_id}", timeout=20)
         r_profile = s.get(f"{BASE}/api/employees/{report_id}/profile", timeout=20)
-        # At minimum, line_manager must be able to view their direct report's record
-        assert r_simple.status_code == 200 or r_profile.status_code == 200, (
-            f"LM cannot view their own direct report (id={report_id}): "
-            f"GET /employees/{{id}}={r_simple.status_code}, "
-            f"GET /employees/{{id}}/profile={r_profile.status_code}"
+        # Both endpoints must succeed (200) for the direct report
+        assert r_simple.status_code == 200, (
+            f"GET /employees/{report_id} returned {r_simple.status_code}: {r_simple.text[:200]}"
         )
+        assert r_profile.status_code == 200, (
+            f"GET /employees/{report_id}/profile returned {r_profile.status_code}: {r_profile.text[:200]}"
+        )
+
+    def test_employees_list_no_id_leak_across_roles(self):
+        """Iter 15 retest: every list endpoint response must use UUID id and not leak _id."""
+        for email in [
+            "jessica@solvit.co.ke",
+            "finance@solvit.co.ke",
+            "employee@solvit.co.ke",
+            "manager@solvit.co.ke",
+            "solver@solvit.co.ke",
+            "itadmin@solvit.co.ke",
+            "board@solvit.co.ke",
+        ]:
+            s = login(email)
+            r = s.get(f"{BASE}/api/employees", timeout=20)
+            assert r.status_code == 200, f"{email}: {r.status_code} {r.text}"
+            rows = r.json()
+            for e in rows:
+                assert "_id" not in e, f"{email}: row leaks _id: {e.get('full_name')}"
+                # id must be a UUID (36 chars with hyphens), not a 24-char ObjectId hex
+                eid = e.get("id")
+                assert eid is not None, f"{email}: row missing id: {e}"
+                assert "-" in eid and len(eid) == 36, (
+                    f"{email}: row id is not a UUID (looks like ObjectId): {eid} for {e.get('full_name')}"
+                )
+
+    def test_get_employee_by_id_matches_list_id(self):
+        """GET /api/employees/{id} should 200 and return the same UUID id."""
+        s = login("jessica@solvit.co.ke")
+        rows = s.get(f"{BASE}/api/employees", timeout=20).json()
+        # Pick a non-board employee
+        target = next((e for e in rows if e.get("full_name") == "James Kamau"), rows[0])
+        eid = target["id"]
+        r = s.get(f"{BASE}/api/employees/{eid}", timeout=20)
+        assert r.status_code == 200, f"GET /employees/{eid} status={r.status_code}: {r.text[:200]}"
+        body = r.json()
+        assert body.get("id") == eid, f"detail.id={body.get('id')} != list.id={eid}"
+        assert "_id" not in body, f"detail leaks _id: {body.keys()}"
+
+
+# ---------- Scope enforcement on /employees/{id} and /profile ----------
+class TestLineManagerScope:
+    def _manager_session_and_team(self):
+        s = login("manager@solvit.co.ke")
+        widget = s.get(f"{BASE}/api/dashboard/line-manager", timeout=20).json()
+        return s, widget
+
+    def test_lm_profile_direct_report_200(self):
+        s, widget = self._manager_session_and_team()
+        # Pick James Kamau or Robert Kiprotich
+        report = next((t for t in widget["team"] if t["full_name"] in ("James Kamau", "Robert Kiprotich")), None)
+        assert report is not None, f"no direct report found in widget team {widget['team']}"
+        r = s.get(f"{BASE}/api/employees/{report['id']}/profile", timeout=20)
+        assert r.status_code == 200, f"profile returned {r.status_code}: {r.text[:200]}"
+        body = r.json()
+        emp = body.get("employee") or {}
+        assert emp.get("id") == report["id"], f"profile employee.id mismatch: {emp.get('id')} vs {report['id']}"
+        assert emp.get("full_name") == report["full_name"]
+
+    def test_lm_profile_not_direct_report_403(self):
+        # manager@ should NOT be able to fetch Mary Wanjiru's profile (reports to Lillian)
+        s = login("manager@solvit.co.ke")
+        # Need Mary's id — fetch via HR Admin
+        hr = login("jessica@solvit.co.ke")
+        rows = hr.get(f"{BASE}/api/employees", timeout=20).json()
+        mary = next((e for e in rows if e.get("full_name") == "Mary Wanjiru"), None)
+        if mary is None:
+            pytest.skip("Mary Wanjiru not in seed data")
+        r = s.get(f"{BASE}/api/employees/{mary['id']}/profile", timeout=20)
+        assert r.status_code == 403, f"expected 403, got {r.status_code}: {r.text[:200]}"
+
+    def test_lm_detail_not_direct_report_403(self):
+        s = login("manager@solvit.co.ke")
+        hr = login("jessica@solvit.co.ke")
+        rows = hr.get(f"{BASE}/api/employees", timeout=20).json()
+        sarah = next((e for e in rows if e.get("full_name") == "Sarah Njoroge"), None)
+        assert sarah is not None, "Sarah Njoroge not in seed data"
+        r = s.get(f"{BASE}/api/employees/{sarah['id']}", timeout=20)
+        assert r.status_code == 403, f"expected 403 for non-report detail, got {r.status_code}: {r.text[:200]}"
+
+    def test_widget_team_ids_match_employees_uuid(self):
+        """Iter 15 retest: widget team[].id must match the UUID from /api/employees."""
+        hr = login("jessica@solvit.co.ke")
+        all_rows = hr.get(f"{BASE}/api/employees", timeout=20).json()
+        by_name = {e["full_name"]: e["id"] for e in all_rows}
+
+        s, widget = self._manager_session_and_team()
+        for t in widget["team"]:
+            canonical = by_name.get(t["full_name"])
+            assert canonical, f"{t['full_name']} not in HR employees list"
+            assert t["id"] == canonical, (
+                f"widget id {t['id']} != canonical {canonical} for {t['full_name']}"
+            )

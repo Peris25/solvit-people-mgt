@@ -65,8 +65,12 @@ class EmployeeUpdate(BaseModel):
 def fmt(doc):
     if not doc:
         return None
-    doc["id"] = str(doc["_id"])
-    doc["_id"] = str(doc["_id"])
+    # Preserve the canonical UUID `id` (used as foreign key across the schema:
+    # line_manager_id, leave.employee_id, performance reviews, etc.). Only fall
+    # back to the Mongo ObjectId string when a legacy record has no UUID.
+    if not doc.get("id"):
+        doc["id"] = str(doc["_id"])
+    doc.pop("_id", None)
     return doc
 
 
@@ -235,8 +239,13 @@ async def get_employee_profile(employee_id: str, request: Request):
         raise HTTPException(status_code=403, detail="MD / ED record — Board access only")
     if user["role"] == "employee" and emp.get("work_email") != user.get("email"):
         raise HTTPException(status_code=403, detail="Not allowed")
-    if user["role"] == "line_manager" and emp.get("line_manager_id") not in [user.get("employee_id"), user.get("id")]:
-        if emp.get("work_email") != user.get("email"):
+    if user["role"] == "line_manager":
+        # LM can view self + direct reports. Resolve the LM's employees.id and
+        # match against the target's line_manager_id (canonical UUID).
+        my_emp_id = await _my_employee_id(db, user)
+        is_self = emp.get("work_email") == user.get("email")
+        is_direct_report = my_emp_id and emp.get("line_manager_id") == my_emp_id
+        if not (is_self or is_direct_report):
             raise HTTPException(status_code=403, detail="Not allowed")
 
     # Parallel-ish gathers
@@ -369,23 +378,25 @@ async def create_employee(emp: EmployeeCreate, request: Request):
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     result = await db.employees.insert_one(emp_doc)
-    emp_doc["_id"] = str(result.inserted_id)
-    emp_doc["id"] = str(result.inserted_id)
+    # Fetch the freshly-inserted record and route it through fmt() so we don't
+    # leak the Mongo _id back to the client.
+    inserted_doc = await db.employees.find_one({"_id": result.inserted_id})
+    response_doc = fmt(inserted_doc)
 
     # Fire automation event
     from automation.engine import automation_engine
-    await automation_engine.fire_event("employee_created", {"employee_id": emp_doc["id"], "employee": emp_doc})
+    await automation_engine.fire_event("employee_created", {"employee_id": response_doc["id"], "employee": response_doc})
 
     # Log audit
     await db.audit_log.insert_one({
         "tenant_id": "solvit",
         "action": "employee_created",
         "entity": "employee",
-        "entity_id": emp_doc["id"],
+        "entity_id": response_doc["id"],
         "performed_by": user["id"],
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
-    return emp_doc
+    return response_doc
 
 
 @router.get("/{employee_id}")
@@ -403,6 +414,12 @@ async def get_employee(employee_id: str, request: Request):
         raise HTTPException(status_code=403, detail="MD / ED record — Board access only")
     if user["role"] == "employee" and emp.get("work_email") != user["email"]:
         raise HTTPException(status_code=403, detail="Access denied")
+    if user["role"] == "line_manager":
+        my_emp_id = await _my_employee_id(db, user)
+        is_self = emp.get("work_email") == user.get("email")
+        is_report = my_emp_id and emp.get("line_manager_id") == my_emp_id
+        if not (is_self or is_report):
+            raise HTTPException(status_code=403, detail="Access denied")
     return fmt(emp)
 
 
