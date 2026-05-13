@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import StatusBadge from '../components/StatusBadge';
+import EmployeePicker from '../components/EmployeePicker';
 import * as api from '../services/api';
 
 const LIFECYCLE_STATES = ['Onboarding', 'Probation', 'Active', 'On_Leave', 'PIP', 'Realignment', 'Exiting', 'Exited'];
@@ -21,7 +22,7 @@ export default function Employees() {
   const [filterDept, setFilterDept] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [selected, setSelected] = useState(null);
-  const [form, setForm] = useState({ full_name: '', work_email: '', department: 'Operations', role_title: '', role_level: 'L2', start_date: '', employment_type: 'Full_Time', current_salary_kes: '', lifecycle_state: 'Onboarding' });
+  const [form, setForm] = useState({ full_name: '', work_email: '', department: 'Operations', role_title: '', role_level: 'L2', start_date: '', employment_type: 'Full_Time', current_salary_kes: '', lifecycle_state: 'Onboarding', line_manager_id: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [seeding, setSeeding] = useState(false);
@@ -96,6 +97,11 @@ export default function Employees() {
   const saveEmployee = async (e) => {
     e.preventDefault();
     setSaving(true); setError('');
+    if (!form.line_manager_id) {
+      setError('Line Manager is required for approval routing. Please select one.');
+      setSaving(false);
+      return;
+    }
     try {
       const data = { ...form, current_salary_kes: form.current_salary_kes ? parseInt(form.current_salary_kes) : null };
       if (selected) {
@@ -105,7 +111,7 @@ export default function Employees() {
       }
       setShowForm(false);
       setSelected(null);
-      setForm({ full_name: '', work_email: '', department: 'Operations', role_title: '', role_level: 'L2', start_date: '', employment_type: 'Full_Time', current_salary_kes: '', lifecycle_state: 'Onboarding' });
+      setForm({ full_name: '', work_email: '', department: 'Operations', role_title: '', role_level: 'L2', start_date: '', employment_type: 'Full_Time', current_salary_kes: '', lifecycle_state: 'Onboarding', line_manager_id: '' });
       loadEmployees();
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to save');
@@ -280,6 +286,22 @@ export default function Employees() {
                   <input type="number" value={form.current_salary_kes || ''} onChange={e => setForm(p => ({ ...p, current_salary_kes: e.target.value }))}
                     placeholder="e.g. 75000"
                     style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', boxSizing: 'border-box', outline: 'none' }} />
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>
+                    Line Manager <span style={{ color: '#FF353F' }}>*</span>
+                  </label>
+                  <EmployeePicker
+                    testId="employee-lm-picker"
+                    value={form.line_manager_id}
+                    excludeId={selected?.id}
+                    placeholder="Select line manager (required for approval routing)..."
+                    onChange={(emp) => setForm(p => ({ ...p, line_manager_id: emp.id }))}
+                    required
+                  />
+                  <div style={{ fontSize: '10px', color: '#525252', marginTop: '4px', fontStyle: 'italic' }}>
+                    Every employee must have a Line Manager. This drives leave / training / performance approval routing.
+                  </div>
                 </div>
               </div>
               {error && <div style={{ color: '#FF353F', fontSize: '12px', marginTop: '12px', padding: '8px', border: '1px solid #FF353F', backgroundColor: 'rgba(255,53,63,0.05)' }}>{error}</div>}

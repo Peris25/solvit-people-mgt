@@ -29,7 +29,10 @@ class EmployeeCreate(BaseModel):
     role_title: str
     role_level: str
     current_salary_kes: Optional[int] = None
-    line_manager_id: Optional[str] = None
+    # Mandatory per UAT Fix — every employee must have a Line Manager for
+    # approval routing. The only exception is the Board Chair record itself
+    # (which sits at the apex of the reporting tree).
+    line_manager_id: str
     start_date: str
     employment_type: str = "Full_Time"
     lifecycle_state: Optional[str] = "Onboarding"
@@ -119,6 +122,37 @@ async def seed_demo_employees_endpoint(request: Request):
     from automation.seed_data import seed_extended_employees
     inserted = await seed_extended_employees(db)
     return {"status": "success", "inserted": inserted, "message": f"{inserted} demo employees added covering all lifecycle states"}
+
+
+@router.get("/me")
+async def get_my_employee(request: Request):
+    """Return the current authenticated user's own employee record.
+
+    Used by Leave to auto-populate the read-only Line Manager field, and by
+    other employee-self views. Returns 404 if the user has no matching
+    employee record (e.g. system users, IT Admin without an employee profile).
+    """
+    user = await get_current_user(request)
+    db = get_db()
+    emp = await db.employees.find_one({
+        "tenant_id": "solvit",
+        "work_email": (user.get("email") or "").lower(),
+    })
+    if not emp:
+        raise HTTPException(status_code=404, detail="No employee record for this account")
+    formatted = fmt(emp)
+    # Enrich with line manager name for read-only display in forms
+    lm_id = formatted.get("line_manager_id")
+    lm_name = None
+    if lm_id:
+        try:
+            lm = await db.employees.find_one({"_id": ObjectId(lm_id)})
+        except Exception:
+            lm = await db.employees.find_one({"id": lm_id})
+        if lm:
+            lm_name = lm.get("full_name")
+    formatted["line_manager_name"] = lm_name
+    return formatted
 
 
 @router.get("")
@@ -278,6 +312,16 @@ async def create_employee(emp: EmployeeCreate, request: Request):
     existing = await db.employees.find_one({"work_email": emp.work_email.lower(), "tenant_id": "solvit"})
     if existing:
         raise HTTPException(status_code=400, detail="Email already exists")
+
+    # Validate Line Manager exists (UAT Fix — mandatory for approval routing).
+    if not emp.line_manager_id or not str(emp.line_manager_id).strip():
+        raise HTTPException(status_code=400, detail="Line Manager is required for every employee.")
+    try:
+        lm = await db.employees.find_one({"_id": ObjectId(emp.line_manager_id), "tenant_id": "solvit"})
+    except Exception:
+        lm = await db.employees.find_one({"id": emp.line_manager_id, "tenant_id": "solvit"})
+    if not lm:
+        raise HTTPException(status_code=400, detail="Selected Line Manager not found.")
 
     from dateutil.relativedelta import relativedelta
     from routes.masters_settings import get_setting

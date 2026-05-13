@@ -44,6 +44,8 @@ export default function Leave() {
   const [calMonth, setCalMonth] = useState(new Date().getMonth() + 1);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  // Auto-resolved line manager (read-only on the Apply form per UAT Fix).
+  const [myLM, setMyLM] = useState({ id: '', name: '' });
   const [form, setForm] = useState({
     leave_type: 'Annual', start_date: '', end_date: '',
     handover_contact: '', handover_contact_id: '',
@@ -67,6 +69,15 @@ export default function Leave() {
           setRollover(ro.data);
         } catch { /* no rollover */ }
       }
+      // Resolve the current user's own employee record to auto-fill the
+      // read-only Line Manager on the Apply form (UAT Fix).
+      try {
+        const me = await api.getMyEmployee();
+        const lmId = me.data?.line_manager_id || '';
+        const lmName = me.data?.line_manager_name || '';
+        setMyLM({ id: lmId, name: lmName });
+        setForm(p => ({ ...p, line_manager_id: lmId }));
+      } catch { /* user has no employee record (e.g. IT Admin) */ }
     } finally { setLoading(false); }
   }, [myEmpId]);
 
@@ -91,7 +102,7 @@ export default function Leave() {
     try {
       await api.createLeaveRequest({ ...form, employee_id: myEmpId });
       setShowForm(false);
-      setForm({ leave_type: 'Annual', start_date: '', end_date: '', handover_contact: '', handover_contact_id: '', line_manager_id: '', notes: '' });
+      setForm({ leave_type: 'Annual', start_date: '', end_date: '', handover_contact: '', handover_contact_id: '', line_manager_id: myLM.id || '', notes: '' });
       load();
     } finally { setSaving(false); }
   };
@@ -233,14 +244,17 @@ export default function Leave() {
                   )}
                 </div>
                 <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={lbl}>Line Manager (required for approval)</label>
-                  <EmployeePicker
-                    testId="leave-lm-picker"
-                    value={form.line_manager_id}
-                    excludeId={myEmpId}
-                    placeholder="Select your line manager..."
-                    onChange={(emp) => setForm(p => ({ ...p, line_manager_id: emp.id }))}
-                  />
+                  <label style={lbl}>Line Manager (auto-assigned — approval routes here)</label>
+                  {myLM.id ? (
+                    <div data-testid="leave-lm-readonly" style={{ ...inp, backgroundColor: '#F5F5F5', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'not-allowed', color: '#191919', fontWeight: 600 }}>
+                      <span>{myLM.name || 'Line Manager assigned'}</span>
+                      <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#525252', fontFamily: 'Barlow', fontWeight: 700 }}>Read-only</span>
+                    </div>
+                  ) : (
+                    <div data-testid="leave-lm-missing" style={{ ...inp, backgroundColor: '#FEF2F2', color: '#991B1B', border: '1px solid #FF353F' }}>
+                      No Line Manager on file. Contact HR — leave cannot be submitted without an approver.
+                    </div>
+                  )}
                 </div>
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={lbl}>Handover Contact</label>

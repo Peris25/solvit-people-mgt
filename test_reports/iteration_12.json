@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 12 — Validated Role Architecture + Mandatory Line Manager + Auto-fill LM on Leave UAT fixes. All 13 backend tests pass (mandatory LM POST/422, invalid LM/400, valid LM/201, /employees/me with line_manager_name, Board Chair seeded + board_only, MD->Board Chair linkage, role gating regression, budget gating regression, leave create). Frontend: LM picker visible on HR Add Employee modal, Leave Apply shows leave-lm-readonly (no picker), sidebars correctly gated for IT Admin / Finance / HR Admin. CRITICAL DATA BUG: seed/migration backfill set line_manager_id for ALL 23 seeded employees to the same id (resolves to 'Board Chair') instead of the proper hierarchical line_manager_email mapping defined in seed_demo_employees Pass 2. Result: employee@solvit.co.ke (James Kamau) reads LM='Board Chair' instead of 'David Ochieng'; finance/jessica/itadmin/manager etc. all show LM='Board Chair'.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "automation/seed_data.py::migrate_department_labels (Pass 2 + backfill)", "issue": "All 23 seeded employees end up with line_manager_id resolving to Board Chair. Verified via GET /api/employees as Board: every row has identical lm_id (Board Chair's uuid). Likely cause: migrate_department_labels backfill step (3) runs before seed_demo_employees Pass 2 email->id resolution, OR Pass 2 is being skipped on subsequent boots because employees already exist, OR `sarah_id` happens to equal `board_id`. Net effect: MD/ED correctly point to Board Chair, BUT so do Sarah, Jessica, David Ochieng, James Kamau, etc. UAT expects James->David, David->Sarah, Sarah->MD, Jessica->MD.", "priority": "CRITICAL"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Leave.js Apply form", "issue": "leave-lm-readonly correctly renders the auto-populated LM, but for employee@solvit.co.ke it displays 'Board Chair' instead of 'David Ochieng'. Root cause is the backend seed bug above, not the frontend.", "selector": "[data-testid='leave-lm-readonly']", "priority": "HIGH (data, not UI)"}
+    ],
+    "integration_issues": [
+      {"flow": "HR Add Employee inline LM-required validation", "issue": "Could not deterministically trigger the inline 'Line Manager is required...' error from Playwright via generic Save selector. Code path is present (Employees.js L99-102, error block L307). Recommend adding data-testid='employee-save' on the Save button and data-testid='employee-lm-error' on the error block for testability.", "affected_selectors": ["[data-testid='employee-save']", "[data-testid='employee-lm-error']"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_12.py",
+    "/app/test_reports/pytest/iteration_12.xml"
+  ],
+  "action_items": [
+    "FIX SEED: In automation/seed_data.py, ensure seed_demo_employees Pass 2 (line_manager_email -> line_manager_id resolution) runs AFTER migrate_department_labels OR is idempotent and re-runs on every boot. Also re-check `migrate_department_labels` backfill step (3) — appears to use board_id rather than sarah_id, or all employees were already set to board_id by an earlier run. After fix, expected: James->David, David->Sarah, Sarah/Jessica/Isaac/Lillian->MD, Grace/Daniel(TSM)->Sarah, MD/ED->Board Chair.",
+    "Add data-testid='employee-save' to the Save button in Employees.js Add/Edit modal and data-testid='employee-lm-error' to the error <div> for stable UAT automation.",
+    "After seed fix, re-run /api/employees/me for every test account and confirm line_manager_name matches the matrix in /app/memory/test_credentials.md."
+  ],
+  "critical_code_review_comments": [
+    "automation/seed_data.py L340-348: backfill step (3) silently sets EVERY orphaned employee to Sarah. If Sarah's record was inserted in same run and her uuid `id` collides with board's, or if Pass 2 was skipped, this stamps everyone with the wrong manager. Add explicit logging of (employee_email, resolved_lm_email) pairs and an integrity assertion: no two non-root employees should share the same lm_id unless they truly report to the same person.",
+    "routes/employees.py L317-324: mandatory line_manager_id validation is correct (422 from Pydantic + 400 for non-existent LM). Good defense in depth.",
+    "routes/employees.py L196-217: get_employee_profile filters board_only for non-board/non-it_admin — consistent with §7/§9. OK.",
+    "Leave.js: Apply form replaces picker with readonly display correctly. Need to ensure form.line_manager_id is also sent on submit (verified via backend test test_employee_apply_leave_auto_lm — passed)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration_12.py"],
+  "success_rate": {"backend": "100% (13/13 endpoint tests)", "frontend": "~85% (sidebar gating + LM picker + leave readonly all OK; data underlying readonly is wrong; inline-error trigger unverifiable without dedicated testid)"},
+  "test_credentials": "All from /app/memory/test_credentials.md, password Solvit@2026 — verified working for HR Admin, Employee, Manager, Finance, MD, ED, IT Admin, Board Chair, Solver.",
+  "seed_data_creation": "Test created 3 employees with prefix uat-ok-lm-<ts>@solvit.co.ke (role_title='Test'). These are harmless but main agent may want to add a TEST_ prefix scrubbing routine.",
+  "retest_needed": true,
+  "main_agent_can_self_test": false,
+  "context_for_next_testing_agent": "After main agent fixes the line_manager_id resolution bug in seed_data.py (Pass 2 should run on every boot and overwrite null OR mis-pointed lm_ids using the line_manager_email map), re-run test_iteration_12.py and additionally verify: (a) GET /api/employees/me as employee@solvit.co.ke returns line_manager_name == 'David Ochieng'; (b) as finance@solvit.co.ke returns 'Michael Omondi'; (c) as jessica@solvit.co.ke returns 'Michael Omondi'; (d) as manager@solvit.co.ke returns 'Sarah Njoroge'; (e) only md@/ed@ resolve to 'Board Chair'. Then on the frontend Leave page for employee@solvit.co.ke, confirm leave-lm-readonly shows 'David Ochieng'.",
+  "rca_of_the_issue": "Diagnostic dump (GET /api/employees as Board, include_exited=true) shows every one of the 23 seeded employees has line_manager_id = the same uuid prefix '5760d89e-...' which resolves via /api/employees/me's enrichment to full_name='Board Chair'. Expected per seed_demo_employees lines 504-521: an actual reporting tree (James->David->Sarah->MD->Board Chair, etc.). Two plausible causes: (1) migrate_department_labels Step (3) at seed_data.py L343-348 ran on the legacy collection BEFORE seed_demo_employees Pass 2 (L563+) inserted/resolved emails, sweeping every employee to a single id; (2) migrate runs on every boot but Pass 2 only runs when the employees collection is empty, so once everyone gets a non-null (wrong) lm_id, Pass 2 never repairs them. Fix: make Pass 2 unconditionally re-resolve line_manager_email for every record on every boot, regardless of current lm_id value, and run it AFTER the migrate backfill."
+}
