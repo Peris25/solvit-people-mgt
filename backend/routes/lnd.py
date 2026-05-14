@@ -108,6 +108,18 @@ async def bulk_assign_training(request: Request):
         })
     if docs:
         await db.training_requests.insert_many(docs)
+    # Email each assigned employee — best-effort, paced through send_email throttle.
+    try:
+        from utils.email_triggers import fire_and_forget
+        for emp_id in employee_ids:
+            await fire_and_forget(db, "lnd.training_assigned",
+                                  employee_id=emp_id, extra={
+                                      "training_name": training_name,
+                                      "provider": provider,
+                                      "delivery_method": delivery_method,
+                                  })
+    except Exception:
+        pass
     return {"status": "success", "created": len(docs), "training_name": training_name}
 
 
@@ -146,6 +158,20 @@ async def create_training_request(tr: TrainingRequest, request: Request):
     }
     result = await db.training_requests.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
+    # Email the employee — training assignment confirmation
+    try:
+        from utils.email_triggers import fire_and_forget
+        await fire_and_forget(db, "lnd.training_assigned",
+                              employee_id=tr.employee_id, extra={
+                                  "training_name": tr.training_name,
+                                  "provider": tr.provider,
+                                  "delivery_method": tr.delivery_method,
+                                  "start_date": tr.proposed_start_date,
+                                  "end_date": tr.proposed_end_date,
+                                  "cost_kes": tr.cost_kes,
+                              })
+    except Exception:
+        pass
     return doc
 
 

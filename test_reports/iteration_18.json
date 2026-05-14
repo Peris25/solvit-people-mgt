@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration 18 — Email Send Log + cross-app email triggers. Backend 19/22 PASSED (3 solver triggers SKIPPED — seed solver has no email field; trigger silently falls through). Frontend Email Send Log section fully verified: all filter chips (all/sent/failed/skipped), refresh button, and rows with template_key chips render correctly. Confirmed actual log rows in production UI for onboarding.welcome, performance.review_complete, recognition.peer, recognition.manager, disciplinary.written/final/dismissal, comp.salary_review, recruitment.application_received/invite_competency/invite_interview/regret, policy.published (one per active employee), lnd.project_assigned, lnd.project_completed, lnd.training_assigned (single + bulk), leave.received, leave.pending_lm. Iter-17 access matrix regression passes 19/19.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/solvers/{id} + POST /api/solvers/{id}/activate", "issue": "Solver triggers (solver.activation, solver.tier_upgrade, solver.tier_downgrade, solver.suspension, solver.reactivation) only fire when sol_email = result.get('email') or result.get('work_email') is truthy. SolverCreate/SolverUpdate models have NO email field, and seed solvers don't have one, so the triggers silently no-op for every existing solver. Either add `email` to SolverCreate/SolverUpdate and seed it, or fall back to a related employee record when the solver is linked to one."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_18.py",
+    "/app/test_reports/pytest/iteration_18.xml",
+    "/app/backend/tests/test_iteration_17.py"
+  ],
+  "action_items": [
+    "Add `email` field to SolverCreate/SolverUpdate Pydantic models AND seed an email on demo solvers so solver.activation / solver.tier_upgrade / solver.suspension triggers actually fire. Right now they silently fall through to 'no recipient' and no email_log row is written.",
+    "Optional: have email_service.send_email also write a row to email_log with status='skipped' so the UI's 'Skipped' filter is actually populated and missing recipients become observable instead of silent."
+  ],
+  "critical_code_review_comments": [
+    "utils/email_service.py — `skipped` results (no recipient / no SMTP config) are NOT written to email_log. The frontend filter chip 'SKIPPED' will therefore always render an empty list. Consider logging skipped rows for full audit-ability of the trigger pipeline.",
+    "utils/email_triggers.py — `to_override` path bypasses employee resolution; solver routes use this exclusively with sol_email pulled from solver.email which never exists today. Either model the email on the solver or accept a fallback employee_id in the trigger.",
+    "routes/email_delivery.py GET /log uses str(r.get('_id')) for `id`, which is fine because both source collections include a Mongo ObjectId. Output is correctly sorted by sent_at desc and capped at min(limit, 500).",
+    "Inline `from utils.email_triggers import fire_and_forget` imports inside try/except blocks in every route are repetitive — consider hoisting to module-level imports since the helper is best-effort and never raises.",
+    "routes/lnd.py bulk-assign sends one email per employee in a loop — correct behaviour and verified end-to-end."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_18.py"
+  ],
+  "success_rate": {
+    "backend": "86% (19/22 — 3 solver tests SKIPPED because seed solvers lack an email field; non-failing)",
+    "frontend": "100% (Email Send Log section visible with filter chips, refresh, template_key column, status colours)"
+  },
+  "test_credentials": "All from /app/memory/test_credentials.md, password Solvit@2026.",
+  "seed_data_creation": "Created via test runs: 1 TEST employee, 1 perf review, 1 peer + 1 manager recognition, 3 disciplinary cases (Written/Final/Dismissal), 1 salary review, 1 candidate (stage transitions + reject), 1 policy (fan-out to active employees), 1 project (assigned+completed), 1 training request, 1 bulk-assign, 1 leave. No cleanup teardown — these rows persist in the demo DB.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_iteration_18.py is the canonical regression for the Email Send Log + cross-app trigger pipeline. Run via REACT_APP_BACKEND_URL=... pytest backend/tests/test_iteration_18.py. The 3 solver SKIPs become PASSes once SolverCreate/SolverUpdate carries an email field and demo solvers are seeded with one. For UI, [data-testid=email-send-log] sits below the Mode Switch Audit on /settings → Email Delivery tab; chips are [data-testid=log-filter-{all|sent|failed|skipped}] and refresh is [data-testid=log-refresh]. email_service.send_email only logs sent|failed — skipped rows never reach email_log so the SKIPPED filter is currently always empty.",
+  "rca_of_the_issue": "Iter-18 user request 'add an Email Send Log viewer + confirm emails fire for every template's corresponding action' is FULLY DELIVERED for 19/21 templates. GET /api/email-delivery/log correctly merges email_log + email_send_log, applies status filter, enforces RBAC (it_admin/hr_admin/hr_manager only). Every backend trigger writes an email_log row with the correct template_key. Solver triggers (3 templates) are wired correctly in code but silently no-op because the Solver data model has no email column — this is a data-model gap, not a wiring bug. Frontend EmailDelivery.js renders the section with proper testids and is reachable via /settings → Email Delivery."
+}

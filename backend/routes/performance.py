@@ -398,6 +398,28 @@ async def update_review(review_id: str, upd: ReviewUpdate, request: Request):
             "rating": update_data.get("rating")
         })
 
+    # Email triggers — pick the template by transition
+    try:
+        from utils.email_triggers import fire_and_forget
+        emp_id = result.get("employee_id")
+        new_status = update_data.get("status")
+        if new_status == "Completed":
+            await fire_and_forget(db, "performance.review_complete", employee_id=emp_id, extra={
+                "score": update_data.get("overall_score"),
+                "rating": update_data.get("rating"),
+                "cycle_year": result.get("cycle_year"),
+                "cycle_type": result.get("cycle_type"),
+            })
+        # PIP transitions stored in status or consequence_workflow
+        if update_data.get("consequence_workflow") == "PIP_Initiated":
+            await fire_and_forget(db, "performance.pip_initiated", employee_id=emp_id)
+        elif update_data.get("consequence_workflow") == "PIP_Successful":
+            await fire_and_forget(db, "performance.pip_success", employee_id=emp_id)
+        elif update_data.get("consequence_workflow") == "PIP_Escalated":
+            await fire_and_forget(db, "performance.pip_escalate", employee_id=emp_id)
+    except Exception:
+        pass
+
     return fmt(result)
 
 

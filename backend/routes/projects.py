@@ -62,6 +62,17 @@ async def create_project(proj: ProjectCreate, request: Request):
     }
     result = await db.projects.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
+    # Email the assigned employee
+    try:
+        from utils.email_triggers import fire_and_forget
+        await fire_and_forget(db, "lnd.project_assigned", employee_id=proj.employee_id, extra={
+            "project_name": proj.project_name,
+            "project_objective": proj.project_objective,
+            "expected_completion_date": proj.expected_completion_date,
+            "reward_on_completion": proj.reward_on_completion or "—",
+        })
+    except Exception:
+        pass
     return doc
 
 
@@ -96,4 +107,16 @@ async def update_project(project_id: str, request: Request):
         )
     if not result:
         raise HTTPException(status_code=404, detail="Project not found")
+    # On status → Completed, fire the project completion + reward email
+    try:
+        if body.get("status") == "Completed":
+            from utils.email_triggers import fire_and_forget
+            await fire_and_forget(db, "lnd.project_completed",
+                                  employee_id=result.get("employee_id"),
+                                  extra={
+                                      "project_name": result.get("project_name"),
+                                      "reward_on_completion": result.get("reward_on_completion") or "—",
+                                  })
+    except Exception:
+        pass
     return fmt(result)

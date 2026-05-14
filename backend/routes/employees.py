@@ -396,6 +396,12 @@ async def create_employee(emp: EmployeeCreate, request: Request):
         "performed_by": user["id"],
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
+    # Send the welcome email to the new employee (best-effort).
+    try:
+        from utils.email_triggers import fire_and_forget
+        await fire_and_forget(db, "onboarding.welcome", employee_id=response_doc["id"])
+    except Exception:
+        pass
     return response_doc
 
 

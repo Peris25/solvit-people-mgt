@@ -102,6 +102,20 @@ async def create_salary_review(request: Request):
     }
     result = await db.salary_reviews.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
+    # Email the employee with the salary review outcome (best-effort)
+    try:
+        from utils.email_triggers import fire_and_forget
+        emp_id = body.get("employee_id")
+        if emp_id:
+            await fire_and_forget(db, "comp.salary_review", employee_id=emp_id, extra={
+                "new_salary_kes": body.get("new_salary_kes"),
+                "old_salary_kes": body.get("old_salary_kes"),
+                "increment_pct": body.get("increment_pct"),
+                "effective_date": body.get("effective_date"),
+                "rationale": body.get("rationale", ""),
+            })
+    except Exception:
+        pass
     return doc
 
 

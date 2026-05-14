@@ -131,4 +131,26 @@ async def issue_notice(case_id: str, request: Request):
     }
     await db.case_documents.insert_one(notice)
     await db.disciplinary_cases.update_one({"id": case_id}, {"$set": {"status": "Notice_Issued"}})
+    # Email the employee with the right warning template
+    try:
+        case = await db.disciplinary_cases.find_one({"id": case_id})
+        if case:
+            notice_type = (body.get("notice_type") or "").lower()
+            mapping = {
+                "show cause": "disciplinary.hearing",
+                "hearing": "disciplinary.hearing",
+                "written warning": "disciplinary.written",
+                "final warning": "disciplinary.final",
+                "dismissal": "disciplinary.dismissal",
+            }
+            template_key = mapping.get(notice_type, "disciplinary.hearing")
+            from utils.email_triggers import fire_and_forget
+            await fire_and_forget(db, template_key, employee_id=case.get("employee_id"), extra={
+                "case_ref": case.get("case_ref"),
+                "allegation": case.get("allegation_details", ""),
+                "notice_content": body.get("content", ""),
+                "response_deadline": body.get("response_deadline", "—"),
+            })
+    except Exception:
+        pass
     return {"message": "Notice issued", "notice_id": notice["id"]}

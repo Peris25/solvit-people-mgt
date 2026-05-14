@@ -156,6 +156,24 @@ async def update_solver(solver_id: str, upd: SolverUpdate, request: Request):
         )
     if not result:
         raise HTTPException(status_code=404, detail="Solver not found")
+    # Email the solver if a meaningful status/tier transition just happened
+    try:
+        from utils.email_triggers import fire_and_forget
+        sol_email = result.get("email") or result.get("work_email")
+        if sol_email:
+            new_state = update_data.get("lifecycle_state")
+            new_tier = update_data.get("performance_tier")
+            ctx = {"solver_name": result.get("full_name")}
+            if new_state == "Suspended":
+                await fire_and_forget(db, "solver.suspension", to_override=sol_email, extra=ctx)
+            elif new_state == "Active":
+                await fire_and_forget(db, "solver.reactivation", to_override=sol_email, extra=ctx)
+            if new_tier in ("Top", "Premium"):
+                await fire_and_forget(db, "solver.tier_upgrade", to_override=sol_email, extra={**ctx, "new_tier": new_tier})
+            elif new_tier in ("Bottom", "Probation"):
+                await fire_and_forget(db, "solver.tier_downgrade", to_override=sol_email, extra={**ctx, "new_tier": new_tier})
+    except Exception:
+        pass
     return fmt(result)
 
 
@@ -179,6 +197,17 @@ async def activate_solver(solver_id: str, request: Request):
         )
     if not result:
         raise HTTPException(status_code=404, detail="Solver not found")
+    # Email the solver activation confirmation (best-effort)
+    try:
+        from utils.email_triggers import fire_and_forget
+        sol_email = result.get("email") or result.get("work_email")
+        if sol_email:
+            await fire_and_forget(db, "solver.activation", to_override=sol_email, extra={
+                "solver_name": result.get("full_name"),
+                "activation_date": result.get("activation_date"),
+            })
+    except Exception:
+        pass
     return fmt(result)
 
 

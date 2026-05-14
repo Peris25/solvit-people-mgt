@@ -74,6 +74,19 @@ async def create_candidate(candidate: CandidateCreate, request: Request):
     }
     result = await db.candidates.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
+    # Email the candidate confirming application received (best-effort)
+    try:
+        from utils.email_triggers import fire_and_forget
+        cand_email = doc.get("email")
+        if cand_email:
+            await fire_and_forget(db, "recruitment.application_received",
+                                  to_override=cand_email,
+                                  extra={
+                                      "candidate_name": doc.get("full_name"),
+                                      "position": doc.get("position_applied_for") or doc.get("role_title"),
+                                  })
+    except Exception:
+        pass
     return doc
 
 
@@ -139,6 +152,31 @@ async def update_candidate(candidate_id: str, upd: CandidateUpdate, request: Req
         )
     if not result:
         raise HTTPException(status_code=404, detail="Candidate not found")
+    # Email the candidate based on new stage / outcome (best-effort)
+    try:
+        from utils.email_triggers import fire_and_forget
+        cand_email = result.get("email")
+        if cand_email:
+            stage_map = {
+                "Competency_Test": "recruitment.invite_competency",
+                "Values_Assessment": "recruitment.invite_values",
+                "Growth_Mindset": "recruitment.invite_growth",
+                "Physical_Interview": "recruitment.invite_interview",
+                "Offered": "recruitment.offer",
+                "Offer_Made": "recruitment.offer",
+            }
+            tpl = stage_map.get(update_data.get("current_stage"))
+            # Status transitions override stage (e.g. Rejected)
+            if (upd.outcome or update_data.get("status")) == "Rejected":
+                tpl = "recruitment.regret"
+            if tpl:
+                await fire_and_forget(db, tpl, to_override=cand_email, extra={
+                    "candidate_name": result.get("full_name"),
+                    "position": result.get("position_applied_for") or result.get("role_title"),
+                    "stage": update_data.get("current_stage"),
+                })
+    except Exception:
+        pass
     return fmt(result)
 
 

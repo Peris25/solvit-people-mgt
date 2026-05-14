@@ -53,6 +53,17 @@ async def create_peer_nomination(nom: PeerNomination, request: Request):
     }
     result = await db.recognitions.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
+    # Email the nominee (best-effort)
+    try:
+        from utils.email_triggers import fire_and_forget
+        await fire_and_forget(db, "recognition.peer", employee_id=nom.nominee_id, extra={
+            "nominator_name": doc["nominator_name"],
+            "values": ", ".join(nom.values_demonstrated or []),
+            "behaviour": nom.specific_behaviour,
+            "impact": nom.impact,
+        })
+    except Exception:
+        pass
     return doc
 
 
@@ -75,6 +86,18 @@ async def create_manager_recognition(request: Request):
     }
     result = await db.recognitions.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
+    # Email the recipient (best-effort)
+    try:
+        from utils.email_triggers import fire_and_forget
+        recipient_id = body.get("nominee_id") or body.get("employee_id")
+        if recipient_id:
+            await fire_and_forget(db, "recognition.manager", employee_id=recipient_id, extra={
+                "manager_name": doc["nominator_name"],
+                "behaviour": body.get("specific_behaviour") or body.get("behaviour", ""),
+                "impact": body.get("impact", ""),
+            })
+    except Exception:
+        pass
     return doc
 
 
