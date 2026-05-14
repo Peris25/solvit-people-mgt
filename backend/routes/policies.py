@@ -65,16 +65,15 @@ async def create_policy(policy: PolicyCreate, request: Request):
         active_emps = await db.employees.find(
             {"tenant_id": "solvit", "lifecycle_state": {"$in": ["Active", "Probation"]}}
         ).to_list(500)
-        ctx = {
-            "policy_title": doc.get("title"),
-            "policy_version": doc.get("version"),
-            "effective_date": doc.get("effective_date"),
-            "category": doc.get("category"),
-        }
         for emp in active_emps:
             if emp.get("work_email"):
                 await fire_and_forget(db, "policy.published",
-                                      employee_id=emp.get("id"), extra=ctx)
+                                      employee_id=emp.get("id"), extra={
+                                          "policy_title": doc.get("title"),
+                                          "policy_version": doc.get("version"),
+                                          "effective_date": doc.get("effective_date"),
+                                          "category": doc.get("category"),
+                                      })
     except Exception:
         pass
     return doc

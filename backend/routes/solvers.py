@@ -165,15 +165,26 @@ async def update_solver(solver_id: str, upd: SolverUpdate, request: Request):
         if sol_email:
             new_state = update_data.get("lifecycle_state")
             new_tier = update_data.get("performance_tier")
-            ctx = {"solver_name": result.get("full_name")}
+            solver_name = result.get("full_name")
             if new_state == "Suspended":
-                await fire_and_forget(db, "solver.suspension", to_override=sol_email, extra=ctx)
+                await fire_and_forget(db, "solver.suspension", to_override=sol_email, extra={
+                    "solver_name": solver_name,
+                    "reason": update_data.get("suspension_reason") or "Performance review by Solver Manager",
+                })
             elif new_state == "Active":
-                await fire_and_forget(db, "solver.reactivation", to_override=sol_email, extra=ctx)
+                await fire_and_forget(db, "solver.reactivation", to_override=sol_email, extra={
+                    "solver_name": solver_name,
+                })
             if new_tier in ("Top", "Premium"):
-                await fire_and_forget(db, "solver.tier_upgrade", to_override=sol_email, extra={**ctx, "new_tier": new_tier})
+                await fire_and_forget(db, "solver.tier_upgrade", to_override=sol_email, extra={
+                    "solver_name": solver_name,
+                    "new_tier": new_tier,
+                })
             elif new_tier in ("Bottom", "Probation"):
-                await fire_and_forget(db, "solver.tier_downgrade", to_override=sol_email, extra={**ctx, "new_tier": new_tier})
+                await fire_and_forget(db, "solver.tier_downgrade", to_override=sol_email, extra={
+                    "solver_name": solver_name,
+                    "new_tier": new_tier,
+                })
     except Exception:
         pass
     return fmt(result)
