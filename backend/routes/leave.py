@@ -132,6 +132,40 @@ async def create_leave_request(lr: LeaveRequest, request: Request):
     result = await db.leave_requests.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
 
+    # ── Email notifications ──────────────────────────────────────────────────
+    # 1) Confirmation to the requesting employee (leave.received)
+    # 2) Approval request to the line manager (leave.pending_lm)
+    # Both are best-effort: if SMTP isn't configured the leave still saves.
+    try:
+        from utils.email_service import send_email
+        emp = await db.employees.find_one({"id": lr.employee_id}) or {}
+        emp_email = emp.get("work_email")
+        emp_name = emp.get("full_name", "")
+        ctx_base = {
+            "employee_name": emp_name,
+            "leave_type": lr.leave_type,
+            "start_date": lr.start_date,
+            "end_date": lr.end_date,
+            "days": working_days,
+        }
+        if emp_email:
+            await send_email(db, to=emp_email, template_key="leave.received", context=ctx_base)
+        # Resolve line manager email (lr.line_manager_id is canonical employees.id)
+        lm_id = lr.line_manager_id or emp.get("line_manager_id")
+        if lm_id:
+            lm = await db.employees.find_one({"id": lm_id}) or {}
+            if lm.get("work_email"):
+                await send_email(
+                    db,
+                    to=lm["work_email"],
+                    template_key="leave.pending_lm",
+                    context={**ctx_base, "manager_name": lm.get("full_name", "")},
+                )
+    except Exception as e:
+        # Never let email failure block the API response.
+        import logging
+        logging.getLogger(__name__).warning("Leave-submit email side-effect failed: %s", e)
+
     from automation.engine import automation_engine
     await automation_engine.fire_event("leave_request_submitted", {
         "leave_request_id": doc["id"],
@@ -185,6 +219,23 @@ async def leave_decision(request_id: str, request: Request):
             "is_read": False,
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
+        # Email the employee with the decision (best-effort)
+        try:
+            from utils.email_service import send_email
+            emp = await db.employees.find_one({"id": result.get("employee_id")}) or {}
+            if emp.get("work_email"):
+                tpl_key = "leave.approved" if update["status"] == "Approved" else "leave.rejected"
+                ctx = {
+                    "employee_name": emp.get("full_name", ""),
+                    "leave_type": result.get("leave_type", "Annual"),
+                    "start_date": result.get("start_date"),
+                    "end_date": result.get("end_date"),
+                    "reason": update.get("manager_reason") or "—",
+                }
+                await send_email(db, to=emp["work_email"], template_key=tpl_key, context=ctx)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("Leave-decision email side-effect failed: %s", e)
 
     if update.get("status") == "Approved":
         from automation.engine import automation_engine

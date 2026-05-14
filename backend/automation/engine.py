@@ -318,6 +318,14 @@ class AutomationEngine:
     async def _send_notification_action(self, rule: dict, data: dict, payload: dict):
         message = payload.get("message", rule.get("description", "Automated notification"))
         recipients = rule.get("notification_recipients_json", [])
+        # Rules whose email duplicates an explicit send from a route handler.
+        # In-app notifications still fire — only the SMTP send is suppressed so
+        # we don't burn Mailtrap rate-limit quota with duplicates.
+        email_suppressed_rules = {
+            "AR-LV-01",  # leave.pending_lm — already sent by routes/leave.py
+            "AR-LV-03",  # high-activity flag — HR sees in-app banner
+        }
+        send_email_too = rule.get("rule_id") not in email_suppressed_rules
         for recipient_role in recipients:
             notif = {
                 "id": str(uuid.uuid4()),
@@ -331,6 +339,8 @@ class AutomationEngine:
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             await self.db.notifications.insert_one(notif)
+            if not send_email_too:
+                continue
             # Best-effort email — does nothing if email provider not configured
             try:
                 users = await self.db.users.find({"role": recipient_role, "tenant_id": "solvit"}).to_list(50)
