@@ -293,6 +293,7 @@ export const updateEmailDeliveryMode = (mode, data) => api.put(`/email-delivery/
 export const switchEmailDeliveryMode = (mode) => api.post('/email-delivery/switch', { mode });
 export const sendEmailDeliveryTest = (to) => api.post('/email-delivery/test-send', { to });
 export const getEmailDeliveryAudit = () => api.get('/email-delivery/audit');
+export const getEmailLog = (status) => api.get('/email-delivery/log', { params: status ? { status } : {} });
 
 // Onboarding Tour
 export const getMyTour = () => api.get('/onboarding-tour/me');

@@ -6,6 +6,7 @@ changes are logged in `email_delivery_audit`.
 """
 from fastapi import APIRouter, HTTPException, Request
 from datetime import datetime, timezone
+from typing import Optional
 from database import get_db
 from utils.auth import get_current_user
 import uuid
@@ -188,3 +189,54 @@ async def get_audit(request: Request, limit: int = 50):
     for r in rows:
         r.pop("_id", None)
     return rows
+
+
+@router.get("/log")
+async def get_email_log(request: Request, limit: int = 100, status: Optional[str] = None):
+    """Recent email send attempts across the platform.
+
+    Combines two collections:
+      - `email_log`        — sends from utils/email_service.send_email() (leave,
+                             surveys, automation, settings)
+      - `email_send_log`   — AI Agent send-email actions (separate audit doc).
+
+    Read-only. Visible to IT Admin + HR Admin.
+    """
+    user = await get_current_user(request)
+    if user.get("role") not in ("it_admin", "hr_admin", "hr_manager"):
+        raise HTTPException(status_code=403, detail="No access")
+    db = get_db()
+    n = min(max(limit, 1), 500)
+    q = {"tenant_id": "solvit"}
+    if status:
+        q["status"] = status
+    primary = await db.email_log.find(q).sort("sent_at", -1).to_list(n)
+    ai = await db.email_send_log.find(q).sort("sent_at", -1).to_list(n)
+    rows = []
+    for r in primary:
+        rows.append({
+            "id": str(r.get("_id")),
+            "to": r.get("to"),
+            "subject": r.get("subject"),
+            "template_key": r.get("template_key"),
+            "mode": r.get("mode"),
+            "status": r.get("status"),
+            "error": r.get("error"),
+            "sent_at": r.get("sent_at"),
+            "source": "system",
+        })
+    for r in ai:
+        rows.append({
+            "id": str(r.get("_id")),
+            "to": r.get("to_email"),
+            "subject": r.get("subject"),
+            "template_key": r.get("template_key"),
+            "mode": r.get("mode"),
+            "status": r.get("status"),
+            "error": r.get("error"),
+            "sent_at": r.get("sent_at"),
+            "source": "ai_agent",
+            "sent_by_name": r.get("sent_by_name"),
+        })
+    rows.sort(key=lambda r: r.get("sent_at") or "", reverse=True)
+    return rows[:n]

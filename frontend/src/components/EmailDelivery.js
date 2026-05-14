@@ -22,6 +22,17 @@ export default function EmailDelivery() {
   const [testing_send, setTestingSend] = useState(false);
   const [switchTarget, setSwitchTarget] = useState(null);
   const [audit, setAudit] = useState([]);
+  const [sendLog, setSendLog] = useState([]);
+  const [logFilter, setLogFilter] = useState('all');
+  const [logLoading, setLogLoading] = useState(false);
+
+  const loadLog = async () => {
+    setLogLoading(true);
+    try {
+      const r = await api.getEmailLog(logFilter === 'all' ? null : logFilter);
+      setSendLog(r.data || []);
+    } catch {} finally { setLogLoading(false); }
+  };
 
   const load = async () => {
     try {
@@ -34,8 +45,10 @@ export default function EmailDelivery() {
       const a = await api.getEmailDeliveryAudit();
       setAudit(a.data || []);
     } catch {}
+    await loadLog();
   };
   useEffect(() => { load(); }, []);
+  useEffect(() => { loadLog(); /* eslint-disable-next-line */ }, [logFilter]);
 
   if (!cfg) return <div style={{ padding: '24px', color: '#525252' }}>Loading…</div>;
   const canEdit = !!cfg.can_edit;
@@ -192,6 +205,81 @@ export default function EmailDelivery() {
           </table>
         </div>
       )}
+
+      {/* Email Send Log — every individual send + failure (read-only) */}
+      <div data-testid="email-send-log" style={{ marginTop: '26px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+          <h2 style={{ fontFamily: 'Barlow', fontWeight: 900, fontSize: '18px', margin: 0 }}>Email Send Log</h2>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            {['all', 'sent', 'failed', 'skipped'].map(s => (
+              <button key={s} data-testid={`log-filter-${s}`} onClick={() => setLogFilter(s)}
+                style={{
+                  padding: '4px 10px', fontSize: '10px', fontWeight: 700,
+                  textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Barlow',
+                  cursor: 'pointer',
+                  backgroundColor: logFilter === s ? '#191919' : 'transparent',
+                  color: logFilter === s ? '#fff' : '#525252',
+                  border: '1px solid rgba(25,25,25,0.2)',
+                }}>{s}</button>
+            ))}
+            <button data-testid="log-refresh" onClick={loadLog} style={{ ...btnGhost, padding: '4px 12px' }}>↻</button>
+          </div>
+        </div>
+        <p style={{ fontSize: '11px', color: '#525252', margin: '0 0 10px' }}>
+          Every email sent by the platform (system + AI Agent) is recorded here. Use this to confirm leave/welcome/recognition mails actually went out.
+        </p>
+        <div style={{ border: '1px solid rgba(25,25,25,0.1)', maxHeight: '420px', overflowY: 'auto' }}>
+          {logLoading && sendLog.length === 0 ? (
+            <div style={{ padding: '30px', textAlign: 'center', color: '#9CA3AF', fontSize: '12px' }}>Loading…</div>
+          ) : sendLog.length === 0 ? (
+            <div style={{ padding: '30px', textAlign: 'center', color: '#9CA3AF', fontSize: '12px' }}>
+              No emails sent yet. Trigger a leave application or use the test button above.
+            </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+              <thead style={{ position: 'sticky', top: 0, backgroundColor: '#FAFAFA' }}>
+                <tr>
+                  {['When', 'To', 'Subject', 'Source', 'Mode', 'Status', 'Error'].map(h => (
+                    <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#525252', fontFamily: 'Barlow', borderBottom: '1px solid rgba(25,25,25,0.08)' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sendLog.map((row, i) => {
+                  const statusColor = row.status === 'sent' ? '#16a34a'
+                    : row.status === 'failed' ? '#FF353F'
+                    : row.status === 'skipped' ? '#92400E' : '#525252';
+                  return (
+                    <tr key={`${row.id}-${i}`} data-testid={`log-row-${row.status}`}
+                      style={{ borderBottom: '1px solid rgba(25,25,25,0.05)', backgroundColor: i % 2 === 0 ? '#fff' : '#FAFAFA' }}>
+                      <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: '#525252' }}>
+                        {row.sent_at ? new Date(row.sent_at).toLocaleString('en-GB') : '—'}
+                      </td>
+                      <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '11px' }}>{row.to || '—'}</td>
+                      <td style={{ padding: '8px 12px', maxWidth: '320px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.subject}>
+                        {row.subject || '—'}
+                        {row.template_key && <div style={{ fontSize: '10px', color: '#9CA3AF', fontFamily: 'monospace' }}>{row.template_key}</div>}
+                      </td>
+                      <td style={{ padding: '8px 12px' }}>
+                        <span style={{ fontSize: '10px', padding: '1px 6px', backgroundColor: row.source === 'ai_agent' ? '#FEF3C7' : '#F5F5F5', color: '#525252', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                          {row.source || 'system'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '8px 12px', color: '#525252', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{row.mode || '—'}</td>
+                      <td style={{ padding: '8px 12px', fontWeight: 700, color: statusColor, textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.05em' }}>
+                        {row.status}
+                      </td>
+                      <td style={{ padding: '8px 12px', color: '#FF353F', fontSize: '10px', maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.error || ''}>
+                        {row.error || ''}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
 
       {/* Mode switch confirmation */}
       {switchTarget && (

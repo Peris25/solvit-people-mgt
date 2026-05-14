@@ -316,21 +316,13 @@ async def execute_send_recognition(db, params: dict, user: dict) -> Dict[str, An
 
 
 async def execute_send_email(db, params: dict, user: dict) -> Dict[str, Any]:
-    """Render the template and persist a queued send. We do NOT bypass the
-    Email Delivery config here — the SMTP send still goes through the live
-    config; if it's the Mailtrap (Testing) mode the message is routed there.
-    On any SMTP failure we record the error but still mark the action as
-    'rendered' so it can be re-sent from /audit."""
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
+    """Render the template and send through the shared email_service so the
+    Mailtrap rate-limit throttle + central email_log apply. The action is also
+    recorded in email_send_log for the AI-Actions audit view.
+    """
     template = await db.email_templates.find_one({"tenant_id": "solvit", "key": params["template_key"]})
     if not template:
         return {"ok": False, "error": "Template not found"}
-    cfg = await db.email_delivery_config.find_one({"tenant_id": "solvit"}) or {}
-    mode = cfg.get("active_mode", "testing")
-    m = cfg.get(mode) or {}
-    # Render
     emp = await db.employees.find_one({"tenant_id": "solvit", "id": params["employee_id"]})
     merge = {
         "employee_name": (emp or {}).get("full_name") or params.get("employee_name"),
@@ -346,42 +338,22 @@ async def execute_send_email(db, params: dict, user: dict) -> Dict[str, Any]:
     to_addr = params.get("to_email") or (emp or {}).get("work_email")
     if not to_addr:
         return {"ok": False, "error": "No destination email on the employee record."}
-    now = datetime.now(timezone.utc).isoformat()
+
+    from utils.email_service import send_email
+    res = await send_email(db, to=to_addr, subject=subject, html=body_html)
+    status = res.get("status", "failed")
     log_doc = {
         "id": str(uuid.uuid4()), "tenant_id": "solvit",
         "template_key": params["template_key"],
         "employee_id": params["employee_id"], "to_email": to_addr,
         "subject": subject, "body_html": body_html,
-        "mode": mode, "status": "queued",
+        "mode": res.get("mode"), "status": status,
+        "error": res.get("error") or res.get("message"),
         "sent_by": user["id"], "sent_by_name": user.get("full_name") or user.get("email"),
-        "sent_at": now,
+        "sent_at": datetime.now(timezone.utc).isoformat(),
     }
-    try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = f"{m.get('from_name') or 'Solvit'} <{m.get('from_email') or 'no-reply@solvit.co.ke'}>"
-        msg["To"] = to_addr
-        msg.attach(MIMEText(body_html, "html"))
-        host = m.get("smtp_host"); port = int(m.get("smtp_port") or 0)
-        if not host or not port:
-            log_doc["status"] = "rendered_only"; log_doc["error"] = "SMTP not configured"
-        else:
-            enc = (m.get("encryption") or "STARTTLS").upper()
-            if enc == "SSL":
-                server = smtplib.SMTP_SSL(host, port, timeout=10)
-            else:
-                server = smtplib.SMTP(host, port, timeout=10)
-                if enc == "STARTTLS":
-                    server.starttls()
-            if m.get("username") and m.get("password"):
-                server.login(m["username"], m["password"])
-            server.sendmail(m.get("from_email"), [to_addr], msg.as_string())
-            server.quit()
-            log_doc["status"] = "sent"
-    except Exception as e:
-        log_doc["status"] = "failed"; log_doc["error"] = str(e)
     await db.email_send_log.insert_one(log_doc)
-    return {"ok": log_doc["status"] in ("sent", "rendered_only"), "send_status": log_doc["status"],
+    return {"ok": status in ("sent", "skipped"), "send_status": status,
             "error": log_doc.get("error"), "to": to_addr}
 
 
