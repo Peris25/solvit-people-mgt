@@ -38,6 +38,35 @@ Build a full-stack People Management Platform for **Solvit Limited** (Kenyan tec
 
 ## Implemented (May 2025 → Feb 2026)
 
+### Iter 18 — Cross-Platform Email Triggers + Email Send Log Viewer ✅
+**21 of 21 template→action triggers wired** across the platform via a new central helper `utils/email_triggers.py`. Every route handler that performs a meaningful action now fires the corresponding email template (best-effort, never blocks the response):
+
+| Module | Trigger | Templates |
+|---|---|---|
+| Leave (iter 17) | Submit / approve / reject | leave.received, leave.pending_lm, leave.approved, leave.rejected |
+| Onboarding | Employee created | onboarding.welcome |
+| Performance | Review completed / PIP transitions | performance.review_complete, performance.pip_initiated/success/escalate |
+| Recognition | Peer + manager nomination | recognition.peer, recognition.manager |
+| Disciplinary | Issue notice (by type) | disciplinary.hearing/written/final/dismissal |
+| Compensation | Salary review created | comp.salary_review |
+| Recruitment | New candidate + stage changes + reject | recruitment.application_received, recruitment.invite_competency/values/growth/interview, recruitment.offer, recruitment.regret |
+| Policies | Publish (fan-out to active employees) | policy.published |
+| Projects | Assign + complete | lnd.project_assigned, lnd.project_completed |
+| L&D | Single & bulk training assignment | lnd.training_assigned |
+| Solvers | Activate, tier change, suspend, reactivate | solver.activation, solver.tier_upgrade, solver.tier_downgrade, solver.suspension, solver.reactivation |
+
+**Email Send Log viewer:**
+- New `GET /api/email-delivery/log` endpoint — combines `email_log` + `email_send_log` collections, sortable by date, filterable by status, RBAC-gated to IT Admin + HR Admin.
+- New section on Platform Settings → Email Delivery page with filter chips (all / sent / failed / skipped), refresh button, and rows showing When, To, Subject + template_key chip, Source (system / ai_agent), Mode, Status (color-coded), Error.
+- `email_service.send_email()` now also logs `skipped` rows so missing recipients become observable.
+
+**Data fixes (caught during iter 18 testing):**
+- `SolverCreate` / `SolverUpdate` now have an `email` field (was missing — solver triggers were silently no-op'ing).
+- New idempotent migration `backfill_solver_emails()` runs every boot to give existing demo solvers an email so their triggers actually fire.
+- `ai_actions.execute_send_email` refactored to use the shared `send_email()` (was duplicating SMTP code, bypassing throttle + log).
+
+**Tests — Iter 18:** 19/22 backend (+ 3 follow-up tests pending after solver email backfill — now reproducible via the curl-verified path). Frontend: Email Send Log section + filter chips + refresh + template_key chip + status colors all visible & functional.
+
 ### Iter 17 — Editable Permissions Matrix + Custom Roles ✅
 **Live-editable access matrix:**
 - New runtime overlay store (`RUNTIME_OVERRIDES`, `CUSTOM_ROLE_DEFINITIONS` in `utils/access_matrix.py`) — mutated synchronously by IT Admin actions, persisted to MongoDB `permission_overrides` + `custom_roles` collections, and re-hydrated on every server boot via `load_runtime_state(db)`.

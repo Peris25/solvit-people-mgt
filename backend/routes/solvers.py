@@ -18,6 +18,7 @@ NAIROBI_ZONES = ["Zone 1: CBD", "Zone 2: Westlands-Kileleshwa", "Zone 3: Karen-L
 class SolverCreate(BaseModel):
     full_name: str
     phone_number: str
+    email: Optional[str] = None
     national_id_number: Optional[str] = None
     kra_pin: Optional[str] = None
     nssf_number: Optional[str] = None
@@ -36,6 +37,7 @@ class SolverCreate(BaseModel):
 class SolverUpdate(BaseModel):
     full_name: Optional[str] = None
     phone_number: Optional[str] = None
+    email: Optional[str] = None
     national_id_number: Optional[str] = None
     kra_pin: Optional[str] = None
     bank_name: Optional[str] = None

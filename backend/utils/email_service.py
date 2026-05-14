@@ -30,6 +30,26 @@ _LAST_SEND_TS = [0.0]
 _MIN_INTERVAL_S = 2.5   # Mailtrap sandbox: 5 emails / 10 seconds = 2s ceiling. Margin = 0.5s.
 
 
+async def _log_skip(db, to: Optional[str], reason: str, template_key: Optional[str] = None, mode: Optional[str] = None) -> None:
+    """Persist a skipped-send row so the SKIPPED filter chip in the UI is
+    populated (helps spot trigger pipelines where the recipient is missing).
+    """
+    try:
+        from datetime import datetime, timezone
+        await db.email_log.insert_one({
+            "tenant_id": "solvit",
+            "to": to,
+            "subject": None,
+            "template_key": template_key,
+            "mode": mode,
+            "status": "skipped",
+            "error": reason,
+            "sent_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass
+
+
 class EmailDeliveryError(Exception):
     pass
 
@@ -68,10 +88,12 @@ async def send_email(
     went out.
     """
     if not to:
+        await _log_skip(db, None, "no recipient", template_key)
         return {"status": "skipped", "message": "no recipient"}
 
     cfg = await db.email_delivery_config.find_one({"tenant_id": "solvit"})
     if not cfg:
+        await _log_skip(db, to, "email delivery not configured", template_key)
         return {"status": "skipped", "message": "email delivery not configured"}
 
     mode = cfg.get("active_mode") or "testing"
@@ -86,6 +108,7 @@ async def send_email(
 
     if not (host and pwd):  # username can be empty for some sandboxes
         logger.info("Email skipped: SMTP not fully configured (mode=%s)", mode)
+        await _log_skip(db, to, f"SMTP not configured in '{mode}' mode", template_key, mode=mode)
         return {"status": "skipped", "message": f"SMTP not configured in '{mode}' mode"}
 
     # Resolve template if provided

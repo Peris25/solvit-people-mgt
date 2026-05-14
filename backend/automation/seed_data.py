@@ -210,6 +210,7 @@ async def seed_all(db):
     await seed_demo_employees(db)
     await migrate_department_labels(db)
     await enforce_line_manager_hierarchy(db)
+    await backfill_solver_emails(db)
     await seed_exit_interview(db)
     await seed_pay_band_alerts(db)
     await seed_performance_reviews(db)
@@ -651,9 +652,9 @@ async def seed_demo_employees(db):
 
     # Seed a few solvers
     solvers = [
-        {"full_name": "Peter Njoroge", "phone_number": "+254712345678", "vehicle_categories": ["Saloon", "SUV"], "zones_covered": ["Zone 1: CBD", "Zone 2: Westlands-Kileleshwa"], "lifecycle_state": "Active", "accuracy_score": 87.5, "reliability_score": 92.0, "timeliness_score": 88.0, "client_rating_average": 4.6, "performance_tier": "High_Performer"},
-        {"full_name": "Alice Wairimu", "phone_number": "+254723456789", "vehicle_categories": ["Saloon"], "zones_covered": ["Zone 3: Karen-Langata"], "lifecycle_state": "Active", "accuracy_score": 95.0, "reliability_score": 96.0, "timeliness_score": 94.0, "client_rating_average": 4.9, "performance_tier": "Elite"},
-        {"full_name": "Brian Mutua", "phone_number": "+254734567890", "vehicle_categories": ["Truck", "Van"], "zones_covered": ["Zone 4: Eastlands"], "lifecycle_state": "Registering", "accuracy_score": None, "reliability_score": None, "timeliness_score": None, "client_rating_average": None, "performance_tier": None},
+        {"full_name": "Peter Njoroge", "email": "solver@solvit.co.ke", "phone_number": "+254712345678", "vehicle_categories": ["Saloon", "SUV"], "zones_covered": ["Zone 1: CBD", "Zone 2: Westlands-Kileleshwa"], "lifecycle_state": "Active", "accuracy_score": 87.5, "reliability_score": 92.0, "timeliness_score": 88.0, "client_rating_average": 4.6, "performance_tier": "High_Performer"},
+        {"full_name": "Alice Wairimu", "email": "alice.wairimu@solvit.co.ke", "phone_number": "+254723456789", "vehicle_categories": ["Saloon"], "zones_covered": ["Zone 3: Karen-Langata"], "lifecycle_state": "Active", "accuracy_score": 95.0, "reliability_score": 96.0, "timeliness_score": 94.0, "client_rating_average": 4.9, "performance_tier": "Elite"},
+        {"full_name": "Brian Mutua", "email": "brian.mutua@solvit.co.ke", "phone_number": "+254734567890", "vehicle_categories": ["Truck", "Van"], "zones_covered": ["Zone 4: Eastlands"], "lifecycle_state": "Registering", "accuracy_score": None, "reliability_score": None, "timeliness_score": None, "client_rating_average": None, "performance_tier": None},
     ]
     solver_docs = []
     for s in solvers:
@@ -675,6 +676,29 @@ async def seed_demo_employees(db):
     if solver_docs:
         await db.solvers.insert_many(solver_docs)
     print("✅ Demo employees and solvers seeded")
+
+
+async def backfill_solver_emails(db):
+    """Idempotent backfill — runs on every boot. Ensures demo solvers seeded
+    before the `email` field existed have a valid address so solver triggers
+    (activation / tier change / suspension) actually fire.
+    """
+    mapping = {
+        "Peter Njoroge": "solver@solvit.co.ke",
+        "Alice Wairimu": "alice.wairimu@solvit.co.ke",
+        "Brian Mutua": "brian.mutua@solvit.co.ke",
+    }
+    fixed = 0
+    for name, email_addr in mapping.items():
+        res = await db.solvers.update_one(
+            {"tenant_id": "solvit", "full_name": name,
+             "$or": [{"email": None}, {"email": ""}, {"email": {"$exists": False}}]},
+            {"$set": {"email": email_addr}},
+        )
+        if res.modified_count:
+            fixed += 1
+    if fixed:
+        print(f"✅ Backfilled email on {fixed} demo solvers")
 
 
 async def seed_exit_interview(db):
