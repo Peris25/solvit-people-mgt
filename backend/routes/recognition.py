@@ -56,11 +56,16 @@ async def create_peer_nomination(nom: PeerNomination, request: Request):
     # Email the nominee (best-effort)
     try:
         from utils.email_triggers import fire_and_forget
+        values_str = ", ".join(nom.values_demonstrated or [])
         await fire_and_forget(db, "recognition.peer", employee_id=nom.nominee_id, extra={
+            # primary keys
             "nominator_name": doc["nominator_name"],
-            "values": ", ".join(nom.values_demonstrated or []),
+            "values": values_str,
             "behaviour": nom.specific_behaviour,
             "impact": nom.impact,
+            # back-compat aliases used by the existing default template
+            "from_name": doc["nominator_name"],
+            "message": nom.specific_behaviour,
         })
     except Exception:
         pass
@@ -91,10 +96,14 @@ async def create_manager_recognition(request: Request):
         from utils.email_triggers import fire_and_forget
         recipient_id = body.get("nominee_id") or body.get("employee_id")
         if recipient_id:
+            behaviour_text = body.get("specific_behaviour") or body.get("behaviour", "")
             await fire_and_forget(db, "recognition.manager", employee_id=recipient_id, extra={
                 "manager_name": doc["nominator_name"],
-                "behaviour": body.get("specific_behaviour") or body.get("behaviour", ""),
+                "behaviour": behaviour_text,
                 "impact": body.get("impact", ""),
+                # back-compat alias used by the existing default template
+                "message": behaviour_text,
+                "from_name": doc["nominator_name"],
             })
     except Exception:
         pass

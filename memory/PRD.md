@@ -351,6 +351,7 @@ Build a full-stack People Management Platform for **Solvit Limited** (Kenyan tec
 
 ## Changelog (recent)
 - **2026-02-14** — Peer Recognition Nomination form switched from free-text input to `EmployeePicker` dropdown (excludes self, searchable). New backend endpoint `GET /api/employees/directory` returns minimal-info directory (id, full_name, role_title, department, lifecycle_state, work_email, profile_photo_url) for all authenticated users — used by shared pickers. EmployeePicker now consumes this endpoint so employees can nominate any colleague. Submit button disabled until a real employee is selected. Verified: nominee_id is now a real UUID (data integrity).
+- **2026-02-14** — Recognition email body bug fixed: peer/manager recognition emails were rendering empty because triggers sent `nominator_name`/`behaviour` while templates used `{{from_name}}`/`{{message}}`. Added both alias styles in the triggers AND enhanced default templates to display Values, Behaviour, and Impact. `_ensure_seeded` now also refreshes non-customised seeded templates so live installs pick up improvements automatically (any IT-Admin edit is preserved).
 
 ## Roadmap
 

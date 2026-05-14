@@ -171,11 +171,11 @@ DEFAULT_TEMPLATES = [
 
     # ---------------- Recognition ----------------
     {"key": "recognition.peer", "module": "Recognition", "name": "Peer Recognition Received",
-     "subject": "You've been recognised by a peer", "merge_tags": ["employee_name","from_name","message"],
-     "body": "<p>Hi {{employee_name}},</p><p>{{from_name}} recognised you: <em>\"{{message}}\"</em></p>"},
+     "subject": "You've been recognised by a peer", "merge_tags": ["employee_name","from_name","nominator_name","values","behaviour","message","impact"],
+     "body": "<p>Hi {{employee_name}},</p><p><strong>{{from_name}}</strong> just recognised you against Solvit's core values.</p><p><strong>Values:</strong> {{values}}</p><p><strong>What you did:</strong><br/><em>\"{{behaviour}}\"</em></p><p><strong>Impact:</strong><br/>{{impact}}</p><p>Thank you for living the Solvit values — your nomination is now pending HR review.</p><p>— Solvit People Platform</p>"},
     {"key": "recognition.manager", "module": "Recognition", "name": "Manager Recognition Issued",
-     "subject": "Recognition from your manager", "merge_tags": ["employee_name","manager_name","message"],
-     "body": "<p>Hi {{employee_name}},</p><p>{{manager_name}} recognised your work: <em>\"{{message}}\"</em></p>"},
+     "subject": "Recognition from your manager", "merge_tags": ["employee_name","manager_name","behaviour","message","impact"],
+     "body": "<p>Hi {{employee_name}},</p><p>Your manager <strong>{{manager_name}}</strong> has formally recognised your work.</p><p><strong>What stood out:</strong><br/><em>\"{{behaviour}}\"</em></p><p><strong>Impact:</strong><br/>{{impact}}</p><p>Keep it up.</p><p>— Solvit People Platform</p>"},
     {"key": "recognition.long_service", "module": "Recognition", "name": "Long Service Award",
      "subject": "Long service award — {{years}} years", "merge_tags": ["employee_name","years"],
      "body": "<p>Hi {{employee_name}},</p><p>Thank you for {{years}} years of service at Solvit. Congratulations!</p>"},
@@ -261,20 +261,40 @@ DEFAULT_TEMPLATES = [
 
 
 async def _ensure_seeded(db):
-    existing = {d["key"] async for d in db.email_templates.find({"tenant_id": "solvit"}, {"key": 1})}
+    existing_docs = {d["key"]: d async for d in db.email_templates.find({"tenant_id": "solvit"})}
     docs = []
     now = datetime.now(timezone.utc).isoformat()
     for t in DEFAULT_TEMPLATES:
-        if t["key"] in existing:
+        cur = existing_docs.get(t["key"])
+        if cur is None:
+            docs.append({
+                **t,
+                "id": str(uuid.uuid4()),
+                "tenant_id": "solvit",
+                "is_default": True,
+                "updated_at": now,
+                "updated_by": "system_seed",
+            })
             continue
-        docs.append({
-            **t,
-            "id": str(uuid.uuid4()),
-            "tenant_id": "solvit",
-            "is_default": True,
-            "updated_at": now,
-            "updated_by": "system_seed",
-        })
+        # Refresh defaults that have NOT been manually edited by an IT Admin.
+        # We treat updated_by == "system_seed" (or unset) as "still default" and
+        # safely overwrite the body/subject/merge_tags so callers get the latest
+        # canonical template. Any IT-Admin edit will set updated_by to the
+        # user id, preserving customisations.
+        if cur.get("updated_by") in (None, "system_seed"):
+            await db.email_templates.update_one(
+                {"_id": cur["_id"]},
+                {"$set": {
+                    "subject": t["subject"],
+                    "body": t["body"],
+                    "merge_tags": t.get("merge_tags") or [],
+                    "name": t["name"],
+                    "module": t["module"],
+                    "is_default": True,
+                    "updated_at": now,
+                    "updated_by": "system_seed",
+                }}
+            )
     if docs:
         await db.email_templates.insert_many(docs)
 
