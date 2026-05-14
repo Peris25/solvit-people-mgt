@@ -347,6 +347,10 @@ Build a full-stack People Management Platform for **Solvit Limited** (Kenyan tec
 - Iter 5: deferred (variance bug → fixed in Iter 6)
 - Iter 6: 22/22 ✅
 - **Iter 7: 29/29 backend + 7/7 frontend ✅** (no product bugs; 8 initial test-script issues self-corrected)
+- Iter 12–19: Centralized email service, throttle, retry queue, log viewer — all green.
+
+## Changelog (recent)
+- **2026-02-14** — Peer Recognition Nomination form switched from free-text input to `EmployeePicker` dropdown (excludes self, searchable). New backend endpoint `GET /api/employees/directory` returns minimal-info directory (id, full_name, role_title, department, lifecycle_state, work_email, profile_photo_url) for all authenticated users — used by shared pickers. EmployeePicker now consumes this endpoint so employees can nominate any colleague. Submit button disabled until a real employee is selected. Verified: nominee_id is now a real UUID (data integrity).
 
 ## Roadmap
 

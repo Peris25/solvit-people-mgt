@@ -171,6 +171,37 @@ async def get_my_employee(request: Request):
     return formatted
 
 
+@router.get("/directory")
+async def employee_directory(request: Request):
+    """Minimal-info directory of active employees, accessible to ALL authenticated
+    users. Used by shared pickers (Peer Recognition nominee, survey targeting,
+    handover contacts, etc.). Returns only public-safe fields — no salary,
+    national ID, KRA, NSSF, SHA, DOB, etc. Excludes Exited records and any
+    board_only (MD / ED) records unless the caller is Board or IT Admin.
+    """
+    user = await get_current_user(request)
+    db = get_db()
+    employees = await db.employees.find(
+        {"tenant_id": "solvit", "lifecycle_state": {"$ne": "Exited"}}
+    ).sort("full_name", 1).to_list(1000)
+    out = []
+    for e in employees:
+        if e.get("board_only") and user["role"] not in ("board", "it_admin") \
+                and e.get("work_email") != user.get("email"):
+            continue
+        out.append({
+            "id": e.get("id") or str(e.get("_id")),
+            "full_name": e.get("full_name"),
+            "preferred_name": e.get("preferred_name"),
+            "role_title": e.get("role_title"),
+            "department": e.get("department"),
+            "work_email": e.get("work_email"),
+            "lifecycle_state": e.get("lifecycle_state"),
+            "profile_photo_url": e.get("profile_photo_url"),
+        })
+    return out
+
+
 @router.get("")
 async def list_employees(request: Request, lifecycle_state: Optional[str] = None, department: Optional[str] = None, search: Optional[str] = None, include_exited: bool = False):
     user = await get_current_user(request)

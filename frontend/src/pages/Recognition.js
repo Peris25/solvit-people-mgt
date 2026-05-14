@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import StatusBadge from '../components/StatusBadge';
+import EmployeePicker from '../components/EmployeePicker';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -99,8 +100,15 @@ export default function Recognition() {
             </div>
             <form onSubmit={submit} style={{ padding: '24px' }}>
               <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Nominee Name</label>
-                <input required value={form.nominee_name} onChange={e => setForm(p => ({ ...p, nominee_name: e.target.value, nominee_id: e.target.value.toLowerCase().replace(/ /g, '_') }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Nominee</label>
+                <EmployeePicker
+                  testId="recognition-nominee-picker"
+                  value={form.nominee_id}
+                  excludeId={user?.id}
+                  required
+                  placeholder="Select an employee to nominate..."
+                  onChange={(emp) => setForm(p => ({ ...p, nominee_id: emp.id, nominee_name: emp.full_name }))}
+                />
               </div>
               <div style={{ marginBottom: '14px' }}>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '8px' }}>Values Demonstrated</label>
@@ -118,7 +126,7 @@ export default function Recognition() {
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                 <button type="button" onClick={() => setShowForm(false)} style={{ padding: '10px 20px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '12px' }}>Cancel</button>
-                <button type="submit" disabled={saving} style={{ padding: '10px 24px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>{saving ? 'Submitting...' : 'Nominate'}</button>
+                <button type="submit" disabled={saving || !form.nominee_id} style={{ padding: '10px 24px', backgroundColor: (saving || !form.nominee_id) ? '#9CA3AF' : '#FF353F', color: '#fff', border: 'none', cursor: (saving || !form.nominee_id) ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 700 }}>{saving ? 'Submitting...' : 'Nominate'}</button>
               </div>
             </form>
           </div>

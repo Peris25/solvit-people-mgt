@@ -23,7 +23,7 @@ export default function EmployeePicker({ value, onChange, excludeId, placeholder
 
   useEffect(() => {
     let cancelled = false;
-    api.getEmployees().then(r => {
+    api.getEmployeeDirectory().then(r => {
       if (!cancelled) {
         setEmployees((r.data || []).filter(e => e.lifecycle_state !== 'Exited'));
         setLoading(false);
