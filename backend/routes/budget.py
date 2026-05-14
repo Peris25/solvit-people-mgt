@@ -395,6 +395,22 @@ async def create_allocation(request: Request):
         "approved_at": None if needs_finance else datetime.now(timezone.utc).isoformat(),
     }
     await db.budget_allocations.insert_one(doc)
+    # Email Finance when their approval is required (best-effort).
+    if needs_finance:
+        try:
+            from utils.email_triggers import fire_and_forget
+            fin = await db.users.find_one({"tenant_id": "solvit", "role": "finance"})
+            if fin and fin.get("email"):
+                await fire_and_forget(db, "budget.allocation_submitted",
+                                      to_override=fin["email"], extra={
+                                          "initiative_name": doc["initiative_name"],
+                                          "amount_kes": doc["amount_kes"],
+                                          "linked_module": doc["linked_module"],
+                                          "submitted_by": doc["created_by_name"],
+                                          "budget_cycle": doc["budget_cycle"],
+                                      })
+        except Exception:
+            pass
     return fmt(doc)
 
 

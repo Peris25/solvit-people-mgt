@@ -231,6 +231,32 @@ DEFAULT_TEMPLATES = [
     {"key": "system.account_deactivated", "module": "System & Account", "name": "Account Deactivated",
      "subject": "Your Solvit account has been deactivated", "merge_tags": ["full_name","effective_date"],
      "body": "<p>Hi {{full_name}},</p><p>Your account has been deactivated effective {{effective_date}}. Contact HR if this is unexpected.</p>"},
+
+    # ---------------- Formal documents (always real email regardless of mode) ----
+    {"key": "disciplinary.show_cause", "module": "Disciplinary", "name": "Notice to Show Cause",
+     "subject": "FORMAL NOTICE — Show Cause: {{employee_name}}", "merge_tags": ["employee_name","allegation_category","incident_date","response_due_date","hr_name","platform_link"],
+     "body": "<p>Dear {{employee_name}},</p><p>You are hereby required to show cause in writing as to why disciplinary action should not be taken against you for an alleged incident in the <strong>{{allegation_category}}</strong> category occurring on or about {{incident_date}}.</p><p>Your written response must be submitted by <strong>{{response_due_date}}</strong>. Please review and sign the formal notice at: {{platform_link}}.</p><p>Regards,<br/>{{hr_name}}<br/>Solvit Limited HR & Admin</p>"},
+    {"key": "exit.confidentiality_ack", "module": "Exit", "name": "Post-Employment Confidentiality Acknowledgement",
+     "subject": "FORMAL — Confidentiality & Non-Solicitation Acknowledgement", "merge_tags": ["employee_name","last_working_date","platform_link"],
+     "body": "<p>Dear {{employee_name}},</p><p>As part of your separation from Solvit Limited effective <strong>{{last_working_date}}</strong>, please review and digitally sign the Post-Employment Confidentiality & Non-Solicitation Acknowledgement at: {{platform_link}}.</p><p>This is a mandatory legal document that must be signed before your final pay is released.</p>"},
+    {"key": "retention.flight_risk_alert", "module": "Retention", "name": "CONFIDENTIAL — Flight Risk Alert",
+     "subject": "CONFIDENTIAL — Critical flight risk: {{employee_name}}", "merge_tags": ["employee_name","risk_tier","flag_date","platform_link"],
+     "body": "<p><strong>CONFIDENTIAL — HR / LM eyes only.</strong></p><p>{{employee_name}} has crossed the {{risk_tier}} flight risk threshold on {{flag_date}}. Recommend immediate stay-interview or 1:1.</p><p>View retention dashboard: {{platform_link}}</p>"},
+    {"key": "budget.allocation_submitted", "module": "Budget", "name": "HR Budget Allocation Submitted",
+     "subject": "Budget allocation for review — {{initiative_name}}", "merge_tags": ["initiative_name","amount_kes","linked_module","submitted_by","budget_cycle","platform_link"],
+     "body": "<p>HR has submitted a budget allocation requiring your approval.</p><p><strong>Initiative:</strong> {{initiative_name}}<br/><strong>Amount:</strong> KES {{amount_kes}}<br/><strong>Module:</strong> {{linked_module}}<br/><strong>Submitted by:</strong> {{submitted_by}}<br/><strong>Cycle:</strong> {{budget_cycle}}</p><p>Review: {{platform_link}}</p>"},
+    {"key": "leave.cancelled", "module": "Leave", "name": "Leave Cancellation",
+     "subject": "Leave cancelled — {{employee_name}}", "merge_tags": ["employee_name","leave_type","start_date","end_date"],
+     "body": "<p>{{employee_name}} has cancelled the {{leave_type}} leave scheduled {{start_date}} → {{end_date}}.</p>"},
+    {"key": "performance.self_review_submitted", "module": "Performance", "name": "Self-Review Received — Manager Review Open",
+     "subject": "Self-review received from {{employee_name}}", "merge_tags": ["employee_name","review_period","manager_review_due_date","platform_link"],
+     "body": "<p>{{employee_name}} has submitted their self-review for {{review_period}}. Your manager review is due by {{manager_review_due_date}}.</p><p>Open: {{platform_link}}</p>"},
+    {"key": "onboarding.probation_confirmed", "module": "Onboarding", "name": "Probation Confirmed",
+     "subject": "Congratulations — Probation Confirmed", "merge_tags": ["employee_first_name","employee_role","confirmation_date","hr_name"],
+     "body": "<p>Hi {{employee_first_name}},</p><p>Congratulations — your probation period has been successfully confirmed effective {{confirmation_date}}. You are now a fully confirmed member of the Solvit team in the role of {{employee_role}}.</p><p>Warm regards,<br/>{{hr_name}}</p>"},
+    {"key": "onboarding.probation_extended", "module": "Onboarding", "name": "Probation Extended",
+     "subject": "Probation Period Extended — Action Required", "merge_tags": ["employee_first_name","employee_role","extension_end_date","line_manager_name","hr_name","platform_link"],
+     "body": "<p>Hi {{employee_first_name}},</p><p>Following review, your probation period has been extended until <strong>{{extension_end_date}}</strong>. {{line_manager_name}} will set up a check-in to discuss focus areas.</p><p>View action plan: {{platform_link}}</p><p>Regards,<br/>{{hr_name}}</p>"},
 ]
 
 

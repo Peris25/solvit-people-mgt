@@ -111,6 +111,23 @@ async def calculate_risk(employee_id: str, request: Request):
     if old_level != risk["level"]:
         from automation.engine import automation_engine
         await automation_engine.fire_event(f"flight_risk_{risk['level'].lower()}", {"employee_id": employee_id})
+        # Critical risk: confidential alert to HR Admin (NEVER to employee).
+        if risk["level"] == "Critical":
+            try:
+                from utils.email_triggers import fire_and_forget
+                emp_id_str = emp.get("id") or str(emp.get("_id"))
+                # Use a fresh template; recipient is HR Admin user email.
+                hr = await db.users.find_one({"tenant_id": "solvit", "role": "hr_admin"})
+                if hr and hr.get("email"):
+                    await fire_and_forget(db, "retention.flight_risk_alert",
+                                          employee_id=emp_id_str,
+                                          to_override=hr["email"],
+                                          extra={
+                                              "risk_tier": "Critical",
+                                              "flag_date": datetime.now(timezone.utc).strftime("%d/%m/%Y"),
+                                          })
+            except Exception:
+                pass
 
     return {**risk, "employee_id": employee_id}
 
@@ -143,6 +160,16 @@ async def create_stay_interview(request: Request):
     }
     result = await db.stay_interviews.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
+    # Email the employee — stay interview meeting request
+    try:
+        from utils.email_triggers import fire_and_forget
+        await fire_and_forget(db, "retention.stay_interview_invite",
+                              employee_id=body.get("employee_id"), extra={
+                                  "interview_date": body.get("scheduled_date"),
+                                  "interview_location": body.get("location", "TBD"),
+                              })
+    except Exception:
+        pass
     return doc
 
 

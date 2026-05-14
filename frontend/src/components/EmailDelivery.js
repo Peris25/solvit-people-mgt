@@ -222,6 +222,10 @@ export default function EmailDelivery() {
                   border: '1px solid rgba(25,25,25,0.2)',
                 }}>{s}</button>
             ))}
+            <a data-testid="log-csv" href={api.emailLogCsvUrl(logFilter === 'all' ? null : logFilter)} target="_blank" rel="noreferrer"
+              style={{ padding: '4px 10px', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Barlow', cursor: 'pointer', backgroundColor: '#FF353F', color: '#fff', textDecoration: 'none', border: 'none' }}>
+              CSV
+            </a>
             <button data-testid="log-refresh" onClick={loadLog} style={{ ...btnGhost, padding: '4px 12px' }}>↻</button>
           </div>
         </div>
@@ -239,7 +243,7 @@ export default function EmailDelivery() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
               <thead style={{ position: 'sticky', top: 0, backgroundColor: '#FAFAFA' }}>
                 <tr>
-                  {['When', 'To', 'Subject', 'Source', 'Mode', 'Status', 'Error'].map(h => (
+                  {['When', 'To', 'Subject', 'Source', 'Mode', 'Status', 'Retries', 'Error', ''].map(h => (
                     <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#525252', fontFamily: 'Barlow', borderBottom: '1px solid rgba(25,25,25,0.08)' }}>{h}</th>
                   ))}
                 </tr>
@@ -256,9 +260,13 @@ export default function EmailDelivery() {
                         {row.sent_at ? new Date(row.sent_at).toLocaleString('en-GB') : '—'}
                       </td>
                       <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '11px' }}>{row.to || '—'}</td>
-                      <td style={{ padding: '8px 12px', maxWidth: '320px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.subject}>
+                      <td style={{ padding: '8px 12px', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.subject}>
                         {row.subject || '—'}
-                        {row.template_key && <div style={{ fontSize: '10px', color: '#9CA3AF', fontFamily: 'monospace' }}>{row.template_key}</div>}
+                        {row.template_key && (
+                          <div style={{ fontSize: '10px', color: '#9CA3AF', fontFamily: 'monospace' }}>
+                            {row.template_key}{row.formal && <span style={{ color: '#FF353F', marginLeft: '4px' }}>FORMAL</span>}
+                          </div>
+                        )}
                       </td>
                       <td style={{ padding: '8px 12px' }}>
                         <span style={{ fontSize: '10px', padding: '1px 6px', backgroundColor: row.source === 'ai_agent' ? '#FEF3C7' : '#F5F5F5', color: '#525252', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
@@ -269,8 +277,19 @@ export default function EmailDelivery() {
                       <td style={{ padding: '8px 12px', fontWeight: 700, color: statusColor, textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.05em' }}>
                         {row.status}
                       </td>
-                      <td style={{ padding: '8px 12px', color: '#FF353F', fontSize: '10px', maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.error || ''}>
+                      <td style={{ padding: '8px 12px', textAlign: 'center', color: row.retry_count > 0 ? '#F97316' : '#9CA3AF', fontWeight: 700 }}>
+                        {row.retry_count || 0}
+                      </td>
+                      <td style={{ padding: '8px 12px', color: '#FF353F', fontSize: '10px', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.error || ''}>
                         {row.error || ''}
+                      </td>
+                      <td style={{ padding: '4px 8px' }}>
+                        {row.status === 'failed' && (
+                          <button data-testid={`log-resend-${row.id}`} onClick={async () => {
+                            try { await api.resendEmail(row.id); loadLog(); }
+                            catch (e) { alert(e.response?.data?.detail || 'Resend failed'); }
+                          }} style={{ padding: '3px 8px', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'Barlow', cursor: 'pointer', backgroundColor: '#191919', color: '#fff', border: 'none' }}>Resend</button>
+                        )}
                       </td>
                     </tr>
                   );

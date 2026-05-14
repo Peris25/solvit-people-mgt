@@ -196,14 +196,17 @@ async def get_email_log(request: Request, limit: int = 100, status: Optional[str
     """Recent email send attempts across the platform.
 
     Combines two collections:
-      - `email_log`        — sends from utils/email_service.send_email() (leave,
-                             surveys, automation, settings)
-      - `email_send_log`   — AI Agent send-email actions (separate audit doc).
+      - `email_log`        — every send via utils.email_service.send_email
+      - `email_send_log`   — AI Agent send-email actions
 
-    Read-only. Visible to IT Admin + HR Admin.
+    IT Admin sees ALL rows. HR Admin / HR Manager see only HR-domain templates
+    (onboarding, leave, performance, recognition, exit, retention, lnd, survey,
+    policy, recruitment, disciplinary). Spec compliance — finance/budget/system
+    rows are filtered out for HR roles.
     """
     user = await get_current_user(request)
-    if user.get("role") not in ("it_admin", "hr_admin", "hr_manager"):
+    role = user.get("role")
+    if role not in ("it_admin", "hr_admin", "hr_manager"):
         raise HTTPException(status_code=403, detail="No access")
     db = get_db()
     n = min(max(limit, 1), 500)
@@ -212,31 +215,101 @@ async def get_email_log(request: Request, limit: int = 100, status: Optional[str
         q["status"] = status
     primary = await db.email_log.find(q).sort("sent_at", -1).to_list(n)
     ai = await db.email_send_log.find(q).sort("sent_at", -1).to_list(n)
+
+    HR_PREFIXES = ("onboarding.", "leave.", "performance.", "recognition.",
+                   "exit.", "retention.", "lnd.", "survey.", "policy.",
+                   "recruitment.", "disciplinary.", "comp.")
+
+    def hr_visible(tpl_key):
+        if role == "it_admin":
+            return True
+        return any((tpl_key or "").startswith(p) for p in HR_PREFIXES)
+
     rows = []
     for r in primary:
+        if not hr_visible(r.get("template_key")):
+            continue
         rows.append({
-            "id": str(r.get("_id")),
-            "to": r.get("to"),
-            "subject": r.get("subject"),
-            "template_key": r.get("template_key"),
-            "mode": r.get("mode"),
-            "status": r.get("status"),
-            "error": r.get("error"),
-            "sent_at": r.get("sent_at"),
+            "id": str(r.get("_id")), "to": r.get("to"),
+            "subject": r.get("subject"), "template_key": r.get("template_key"),
+            "mode": r.get("mode"), "status": r.get("status"),
+            "error": r.get("error"), "sent_at": r.get("sent_at"),
+            "retry_count": r.get("retry_count", 0),
+            "formal": r.get("formal", False),
             "source": "system",
         })
     for r in ai:
+        if not hr_visible(r.get("template_key")):
+            continue
         rows.append({
-            "id": str(r.get("_id")),
-            "to": r.get("to_email"),
-            "subject": r.get("subject"),
-            "template_key": r.get("template_key"),
-            "mode": r.get("mode"),
-            "status": r.get("status"),
-            "error": r.get("error"),
-            "sent_at": r.get("sent_at"),
-            "source": "ai_agent",
-            "sent_by_name": r.get("sent_by_name"),
+            "id": str(r.get("_id")), "to": r.get("to_email"),
+            "subject": r.get("subject"), "template_key": r.get("template_key"),
+            "mode": r.get("mode"), "status": r.get("status"),
+            "error": r.get("error"), "sent_at": r.get("sent_at"),
+            "source": "ai_agent", "sent_by_name": r.get("sent_by_name"),
         })
     rows.sort(key=lambda r: r.get("sent_at") or "", reverse=True)
     return rows[:n]
+
+
+
+@router.post("/log/{log_id}/resend")
+async def resend_email(log_id: str, request: Request):
+    """Manually re-fire a failed email. IT Admin only."""
+    user = await get_current_user(request)
+    if user.get("role") != "it_admin":
+        raise HTTPException(status_code=403, detail="IT Admin only")
+    from bson import ObjectId
+    db = get_db()
+    row = None
+    for coll in ("email_log", "email_send_log"):
+        try:
+            row = await db[coll].find_one({"_id": ObjectId(log_id), "tenant_id": "solvit"})
+            if row:
+                break
+        except Exception:
+            continue
+    if not row:
+        raise HTTPException(status_code=404, detail="Log entry not found")
+    from utils.email_service import send_email
+    to_addr = row.get("to") or row.get("to_email")
+    result = await send_email(
+        db, to=to_addr,
+        subject=row.get("subject"),
+        html=row.get("body_html"),  # only present on AI Agent rows
+        template_key=row.get("template_key"),
+        context={},  # legacy resend — caller can re-trigger from source for full context
+    )
+    return {"ok": result.get("status") == "sent", "result": result}
+
+
+@router.get("/log/export.csv")
+async def export_email_log_csv(request: Request, status: Optional[str] = None, limit: int = 500):
+    """Download the email log as a CSV. IT Admin only."""
+    user = await get_current_user(request)
+    if user.get("role") != "it_admin":
+        raise HTTPException(status_code=403, detail="IT Admin only")
+    from fastapi.responses import StreamingResponse
+    import csv
+    import io
+    db = get_db()
+    q = {"tenant_id": "solvit"}
+    if status:
+        q["status"] = status
+    rows = await db.email_log.find(q).sort("sent_at", -1).to_list(min(max(limit, 1), 5000))
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["sent_at", "to", "subject", "template_key", "mode", "status", "formal", "retry_count", "error"])
+    for r in rows:
+        writer.writerow([
+            r.get("sent_at"), r.get("to"), r.get("subject"),
+            r.get("template_key"), r.get("mode"), r.get("status"),
+            r.get("formal", False), r.get("retry_count", 0),
+            (r.get("error") or "").replace("\n", " ")[:300],
+        ])
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=email_log.csv"},
+    )

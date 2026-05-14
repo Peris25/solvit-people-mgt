@@ -294,6 +294,11 @@ export const switchEmailDeliveryMode = (mode) => api.post('/email-delivery/switc
 export const sendEmailDeliveryTest = (to) => api.post('/email-delivery/test-send', { to });
 export const getEmailDeliveryAudit = () => api.get('/email-delivery/audit');
 export const getEmailLog = (status) => api.get('/email-delivery/log', { params: status ? { status } : {} });
+export const resendEmail = (logId) => api.post(`/email-delivery/log/${logId}/resend`);
+export const emailLogCsvUrl = (status) => {
+  const base = process.env.REACT_APP_BACKEND_URL;
+  return `${base}/api/email-delivery/log/export.csv${status ? `?status=${status}` : ''}`;
+};
 
 // Onboarding Tour
 export const getMyTour = () => api.get('/onboarding-tour/me');

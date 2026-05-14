@@ -100,9 +100,19 @@ class AutomationEngine:
         self.scheduler.add_job(self._run_compliance_check, "interval", hours=4, id="compliance_4h")
         # Anniversary check daily
         self.scheduler.add_job(self._check_anniversaries, "cron", hour=8, minute=30, id="anniversary_check")
+        # Email retry queue — process pending retries every minute
+        self.scheduler.add_job(self._process_email_retries, "interval", minutes=1, id="email_retry_queue")
         self.scheduler.start()
         self._started = True
         logger.info("✅ Automation Engine started")
+
+    async def _process_email_retries(self):
+        """Drain the email retry queue. Best-effort — never raise."""
+        try:
+            from utils.email_service import process_retry_queue
+            await process_retry_queue(self.db)
+        except Exception as e:
+            logger.warning(f"Email retry queue error: {e}")
 
     async def fire_event(self, event_name: str, data: dict):
         """Fire an event-driven automation rule, including form-outcome rules."""

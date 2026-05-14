@@ -38,6 +38,44 @@ Build a full-stack People Management Platform for **Solvit Limited** (Kenyan tec
 
 ## Implemented (May 2025 → Feb 2026)
 
+### Iter 19 — Spec-compliant Email Pipeline (Formal Override + Retries + Branded Templates) ✅
+
+**Section 1 (Central Service)** — kept the existing direct-call architecture (per user's "do all apart from central architecture"). Everything else from the spec is now in:
+
+**🔐 Formal Template Override (legal-document safety)**
+- `FORMAL_TEMPLATE_KEYS` constant — `disciplinary.show_cause`, `disciplinary.written/final/dismissal`, `exit.confidentiality_ack`, `recruitment.offer`.
+- These 6 templates **always use the production SMTP config** even when active_mode is testing. If production isn't configured, the email is skipped with a clear log entry rather than silently going to Mailtrap.
+- New `X-Formal-Document: true` header set on formal emails.
+
+**🔁 Retry Logic (5 min → 30 min → 2 hr)**
+- Failed sends are queued in `email_retry_queue` with `next_attempt_at` timestamp.
+- New `process_retry_queue()` coroutine + APScheduler 1-minute cron drains the queue.
+- After 3 failed retries, an in-platform notification is created for IT Admin: *"Email delivery failed after 3 attempts — [Template] to [Recipient]. Check Notification Log."*
+- Verified: bursting 3 leave submissions creates 4 failed sends → 4 rows in `email_retry_queue` with retry_count=1.
+
+**🏷️ Standard Merge Tags (all of spec's globals)**
+- `employee_first_name`, `employee_role`, `employee_department`, `line_manager_name`, `hr_name`, `action_date`, `due_date`, `platform_link`, `current_year`, plus auto-resolved manager + employee context.
+- Plus back-compat aliases (`manager_name`, `today`, `login_url`) so existing seed templates render correctly.
+
+**🎨 Solvit-Branded Email Wrapper**
+- Every outbound HTML body wrapped in a Solvit-branded shell — black header bar, Red `#FF353F` accent line, Barlow heading, Nunito Sans body, footer with company line. Idempotent (`<!--solvit-wrapped-->` sentinel prevents double-wrap).
+
+**📋 Notification Log (Settings → Email Delivery)**
+- `GET /api/email-delivery/log` — combines `email_log` + `email_send_log`. Status filter chips.
+- **HR-scoped view**: HR Admin / HR Manager only see HR-domain templates (onboarding/leave/perf/recog/exit/retention/lnd/survey/policy/recruitment/disciplinary/comp). System / Budget templates hidden per spec.
+- **Resend button** on every failed row (`POST /api/email-delivery/log/{id}/resend`, IT Admin only).
+- **CSV export** (`GET /api/email-delivery/log/export.csv`).
+- New columns: Retry count, Formal badge (red FORMAL tag on legal-doc rows).
+
+**📧 8 new seed templates** added for spec gaps:
+- `disciplinary.show_cause`, `exit.confidentiality_ack`, `retention.flight_risk_alert`, `budget.allocation_submitted`, `leave.cancelled`, `performance.self_review_submitted`, `onboarding.probation_confirmed`, `onboarding.probation_extended`.
+- Total templates: 70.
+
+**🔗 New action triggers wired:**
+- Retention: stay-interview scheduled → `retention.stay_interview_invite`.
+- Retention: critical flight risk crossed → `retention.flight_risk_alert` (HR only, never to employee).
+- Budget: allocation submitted needing Finance approval → `budget.allocation_submitted`.
+
 ### Iter 18 — Cross-Platform Email Triggers + Email Send Log Viewer ✅
 **21 of 21 template→action triggers wired** across the platform via a new central helper `utils/email_triggers.py`. Every route handler that performs a meaningful action now fires the corresponding email template (best-effort, never blocks the response):
 
