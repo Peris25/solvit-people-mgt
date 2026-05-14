@@ -55,6 +55,15 @@ export const getMe = () => api.get('/auth/me');
 // Employees
 export const getEmployees = (params) => api.get('/employees', { params });
 export const getEmployeeDirectory = () => api.get('/employees/directory');
+
+// Reminder Service
+export const getReminderConfig = () => api.get('/reminders/config');
+export const updateReminderConfig = (data) => api.put('/reminders/config', data);
+export const getReminderRules = () => api.get('/reminders/rules');
+export const updateReminderRule = (ruleId, data) => api.put(`/reminders/rules/${ruleId}`, data);
+export const runReminderNow = (ruleId) => api.post(`/reminders/rules/${ruleId}/run-now`);
+export const getReminderLog = (params) => api.get('/reminders/log', { params });
+export const getReminderRuns = (params) => api.get('/reminders/runs', { params });
 export const getEmployee = (id) => api.get(`/employees/${id}`);
 export const getMyEmployee = () => api.get('/employees/me');
 export const getLineManagerWidget = () => api.get('/dashboard/line-manager');

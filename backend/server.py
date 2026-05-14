@@ -42,6 +42,8 @@ from routes.email_templates import router as email_templates_router
 from routes.email_delivery import router as email_delivery_router
 from routes.onboarding_tour import router as onboarding_tour_router
 from routes.dashboard import router as dashboard_router
+from routes.reminders import router as reminders_router
+from reminders.engine import reminder_engine
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -89,6 +91,7 @@ app.include_router(email_templates_router, prefix=API_PREFIX)
 app.include_router(email_delivery_router, prefix=API_PREFIX)
 app.include_router(onboarding_tour_router, prefix=API_PREFIX)
 app.include_router(dashboard_router, prefix=API_PREFIX)
+app.include_router(reminders_router, prefix=API_PREFIX)
 
 
 @app.get("/api/health")
@@ -113,6 +116,8 @@ async def startup():
     await load_runtime_state(db)
     # Start automation engine
     await automation_engine.start(db)
+    # Start reminder engine (registers cron jobs for all enabled rules)
+    await reminder_engine.start(db)
     logger.info("✅ Solvit People Platform started successfully")
 
 
@@ -121,4 +126,5 @@ async def shutdown():
     await close_db()
     if automation_engine.scheduler:
         automation_engine.scheduler.shutdown()
+    await reminder_engine.shutdown()
     logger.info("Solvit People Platform shut down")

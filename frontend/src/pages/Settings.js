@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import EmailDelivery from '../components/EmailDelivery';
+import ReminderRules from '../components/ReminderRules';
 
 export default function Settings() {
   const { user } = useAuth();
@@ -76,6 +77,7 @@ export default function Settings() {
         {[
           ...(user?.role === 'it_admin' ? [] : [{ key: 'ai', label: 'AI Agent' }]),
           ...(user?.role === 'it_admin' ? [{ key: 'email_delivery', label: 'Email Delivery' }] : [{ key: 'email_delivery', label: 'Email Delivery' }]),
+          { key: 'reminders', label: 'Reminder Rules' },
           ...(user?.role === 'it_admin' ? [] : [{ key: 'automation', label: 'Automation' }]),
           { key: 'tour', label: 'Replay Tour' },
           { key: 'audit', label: 'Audit Log' },
@@ -87,6 +89,7 @@ export default function Settings() {
       </div>
 
       {tab === 'email_delivery' && <EmailDelivery />}
+      {tab === 'reminders' && <ReminderRules />}
       {tab === 'tour' && (
         <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '24px', maxWidth: '600px' }}>
           <h3 style={{ margin: '0 0 8px', fontFamily: 'Barlow', fontWeight: 900 }}>Replay Platform Tour</h3>
