@@ -1,3 +1,5 @@
+import os
+_DEMO_PWD = os.environ.get("DEMO_SEED_PASSWORD", "Solvit@2026")
 """
 Comprehensive backend test suite for Solvit People Management Platform.
 Tests health, auth, and all 19+ module endpoints across 22 routers.
@@ -7,7 +9,7 @@ import requests
 import pytest
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://solvit-people-mgmt.preview.emergentagent.com").rstrip("/")
-PASSWORD = "Solvit@2026"
+PASSWORD = _DEMO_PWD
 
 DEMO_USERS = {
     "hr_admin": "jessica@solvit.co.ke",

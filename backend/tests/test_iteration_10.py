@@ -1,11 +1,13 @@
+import os
+_DEMO_PWD = os.environ.get("DEMO_SEED_PASSWORD", "Solvit@2026")
 """Iter 10 — AI Assistant upgrade + legacy email tab removal."""
 import os
 import pytest
 import httpx
 
 API = os.environ.get("API_BASE_URL", "http://localhost:8001")
-HR = {"email": "jessica@solvit.co.ke", "password": "Solvit@2026"}
-EMP = {"email": "employee@solvit.co.ke", "password": "Solvit@2026"}
+HR = {"email": "jessica@solvit.co.ke", "password": _DEMO_PWD}
+EMP = {"email": "employee@solvit.co.ke", "password": _DEMO_PWD}
 
 
 def _login(c, creds):

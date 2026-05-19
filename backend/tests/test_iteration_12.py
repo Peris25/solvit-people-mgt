@@ -1,3 +1,5 @@
+import os
+_DEMO_PWD = os.environ.get("DEMO_SEED_PASSWORD", "Solvit@2026")
 """
 Iteration 12 — Role Architecture + Mandatory Line Manager UAT Fix tests.
 
@@ -13,7 +15,7 @@ import pytest
 import requests
 
 BASE = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
-PWD = "Solvit@2026"
+PWD = _DEMO_PWD
 
 
 def login(email):

@@ -1,3 +1,5 @@
+import os
+_DEMO_PWD = os.environ.get("DEMO_SEED_PASSWORD", "Solvit@2026")
 """
 Iteration 13 — Retest after enforce_line_manager_hierarchy() seed fix.
 
@@ -11,7 +13,7 @@ import pytest
 import requests
 
 BASE = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
-PWD = "Solvit@2026"
+PWD = _DEMO_PWD
 
 
 def login(email):

@@ -1,3 +1,5 @@
+import os
+_DEMO_PWD = os.environ.get("DEMO_SEED_PASSWORD", "Solvit@2026")
 """Iteration 7 — Board role, MD/ED Board-only, MD KPIs, Settings-driven leave/probation/PAYE,
 CSV exports, AccessGate hooks, FOM combined role + reporting chain."""
 import os
@@ -5,7 +7,7 @@ import requests
 import pytest
 
 BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or "https://solvit-people-mgmt.preview.emergentagent.com").rstrip("/")
-PWD = "Solvit@2026"
+PWD = _DEMO_PWD
 
 
 def _login(email: str) -> requests.Session:

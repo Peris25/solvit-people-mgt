@@ -1,3 +1,5 @@
+import os
+_DEMO_PWD = os.environ.get("DEMO_SEED_PASSWORD", "Solvit@2026")
 """Iteration 3 — workflow matrix enforcement, 9-Box correction, Talent Density, Voluntary Attrition, MyTasks."""
 import os
 import pytest
@@ -8,7 +10,7 @@ BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://solvit-people-mgmt.p
 
 def _login(email):
     s = requests.Session()
-    r = s.post(f"{BASE_URL}/api/auth/login", json={"email": email, "password": "Solvit@2026"}, timeout=30)
+    r = s.post(f"{BASE_URL}/api/auth/login", json={"email": email, "password": _DEMO_PWD}, timeout=30)
     assert r.status_code == 200, f"Login failed for {email}: {r.status_code} {r.text}"
     return s
 

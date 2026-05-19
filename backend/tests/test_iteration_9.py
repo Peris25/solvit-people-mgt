@@ -1,3 +1,5 @@
+import os
+_DEMO_PWD = os.environ.get("DEMO_SEED_PASSWORD", "Solvit@2026")
 """
 Iteration 9 — UAT enhancements (Documents · Data Import · Email Templates ·
 Email Delivery · First-Login Tour).
@@ -9,8 +11,8 @@ import httpx
 from pathlib import Path
 
 API = os.environ.get("API_BASE_URL", "http://localhost:8001")
-HR = {"email": "jessica@solvit.co.ke", "password": "Solvit@2026"}
-IT = {"email": "itadmin@solvit.co.ke", "password": "Solvit@2026"}
+HR = {"email": "jessica@solvit.co.ke", "password": _DEMO_PWD}
+IT = {"email": "itadmin@solvit.co.ke", "password": _DEMO_PWD}
 
 
 def _login(client, creds):

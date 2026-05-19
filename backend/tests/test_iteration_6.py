@@ -1,3 +1,5 @@
+import os
+_DEMO_PWD = os.environ.get("DEMO_SEED_PASSWORD", "Solvit@2026")
 """Iteration 6 — Masters Settings module + Budget variance-on-Spent fix.
 
 Run: pytest /app/backend/tests/test_iteration_6.py -v
@@ -9,7 +11,7 @@ import requests
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://solvit-people-mgmt.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
-PASSWORD = "Solvit@2026"
+PASSWORD = _DEMO_PWD
 
 USERS = {
     "it_admin":      "itadmin@solvit.co.ke",

@@ -1,3 +1,5 @@
+import os
+_DEMO_PWD = os.environ.get("DEMO_SEED_PASSWORD", "Solvit@2026")
 """Iteration 16 — Finance Leave bug retest + Roles & Permissions admin endpoints.
 
 Covers:
@@ -12,7 +14,7 @@ import pytest
 import requests
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
-PASSWORD = "Solvit@2026"
+PASSWORD = _DEMO_PWD
 
 EMAILS = {
     "hr_admin": "jessica@solvit.co.ke",

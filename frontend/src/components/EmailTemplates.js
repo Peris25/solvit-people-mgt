@@ -3,7 +3,18 @@
  * Drop-in section for MastersSettings.
  */
 import React, { useEffect, useState } from 'react';
+import DOMPurify from 'dompurify';
 import * as api from '../services/api';
+
+// Allow only safe inline / structural HTML in template bodies.
+// Templates can contain {{merge_tags}}, basic formatting, lists, links.
+const SANITIZE_OPTS = {
+  ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u', 'a', 'ul', 'ol', 'li',
+                 'span', 'div', 'h1', 'h2', 'h3', 'h4', 'blockquote', 'hr', 'code', 'font'],
+  ALLOWED_ATTR: ['href', 'target', 'rel', 'style', 'size'],
+  ALLOW_DATA_ATTR: false,
+};
+const sanitize = (html) => DOMPurify.sanitize(html || '', SANITIZE_OPTS);
 
 export default function EmailTemplates() {
   const [groups, setGroups] = useState({});
@@ -115,7 +126,7 @@ export default function EmailTemplates() {
                 {canEdit ? (
                   <RichBody value={body} onChange={setBody} />
                 ) : (
-                  <div style={{ border: '1px solid rgba(25,25,25,0.15)', padding: '12px', minHeight: '220px', fontSize: '12px', backgroundColor: '#F9FAFB' }} dangerouslySetInnerHTML={{ __html: body }} />
+                  <div style={{ border: '1px solid rgba(25,25,25,0.15)', padding: '12px', minHeight: '220px', fontSize: '12px', backgroundColor: '#F9FAFB' }} dangerouslySetInnerHTML={{ __html: sanitize(body) }} />
                 )}
               </div>
               <div>
@@ -134,7 +145,7 @@ export default function EmailTemplates() {
                 <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#525252', marginBottom: '6px', fontFamily: 'Barlow' }}>Preview · Subject</div>
                 <div style={{ fontSize: '13px', fontWeight: 700, color: '#191919', marginBottom: '12px' }}>{preview.subject}</div>
                 <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#525252', marginBottom: '6px', fontFamily: 'Barlow' }}>Body</div>
-                <div style={{ border: '1px solid rgba(25,25,25,0.1)', padding: '14px', backgroundColor: '#fff', fontSize: '12px' }} dangerouslySetInnerHTML={{ __html: preview.body_html }} />
+                <div style={{ border: '1px solid rgba(25,25,25,0.1)', padding: '14px', backgroundColor: '#fff', fontSize: '12px' }} dangerouslySetInnerHTML={{ __html: sanitize(preview.body_html) }} />
               </div>
             )}
           </div>
@@ -150,7 +161,9 @@ function RichBody({ value, onChange }) {
   const lastValue = React.useRef(value);
   React.useEffect(() => {
     if (ref.current && value !== lastValue.current) {
-      ref.current.innerHTML = value || '';
+      // Sanitize before injecting into the contenteditable — same allowlist
+      // used everywhere else in this component.
+      ref.current.innerHTML = sanitize(value);
       lastValue.current = value;
     }
   }, [value]);

@@ -1,3 +1,5 @@
+import os
+_DEMO_PWD = os.environ.get("DEMO_SEED_PASSWORD", "Solvit@2026")
 """Iteration 4 — Review Panel + Form Outcome Triggers + Access Matrix tests."""
 import os
 import time
@@ -19,7 +21,7 @@ def _load_base_url():
     return val.rstrip("/")
 
 BASE_URL = _load_base_url()
-PASSWORD = "Solvit@2026"
+PASSWORD = _DEMO_PWD
 
 ROLE_EMAIL = {
     "hr_admin": "jessica@solvit.co.ke",
