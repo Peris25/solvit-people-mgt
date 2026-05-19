@@ -5,6 +5,7 @@ import { useTheme, themeTokens } from '../context/ThemeContext';
 import {
   Bell, LogOut, Brain,
   LayoutDashboard, Users, Zap, Target, Rocket,
+  Network,
   BarChart3, ClipboardList, ShieldCheck, BookOpen, Briefcase,
   Palmtree, Wallet, Award, Scale, FileText,
   TrendingUp, CheckCircle2, CalendarDays, FileEdit,
@@ -19,6 +20,7 @@ const MENU_ITEMS = [
   { section: 'Core', items: [
     { path: '/dashboard',   label: 'Dashboard',    Icon: LayoutDashboard, roles: ['hr_admin','hr_manager','executive','line_manager','finance','employee','solver','board','it_admin'] },
     { path: '/employees',   label: 'Employees',    Icon: Users,           roles: ['hr_admin','hr_manager','line_manager','finance','executive'] },
+    { path: '/organogram',  label: 'Organogram',   Icon: Network,         roles: ['hr_admin','hr_manager','line_manager','finance','executive','employee','it_admin','solver','board'] },
     { path: '/solvers',     label: 'Solvers',      Icon: Zap,             roles: ['hr_admin','hr_manager','line_manager','solver','executive'] },
     { path: '/recruitment', label: 'Recruitment',  Icon: Target,          roles: ['hr_admin','hr_manager','line_manager','executive'] },
     { path: '/onboarding',  label: 'Onboarding',   Icon: Rocket,          roles: ['hr_admin','hr_manager','line_manager','employee','solver'] },

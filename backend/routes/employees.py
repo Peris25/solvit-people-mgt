@@ -202,6 +202,51 @@ async def employee_directory(request: Request):
     return out
 
 
+@router.get("/organogram")
+async def organogram(request: Request):
+    """Return the org reporting hierarchy as a tree of nodes for the
+    Organogram view. Includes all Active / Onboarding / Probation employees
+    with their line_manager_id wiring. Accessible to ALL authenticated users.
+    """
+    await get_current_user(request)
+    db = get_db()
+    emps = await db.employees.find(
+        {"tenant_id": "solvit",
+         "lifecycle_state": {"$nin": ["Exited"]}}
+    ).to_list(2000)
+    nodes = {}
+    for e in emps:
+        eid = e.get("id") or str(e.get("_id"))
+        nodes[eid] = {
+            "id": eid,
+            "name": e.get("full_name"),
+            "role_title": e.get("role_title"),
+            "department": e.get("department"),
+            "work_email": e.get("work_email"),
+            "lifecycle_state": e.get("lifecycle_state"),
+            "profile_photo_url": e.get("profile_photo_url"),
+            "line_manager_id": e.get("line_manager_id"),
+            "direct_reports": [],
+        }
+    # Build tree
+    roots = []
+    for n in nodes.values():
+        parent_id = n.get("line_manager_id")
+        if parent_id and parent_id in nodes:
+            nodes[parent_id]["direct_reports"].append(n)
+        else:
+            roots.append(n)
+    # Stable order
+    def sort_recursive(node):
+        node["direct_reports"].sort(key=lambda x: (x.get("name") or "").lower())
+        for c in node["direct_reports"]:
+            sort_recursive(c)
+    for r in roots:
+        sort_recursive(r)
+    roots.sort(key=lambda x: (x.get("name") or "").lower())
+    return {"roots": roots, "total": len(nodes)}
+
+
 @router.get("")
 async def list_employees(request: Request, lifecycle_state: Optional[str] = None, department: Optional[str] = None, search: Optional[str] = None, include_exited: bool = False):
     user = await get_current_user(request)

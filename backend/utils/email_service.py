@@ -127,6 +127,32 @@ async def _attempt_send(host, port, encryption, user, pwd, from_addr, from_name,
         server.quit()
 
 
+async def _attempt_send_sender_net(api_key, from_addr, from_name, to, subject, html, text) -> None:
+    """Send via Sender.net's transactional HTTP API.
+
+    Docs: https://api.sender.net/v2/email/send
+    Raises on non-2xx so the existing retry / log path is reused.
+    """
+    import httpx
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    payload = {
+        "to": [{"email": to}],
+        "from": {"email": from_addr, "name": from_name},
+        "subject": subject,
+        "html": html,
+        "text": text,
+    }
+    async with httpx.AsyncClient(timeout=15) as c:
+        r = await c.post("https://api.sender.net/v2/email/send",
+                          headers=headers, json=payload)
+        if r.status_code >= 400:
+            raise RuntimeError(f"sender.net HTTP {r.status_code}: {r.text[:200]}")
+
+
 async def send_email(
     db,
     to: str,
@@ -154,8 +180,15 @@ async def send_email(
     from_addr = bucket.get("from_email") or "no-reply@solvit.co.ke"
     from_name = bucket.get("from_name") or "Solvit People Platform"
     encryption = (bucket.get("encryption") or ("STARTTLS" if mode == "production" else "")).upper()
+    provider = (bucket.get("provider") or "smtp").lower()
+    api_key = bucket.get("api_key") or pwd  # sender.net stores its key in password OR api_key
 
-    if not (host and pwd):
+    if provider == "sender_net":
+        if not api_key:
+            msg = f"Sender.net API key not configured in '{mode}' mode"
+            await _log_skip(db, to, msg, template_key, mode=mode)
+            return {"status": "skipped", "message": msg}
+    elif not (host and pwd):
         msg = f"SMTP not configured in '{mode}' mode"
         if is_formal and mode == "production_missing":
             msg = "Formal template requires production SMTP — none configured"
@@ -187,16 +220,23 @@ async def send_email(
             if gap < _MIN_INTERVAL_S:
                 await asyncio.sleep(_MIN_INTERVAL_S - gap)
             try:
-                await _attempt_send(host, port, encryption, user, pwd, from_addr, from_name, to, mime)
+                if provider == "sender_net":
+                    await _attempt_send_sender_net(
+                        api_key, from_addr, from_name, to, subject, html,
+                        text or _strip_html(html))
+                else:
+                    await _attempt_send(host, port, encryption, user, pwd,
+                                         from_addr, from_name, to, mime)
             finally:
                 _LAST_SEND_TS[0] = time.monotonic()
         await db.email_log.insert_one({
             "tenant_id": "solvit", "to": to, "subject": subject,
             "template_key": template_key, "mode": mode, "status": "sent",
+            "provider": provider,
             "formal": is_formal, "retry_count": retry_count,
             "sent_at": datetime.now(timezone.utc).isoformat(),
         })
-        return {"status": "sent", "mode": mode, "to": to, "formal": is_formal}
+        return {"status": "sent", "mode": mode, "provider": provider, "to": to, "formal": is_formal}
 
     except Exception as e:
         err = str(e)

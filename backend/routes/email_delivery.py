@@ -55,6 +55,8 @@ def _safe(cfg):
         m = c.get(mode) or {}
         if m.get("password"):
             m["password"] = _mask(m["password"])
+        if m.get("api_key"):
+            m["api_key"] = _mask(m["api_key"])
         c[mode] = m
     return c
 
@@ -93,7 +95,8 @@ async def update_mode_config(mode: str, request: Request):
         await db.email_delivery_config.insert_one(cfg)
     update = dict(cfg.get(mode) or {})
     update.update({k: v for k, v in body.items() if k in (
-        "smtp_host", "smtp_port", "username", "password", "from_name", "from_email", "encryption"
+        "smtp_host", "smtp_port", "username", "password", "from_name", "from_email",
+        "encryption", "provider", "api_key",
     ) and v is not None})
     await db.email_delivery_config.update_one(
         {"tenant_id": "solvit"},
@@ -142,31 +145,54 @@ async def test_send(request: Request):
         raise HTTPException(status_code=400, detail="Email delivery not configured")
     mode = cfg.get("active_mode") or "testing"
     m = cfg.get(mode) or {}
+    provider = (m.get("provider") or "smtp").lower()
     host, port = m.get("smtp_host"), int(m.get("smtp_port") or 0)
     user_name, pwd = m.get("username") or "", m.get("password") or ""
+    api_key = m.get("api_key") or ""
     from_name = m.get("from_name") or "Solvit People"
     from_email = m.get("from_email") or "no-reply@solvit.co.ke"
     encryption = (m.get("encryption") or "STARTTLS").upper()
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"Solvit Email Delivery Test ({mode})"
-    msg["From"] = f"{from_name} <{from_email}>"
-    msg["To"] = to_addr
-    html = f"<p>This is a test email from <strong>Solvit People Platform</strong>.</p><p>Mode: <strong>{mode}</strong><br/>Sent at: {datetime.now(timezone.utc).isoformat()}</p>"
-    msg.attach(MIMEText(html, "html"))
+    subject = f"Solvit Email Delivery Test ({mode} · {provider})"
+    html = (f"<p>This is a test email from <strong>Solvit People Platform</strong>.</p>"
+            f"<p>Mode: <strong>{mode}</strong><br/>Provider: <strong>{provider}</strong>"
+            f"<br/>Sent at: {datetime.now(timezone.utc).isoformat()}</p>")
 
-    status, code, error = "Success", "250", None
+    status, code, error = "Success", "200", None
     try:
-        if encryption == "SSL":
-            server = smtplib.SMTP_SSL(host, port, timeout=15)
+        if provider == "sender_net":
+            if not api_key:
+                raise RuntimeError("Sender.net API key not configured")
+            import httpx
+            r = httpx.post(
+                "https://api.sender.net/v2/email/send",
+                headers={"Authorization": f"Bearer {api_key}",
+                         "Content-Type": "application/json"},
+                json={"to": [{"email": to_addr}],
+                      "from": {"email": from_email, "name": from_name},
+                      "subject": subject, "html": html},
+                timeout=15,
+            )
+            if r.status_code >= 400:
+                raise RuntimeError(f"HTTP {r.status_code}: {r.text[:200]}")
+            code = str(r.status_code)
         else:
-            server = smtplib.SMTP(host, port, timeout=15)
-            if encryption == "STARTTLS":
-                server.starttls()
-        if user_name and pwd:
-            server.login(user_name, pwd)
-        server.sendmail(from_email, [to_addr], msg.as_string())
-        server.quit()
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = f"{from_name} <{from_email}>"
+            msg["To"] = to_addr
+            msg.attach(MIMEText(html, "html"))
+            if encryption == "SSL":
+                server = smtplib.SMTP_SSL(host, port, timeout=15)
+            else:
+                server = smtplib.SMTP(host, port, timeout=15)
+                if encryption == "STARTTLS":
+                    server.starttls()
+            if user_name and pwd:
+                server.login(user_name, pwd)
+            server.sendmail(from_email, [to_addr], msg.as_string())
+            server.quit()
+            code = "250"
     except smtplib.SMTPException as e:
         status, code, error = "Failed", str(getattr(e, "smtp_code", "")) or "SMTP", str(e)
     except Exception as e:

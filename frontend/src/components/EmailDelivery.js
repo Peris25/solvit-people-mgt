@@ -6,11 +6,12 @@ import React, { useEffect, useState } from 'react';
 import * as api from '../services/api';
 
 const FIELDS_TESTING = ['smtp_host', 'smtp_port', 'username', 'password', 'from_name', 'from_email'];
-const FIELDS_PROD = ['smtp_host', 'smtp_port', 'encryption', 'username', 'password', 'from_name', 'from_email'];
+const FIELDS_SMTP = ['smtp_host', 'smtp_port', 'encryption', 'username', 'password', 'from_name', 'from_email'];
+const FIELDS_SENDER_NET = ['api_key', 'from_name', 'from_email'];
 const LABELS = {
   smtp_host: 'SMTP Host', smtp_port: 'SMTP Port', username: 'Username',
   password: 'Password / App Password', from_name: 'From Name', from_email: 'From Email Address',
-  encryption: 'Encryption',
+  encryption: 'Encryption', api_key: 'Sender.net API Key',
 };
 
 export default function EmailDelivery() {
@@ -58,8 +59,9 @@ export default function EmailDelivery() {
     setSavingMode(mode);
     try {
       const payload = mode === 'testing' ? testing : production;
-      // Strip masked passwords (keep server-side value if blank/masked)
+      // Strip masked passwords/keys (keep server-side value if blank/masked)
       if (payload.password && payload.password.includes('***')) delete payload.password;
+      if (payload.api_key && payload.api_key.includes('***')) delete payload.api_key;
       payload.smtp_port = Number(payload.smtp_port) || 0;
       await api.updateEmailDeliveryMode(mode, payload);
       await load();
@@ -158,8 +160,25 @@ export default function EmailDelivery() {
           {renderForm('testing', testing, setTesting, FIELDS_TESTING)}
         </div>
         <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '20px' }}>
-          <h4 style={{ margin: '0 0 14px', fontFamily: 'Barlow', fontWeight: 900, letterSpacing: '-0.01em' }}>Production — Office 365</h4>
-          {renderForm('production', production, setProduction, FIELDS_PROD)}
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '14px' }}>
+            <h4 style={{ margin: 0, fontFamily: 'Barlow', fontWeight: 900, letterSpacing: '-0.01em' }}>
+              Production — {(production.provider || 'smtp') === 'sender_net' ? 'Sender.net' : 'SMTP (Office 365)'}
+            </h4>
+            {canEdit && (
+              <select
+                data-testid="prod-provider-select"
+                value={production.provider || 'smtp'}
+                onChange={e => setProduction({ ...production, provider: e.target.value })}
+                style={{ padding: '4px 8px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '11px', fontFamily: 'Barlow', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}
+              >
+                <option value="smtp">SMTP (Office 365)</option>
+                <option value="sender_net">Sender.net (API)</option>
+              </select>
+            )}
+          </div>
+          {renderForm('production', production, setProduction,
+                      (production.provider || 'smtp') === 'sender_net'
+                        ? FIELDS_SENDER_NET : FIELDS_SMTP)}
         </div>
       </div>
 

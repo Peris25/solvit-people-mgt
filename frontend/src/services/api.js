@@ -55,6 +55,7 @@ export const getMe = () => api.get('/auth/me');
 // Employees
 export const getEmployees = (params) => api.get('/employees', { params });
 export const getEmployeeDirectory = () => api.get('/employees/directory');
+export const getOrganogram = () => api.get('/employees/organogram');
 
 // Reminder Service
 export const getReminderConfig = () => api.get('/reminders/config');

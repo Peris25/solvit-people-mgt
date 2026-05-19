@@ -6,6 +6,7 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/RoleDashboard';
 import Employees from './pages/Employees';
+import Organogram from './pages/Organogram';
 import Solvers from './pages/Solvers';
 import Recruitment from './pages/Recruitment';
 import Onboarding from './pages/Onboarding';
@@ -44,6 +45,7 @@ export default function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="employees" element={<Employees />} />
+            <Route path="organogram" element={<Organogram />} />
             <Route path="employees/:id" element={<EmployeeProfile />} />
             <Route path="solvers" element={<Solvers />} />
             <Route path="recruitment" element={<Recruitment />} />

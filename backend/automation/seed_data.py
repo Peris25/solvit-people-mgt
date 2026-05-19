@@ -11,16 +11,12 @@ DEMO_SEED_PASSWORD = os.environ.get("DEMO_SEED_PASSWORD", "ChangeMe@2026")
 
 
 DEMO_USERS = [
-    {"email": "jessica@solvit.co.ke", "full_name": "Jessica Mwangi", "role": "hr_admin", "department": "HR & People", "password": DEMO_SEED_PASSWORD},
-    {"email": "manager@solvit.co.ke", "full_name": "David Ochieng", "role": "line_manager", "department": "Operations", "password": DEMO_SEED_PASSWORD},
-    {"email": "finance@solvit.co.ke", "full_name": "Sarah Njoroge", "role": "finance", "department": "Finance", "password": DEMO_SEED_PASSWORD},
-    {"email": "employee@solvit.co.ke", "full_name": "James Kamau", "role": "employee", "department": "Commercial & Business Development", "password": DEMO_SEED_PASSWORD},
-    {"email": "solver@solvit.co.ke", "full_name": "Peter Njoroge", "role": "solver", "department": None, "password": DEMO_SEED_PASSWORD},
-    {"email": "md@solvit.co.ke", "full_name": "Michael Omondi", "role": "executive", "department": "Operations", "password": DEMO_SEED_PASSWORD},
-    {"email": "itadmin@solvit.co.ke", "full_name": "Isaac Karanja", "role": "it_admin", "department": "Technology", "password": DEMO_SEED_PASSWORD},
-    {"email": "ed@solvit.co.ke", "full_name": "Esther Wanjala", "role": "executive", "department": "Operations", "password": DEMO_SEED_PASSWORD},
-    {"email": "board@solvit.co.ke", "full_name": "Board Chair", "role": "board", "department": None, "password": DEMO_SEED_PASSWORD},
+    {"email": "jmining@solvit.co.ke", "full_name": "HR Admin", "role": "hr_admin", "department": "HR & People", "password": DEMO_SEED_PASSWORD},
+    {"email": "support@solvit.co.ke", "full_name": "IT Admin", "role": "it_admin", "department": "Technology", "password": DEMO_SEED_PASSWORD},
 ]
+
+# Email addresses we KEEP. Everything else under solvit tenant is purged on boot.
+CANONICAL_USER_EMAILS = {u["email"] for u in DEMO_USERS}
 
 PAY_BANDS = [
     {"band": "L1", "min_kes": 25000, "mid_kes": 35000, "max_kes": 44000, "roles": ["Entry-level roles across departments"]},
@@ -202,21 +198,90 @@ async def seed_extended_employees(db):
 
 
 async def seed_all(db):
-    """Run all seed operations"""
+    """Run all seed operations.
+
+    NOTE: As of the fresh-start reset we ONLY seed the two canonical admin
+    accounts (HR + IT) and core configuration data (pay bands, holidays,
+    automation rules, policies). Demo employees / solvers / reviews / pay-band
+    alerts / exit interviews / stay interviews are NO LONGER seeded — HR will
+    populate real users via the platform.
+    """
+    await purge_legacy_demo_data(db)
     await seed_users(db)
+    await seed_admin_employees(db)
     await seed_pay_bands(db)
     await seed_automation_rules(db)
     await seed_holidays(db)
-    await seed_demo_employees(db)
-    await migrate_department_labels(db)
-    await enforce_line_manager_hierarchy(db)
-    await backfill_solver_emails(db)
-    await seed_exit_interview(db)
-    await seed_pay_band_alerts(db)
-    await seed_performance_reviews(db)
-    await seed_notifications_and_stay_interviews(db)
     await seed_policies(db)
-    print("✅ All seed data loaded successfully")
+    print("✅ Bootstrap seed complete — 2 admin accounts + config-only")
+
+
+async def purge_legacy_demo_data(db):
+    """Remove every demo/seed record from prior bootstraps so the platform
+    starts clean. Idempotent: only deletes records that AREN'T the two
+    canonical admin accounts.
+    """
+    keep_emails = list(CANONICAL_USER_EMAILS)
+    deleted_users = await db.users.delete_many(
+        {"tenant_id": "solvit", "email": {"$nin": keep_emails}})
+    deleted_emps = await db.employees.delete_many(
+        {"tenant_id": "solvit", "work_email": {"$nin": keep_emails}})
+    # Wipe transactional demo data so dashboards aren't polluted.
+    transactional = [
+        "solvers", "candidates", "performance_reviews", "leave_requests",
+        "leave_balances", "training_requests", "idps", "skills_matrix",
+        "policy_acknowledgements", "policy_acknowledgements_due",
+        "disciplinary_cases", "disciplinary_notices", "case_documents",
+        "projects", "recognitions", "solver_awards", "exit_interviews",
+        "pay_band_alerts", "tasks", "notifications", "calendar_events",
+        "form_submissions", "salary_reviews", "gp_records", "gp_gate",
+        "ai_conversations", "onboarding_tasks", "onboarding_checkins",
+        "stay_interviews", "flight_risk_history", "performance_cycles",
+        "survey_cycles", "survey_responses", "pips", "hr_calendar",
+        "recognition_events", "budget_allocations",
+    ]
+    summary = {"users": deleted_users.deleted_count, "employees": deleted_emps.deleted_count}
+    for col in transactional:
+        try:
+            r = await db[col].delete_many({"tenant_id": "solvit"})
+            if r.deleted_count:
+                summary[col] = r.deleted_count
+        except Exception:
+            pass
+    if any(summary.values()):
+        print(f"🧹 Purged legacy demo data: {summary}")
+
+
+async def seed_admin_employees(db):
+    """Ensure each canonical admin user has a matching `employees` record so
+    they appear in directory, RBAC and the organogram. Idempotent."""
+    by_email = {
+        "jmining@solvit.co.ke": {
+            "full_name": "HR Admin", "department": "HR & People",
+            "role_title": "HR & Administration Manager", "role_level": "L4",
+        },
+        "support@solvit.co.ke": {
+            "full_name": "IT Admin", "department": "Technology",
+            "role_title": "IT Administrator", "role_level": "L4",
+        },
+    }
+    for email, props in by_email.items():
+        existing = await db.employees.find_one({"tenant_id": "solvit", "work_email": email})
+        if existing:
+            continue
+        await db.employees.insert_one({
+            "id": str(uuid.uuid4()), "tenant_id": "solvit",
+            "work_email": email, **props,
+            "start_date": datetime.now(timezone.utc).date().isoformat(),
+            "lifecycle_state": "Active", "employment_type": "Full_Time",
+            "line_manager_id": None,
+            "is_md": False, "is_ed": False, "is_board_chair": False,
+            "reports_to_md": False, "reports_to_finance_ops": False,
+            "board_only": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        })
+    print("✅ Admin employee records ensured")
 
 
 # Canonical reporting tree by email — single source of truth, applied on every
@@ -248,41 +313,10 @@ LINE_MANAGER_TREE = {
 
 
 async def enforce_line_manager_hierarchy(db):
-    """Idempotently apply the canonical reporting tree from LINE_MANAGER_TREE on
-    every boot. Fixes any drift introduced by partial seeds, manual edits, or
-    legacy data. Also defaults every other unmapped employee (without an LM)
-    to the Finance & Operations Manager so approval routing always resolves.
+    """No-op after the fresh-start reset. The reporting tree is now built by HR
+    via the platform UI. Kept as a stub so any legacy callers remain valid.
     """
-    # Resolve every known email → stored id
-    by_email = {}
-    async for e in db.employees.find({"tenant_id": "solvit"}):
-        by_email[e.get("work_email")] = e.get("id") or str(e.get("_id"))
-
-    fixed = 0
-    for emp_email, lm_email in LINE_MANAGER_TREE.items():
-        emp_id = by_email.get(emp_email)
-        lm_id = by_email.get(lm_email)
-        if not emp_id or not lm_id:
-            continue
-        res = await db.employees.update_one(
-            {"work_email": emp_email, "tenant_id": "solvit",
-             "$or": [{"line_manager_id": {"$ne": lm_id}}, {"line_manager_id": {"$exists": False}}]},
-            {"$set": {"line_manager_id": lm_id}},
-        )
-        if res.modified_count:
-            fixed += 1
-    # For anyone not in the canonical tree (unmapped legacy / demo extras),
-    # default to Sarah (Finance & Operations Manager) if they have no LM.
-    sarah_id = by_email.get("finance@solvit.co.ke")
-    if sarah_id:
-        await db.employees.update_many(
-            {"tenant_id": "solvit",
-             "work_email": {"$nin": list(LINE_MANAGER_TREE.values()) + ["board@solvit.co.ke"]},
-             "$or": [{"line_manager_id": None}, {"line_manager_id": ""}, {"line_manager_id": {"$exists": False}}]},
-            {"$set": {"line_manager_id": sarah_id}},
-        )
-    if fixed:
-        print(f"✅ Reporting tree: corrected line_manager_id for {fixed} employees")
+    return
 
 
 async def seed_policies(db):

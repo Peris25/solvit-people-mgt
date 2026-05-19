@@ -1,18 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-
-const DEMO_USERS = [
-  { label: 'HR Admin (Jessica)', email: 'jessica@solvit.co.ke', role: 'hr_admin', color: '#FF353F' },
-  { label: 'Line Manager', email: 'manager@solvit.co.ke', role: 'line_manager', color: '#191919' },
-  { label: 'Finance', email: 'finance@solvit.co.ke', role: 'finance', color: '#525252' },
-  { label: 'Employee', email: 'employee@solvit.co.ke', role: 'employee', color: '#3B82F6' },
-  { label: 'Solver', email: 'solver@solvit.co.ke', role: 'solver', color: '#22C55E' },
-  { label: 'MD / Executive', email: 'md@solvit.co.ke', role: 'executive', color: '#8B5CF6' },
-  { label: 'Executive Director', email: 'ed@solvit.co.ke', role: 'executive', color: '#A855F7' },
-  { label: 'Board Chair', email: 'board@solvit.co.ke', role: 'board', color: '#EC4899' },
-  { label: 'IT Admin', email: 'itadmin@solvit.co.ke', role: 'it_admin', color: '#0EA5E9' },
-];
 
 export default function Login() {
   const { login } = useAuth();
@@ -27,24 +15,11 @@ export default function Login() {
     if (!email || !password) { setError('Please enter email and password'); return; }
     setLoading(true); setError('');
     try {
-      const user = await login(email, password);
+      await login(email, password);
       navigate('/dashboard');
     } catch (err) {
       const detail = err.response?.data?.detail;
       setError(Array.isArray(detail) ? detail.map(d => d.msg).join(' ') : (detail || 'Login failed'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const demoLogin = async (demoUser) => {
-    setLoading(true); setError('');
-    try {
-      await login(demoUser.email, 'Solvit@2026');
-      navigate('/dashboard');
-    } catch (err) {
-      const detail = err.response?.data?.detail;
-      setError(Array.isArray(detail) ? detail.map(d => d.msg).join(' ') : (detail || 'Demo login failed'));
     } finally {
       setLoading(false);
     }
@@ -92,7 +67,7 @@ export default function Login() {
             <input
               data-testid="login-email"
               type="email" value={email} onChange={e => setEmail(e.target.value)}
-              placeholder="jessica@solvit.co.ke"
+              placeholder="you@solvit.co.ke"
               style={{ width: '100%', padding: '10px 12px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: '#fff', fontSize: '14px', outline: 'none', boxSizing: 'border-box', fontFamily: 'Arial' }}
             />
           </div>
@@ -116,32 +91,9 @@ export default function Login() {
         </form>
 
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-            <div style={{ flex: 1, height: '1px', backgroundColor: 'rgba(25,25,25,0.1)' }} />
-            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#525252' }}>Quick Demo Login</span>
-            <div style={{ flex: 1, height: '1px', backgroundColor: 'rgba(25,25,25,0.1)' }} />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
-            {DEMO_USERS.map(u => (
-              <button
-                key={u.email}
-                data-testid={`demo-login-${u.email.split('@')[0]}`}
-                onClick={() => demoLogin(u)}
-                disabled={loading}
-                style={{
-                  padding: '10px 12px', border: `1px solid ${u.color}`, backgroundColor: 'transparent',
-                  cursor: 'pointer', textAlign: 'left', transition: 'background-color 0.2s', fontFamily: 'Arial',
-                  opacity: loading ? 0.5 : 1
-                }}
-                onMouseEnter={e => e.currentTarget.style.backgroundColor = `${u.color}10`}
-                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-              >
-                <div style={{ fontSize: '11px', fontWeight: 700, color: u.color, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{u.label}</div>
-                <div style={{ fontSize: '11px', color: '#525252', marginTop: '2px' }}>{u.email}</div>
-              </button>
-            ))}
-          </div>
-          <p style={{ fontSize: '11px', color: '#525252', marginTop: '12px', textAlign: 'center' }}>All demo accounts use password: <strong>Solvit@2026</strong></p>
+          <p style={{ fontSize: '12px', color: '#525252', textAlign: 'center', margin: 0 }}>
+            Need access? Contact your IT Administrator.
+          </p>
         </div>
       </div>
     </div>
