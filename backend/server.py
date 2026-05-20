@@ -50,9 +50,18 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Solvit People Management Platform", version="1.0.0")
 
+_ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get(
+        "ALLOWED_ORIGINS",
+        "https://people.solvit.co.ke,http://localhost:3000"
+    ).split(",")
+    if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -109,8 +118,13 @@ async def startup():
     await db.solvers.create_index([("tenant_id", 1), ("phone_number", 1)])
     await db.notifications.create_index([("tenant_id", 1), ("recipient_role", 1), ("is_read", 1)])
     await db.tasks.create_index([("tenant_id", 1), ("status", 1)])
-    # Seed initial data
-    await seed_all(db)
+
+    # Seed initial data — only runs when SEED_DEMO=true (dev/first-boot only)
+    if os.environ.get("SEED_DEMO", "false").lower() == "true":
+        await seed_all(db)
+    else:
+        logger.info("SEED_DEMO is not set — skipping demo data seed")
+    
     # Hydrate runtime access overrides + custom roles from MongoDB
     from utils.access_matrix import load_runtime_state
     await load_runtime_state(db)
