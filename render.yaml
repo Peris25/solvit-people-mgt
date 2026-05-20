@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: solvit-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install --no-deps -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port 8001
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
