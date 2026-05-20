@@ -33,7 +33,7 @@ DEFAULTS = {
         "username": "",
         "password": "",
         "from_name": "Solvit People",
-        "from_email": "no-reply@solvit.co.ke",
+        "from_email": "jmining@solvit.co.ke",
     },
     "last_test": None,
 }
@@ -150,7 +150,7 @@ async def test_send(request: Request):
     user_name, pwd = m.get("username") or "", m.get("password") or ""
     api_key = m.get("api_key") or ""
     from_name = m.get("from_name") or "Solvit People"
-    from_email = m.get("from_email") or "no-reply@solvit.co.ke"
+    from_email = m.get("from_email") or "jmining@solvit.co.ke"
     encryption = (m.get("encryption") or "STARTTLS").upper()
 
     subject = f"Solvit Email Delivery Test ({mode} · {provider})"
