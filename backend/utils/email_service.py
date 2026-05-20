@@ -177,7 +177,7 @@ async def send_email(
     port = int(bucket.get("smtp_port") or 587)
     user = bucket.get("username")
     pwd = bucket.get("password")
-    from_addr = bucket.get("from_email") or "no-reply@solvit.co.ke"
+    from_addr = bucket.get("from_email") or "jmining@solvit.co.ke"
     from_name = bucket.get("from_name") or "Solvit People Platform"
     encryption = (bucket.get("encryption") or ("STARTTLS" if mode == "production" else "")).upper()
     provider = (bucket.get("provider") or "smtp").lower()
