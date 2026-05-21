@@ -37,8 +37,8 @@ async def login(req: LoginRequest, response: Response):
     access_token = create_access_token(user_id, email, user["role"])
     refresh_token = create_refresh_token(user_id)
 
-    response.set_cookie("access_token", access_token, httponly=True, secure=False, samesite="lax", max_age=86400, path="/")
-    response.set_cookie("refresh_token", refresh_token, httponly=True, secure=False, samesite="lax", max_age=604800, path="/")
+    response.set_cookie("access_token", access_token, httponly=True, secure=True, samesite="none", max_age=86400, path="/")
+    response.set_cookie("refresh_token", refresh_token, httponly=True, secure=True, samesite="none", max_age=604800, path="/")
 
     return {
         "id": user_id,
@@ -77,7 +77,7 @@ async def refresh_token(request: Request, response: Response):
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
         access_token = create_access_token(str(user["_id"]), user["email"], user["role"])
-        response.set_cookie("access_token", access_token, httponly=True, secure=False, samesite="lax", max_age=86400, path="/")
+        response.set_cookie("access_token", access_token, httponly=True, secure=True, samesite="none", max_age=86400, path="/")
         return {"message": "Token refreshed"}
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
