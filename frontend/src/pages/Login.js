@@ -44,7 +44,6 @@ export default function Login() {
         </div>
         <div style={{ position: 'relative', zIndex: 1 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
-            {[{ label: 'Employees', value: '10+' }, { label: 'Solvers', value: '3+' }, { label: 'Modules', value: '19' }].map(stat => (
               <div key={stat.label}>
                 <div style={{ color: '#FF353F', fontSize: '24px', fontWeight: 900, letterSpacing: '-0.05em' }}>{stat.value}</div>
                 <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em' }}>{stat.label}</div>
