@@ -23,7 +23,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # Cookie security — keep `secure=False` flag so the preview ingress (which
 # terminates TLS upstream) can still set the cookie. The platform's external
 # URL is always HTTPS, so this is safe in this hosting.
-_COOKIE_KW = dict(httponly=True, secure=False, samesite="lax", path="/")
+_COOKIE_KW = dict(httponly=True, secure=True, samesite="none", path="/")
 
 
 class LoginRequest(BaseModel):
