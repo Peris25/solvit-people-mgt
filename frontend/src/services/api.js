@@ -57,6 +57,35 @@ export const getEmployees = (params) => api.get('/employees', { params });
 export const getEmployeeDirectory = () => api.get('/employees/directory');
 export const getOrganogram = () => api.get('/employees/organogram');
 
+// Solver Intake
+export const listSolverRequisitions = () => api.get('/solver-intake/requisitions');
+export const createSolverRequisition = (data) => api.post('/solver-intake/requisitions', data);
+export const updateSolverRequisition = (rid, data) => api.put(`/solver-intake/requisitions/${rid}`, data);
+export const getSolverRequisition = (rid) => api.get(`/solver-intake/requisitions/${rid}`);
+export const solverIntakeCounties = () => api.get('/solver-intake/counties');
+export const solverIntakePublic = (rid) => api.get(`/solver-intake/public/${rid}`);
+export const solverIntakeChallenge = (rid) => api.get(`/solver-intake/public/${rid}/challenge`);
+export const solverIntakeApply = (rid, formData) => api.post(
+  `/solver-intake/public/${rid}/apply`,
+  formData,
+  { headers: { 'Content-Type': 'multipart/form-data' } }
+);
+export const listIneligibleApplicants = (params) => api.get('/solver-intake/ineligible', { params });
+export const exportIneligibleCsv = (params) => {
+  const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString() : '';
+  return `${api.defaults.baseURL}/solver-intake/ineligible/export.csv${qs}`;
+};
+export const getIneligibleApplicant = (aid) => api.get(`/solver-intake/ineligible/${aid}`);
+export const listEligibleSolvers = (params) => api.get('/solver-intake/eligible', { params });
+export const exportEligibleCsv = (params) => {
+  const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString() : '';
+  return `${api.defaults.baseURL}/solver-intake/eligible/export.csv${qs}`;
+};
+export const getEligibleSolver = (cid) => api.get(`/solver-intake/eligible/${cid}`);
+export const eligibleCvUrl = (cid) => `${api.defaults.baseURL}/solver-intake/eligible/${cid}/cv`;
+export const ineligibleCvUrl = (aid) => `${api.defaults.baseURL}/solver-intake/ineligible/${aid}/cv`;
+export const requisitionQrUrl = (rid) => `${api.defaults.baseURL}/solver-intake/requisitions/${rid}/qr`;
+
 // Reminder Service
 export const getReminderConfig = () => api.get('/reminders/config');
 export const updateReminderConfig = (data) => api.put('/reminders/config', data);
