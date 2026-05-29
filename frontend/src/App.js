@@ -32,6 +32,10 @@ import DataImport from './pages/DataImport';
 import RolesPermissions from './pages/RolesPermissions';
 import ErrorToast from './components/ErrorToast';
 import AccessGate from './components/AccessGate';
+import SolverRequisitions from './pages/SolverRequisitions';
+import IneligibleApplicants from './pages/IneligibleApplicants';
+import EligibleSolvers from './pages/EligibleSolvers';
+import PublicSolverApply from './pages/PublicSolverApply';
 
 export default function App() {
   return (
@@ -41,6 +45,7 @@ export default function App() {
           <ErrorToast />
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/apply/:rid" element={<PublicSolverApply />} />
           <Route path="/" element={<Layout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
@@ -48,6 +53,9 @@ export default function App() {
             <Route path="organogram" element={<Organogram />} />
             <Route path="employees/:id" element={<EmployeeProfile />} />
             <Route path="solvers" element={<Solvers />} />
+            <Route path="solver-requisitions" element={<SolverRequisitions />} />
+            <Route path="solver-eligible" element={<EligibleSolvers />} />
+            <Route path="solver-ineligible" element={<IneligibleApplicants />} />
             <Route path="recruitment" element={<Recruitment />} />
             <Route path="onboarding" element={<Onboarding />} />
             <Route path="performance" element={<Performance />} />
