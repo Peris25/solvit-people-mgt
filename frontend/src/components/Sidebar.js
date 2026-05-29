@@ -9,8 +9,8 @@ import {
   BarChart3, ClipboardList, ShieldCheck, BookOpen, Briefcase,
   Palmtree, Wallet, Award, Scale, FileText,
   TrendingUp, CheckCircle2, CalendarDays, FileEdit,
-  ListChecks, Settings as SettingsIcon, Cog, ChevronLeft, Menu,
-  UploadCloud, Sun, Moon, KeyRound
+  ListChecks, Settings as SettingsIcon, Cog, ChevronLeft, ChevronDown, ChevronRight, Menu,
+  UploadCloud, Sun, Moon, KeyRound, FileCheck, FileX
 } from 'lucide-react';
 import * as api from '../services/api';
 
@@ -21,7 +21,13 @@ const MENU_ITEMS = [
     { path: '/dashboard',   label: 'Dashboard',    Icon: LayoutDashboard, roles: ['hr_admin','hr_manager','executive','line_manager','finance','employee','solver','board','it_admin'] },
     { path: '/employees',   label: 'Employees',    Icon: Users,           roles: ['hr_admin','hr_manager','line_manager','finance','executive'] },
     { path: '/organogram',  label: 'Organogram',   Icon: Network,         roles: ['hr_admin','hr_manager','line_manager','finance','executive','employee','it_admin','solver','board'] },
-    { path: '/solvers',     label: 'Solvers',      Icon: Zap,             roles: ['hr_admin','hr_manager','line_manager','solver','executive'] },
+    { path: '/solvers',     label: 'Solvers',      Icon: Zap,             roles: ['hr_admin','hr_manager','line_manager','solver','executive','solvers_manager'],
+      children: [
+        { path: '/solver-requisitions', label: 'Solver Requisitions', Icon: Target,   roles: ['hr_admin','hr_manager','executive','solvers_manager'] },
+        { path: '/solver-eligible',     label: 'Eligible Solvers',    Icon: FileCheck, roles: ['hr_admin','hr_manager','executive','solvers_manager'] },
+        { path: '/solver-ineligible',   label: 'Ineligible Solvers',  Icon: FileX,    roles: ['hr_admin','hr_manager','executive','solvers_manager'] },
+      ]
+    },
     { path: '/recruitment', label: 'Recruitment',  Icon: Target,          roles: ['hr_admin','hr_manager','line_manager','executive'] },
     { path: '/onboarding',  label: 'Onboarding',   Icon: Rocket,          roles: ['hr_admin','hr_manager','line_manager','employee','solver'] },
   ]},
@@ -138,11 +144,38 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
     }
     return MENU_ITEMS.map(section => ({
       ...section,
-      items: section.items.filter(item => !item.roles || item.roles.includes(user?.role))
+      items: section.items
+        .filter(item => !item.roles || item.roles.includes(user?.role))
+        .map(item => item.children
+          ? { ...item, children: item.children.filter(c => !c.roles || c.roles.includes(user?.role)) }
+          : item
+        )
     })).filter(section => section.items.length > 0);
   })();
 
   const isActive = (path) => location.pathname === path;
+
+  // Auto-expand a parent if the active route is one of its children, plus persist user toggles.
+  const initialExpanded = (() => {
+    const out = {};
+    filteredMenu.forEach(sec => sec.items.forEach(it => {
+      if (it.children && it.children.some(c => isActive(c.path))) out[it.path] = true;
+    }));
+    return out;
+  })();
+  const [expanded, setExpanded] = useState(initialExpanded);
+  // Re-sync auto-expand when route changes (e.g. deep-link or sidebar nav).
+  React.useEffect(() => {
+    setExpanded(prev => {
+      const next = { ...prev };
+      filteredMenu.forEach(sec => sec.items.forEach(it => {
+        if (it.children && it.children.some(c => c.path === location.pathname)) next[it.path] = true;
+      }));
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+  const toggleExpand = (path) => setExpanded(p => ({ ...p, [path]: !p[path] }));
 
   if (collapsed) {
     return (
@@ -236,28 +269,75 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
             {section.items.map(item => {
               const Icon = item.Icon;
               const active = isActive(item.path);
+              const hasChildren = !!(item.children && item.children.length);
+              const isExpanded = hasChildren && expanded[item.path];
+              const childActive = hasChildren && item.children.some(c => isActive(c.path));
               return (
-                <button
-                  key={item.path}
-                  data-testid={`nav-${item.path.replace('/', '')}`}
-                  onClick={() => navigate(item.path)}
-                  style={{
-                    width: '100%', padding: '9px 20px', display: 'flex', alignItems: 'center', gap: '12px',
-                    backgroundColor: active ? tk.sidebarActiveBg : 'transparent',
-                    border: 'none',
-                    borderLeftStyle: 'solid', borderLeftWidth: '3px',
-                    borderLeftColor: active ? '#FF353F' : 'transparent',
-                    color: active ? tk.sidebarActiveText : tk.sidebarMuted,
-                    cursor: 'pointer', textAlign: 'left', fontSize: '12px',
-                    fontFamily: 'Nunito Sans, sans-serif',
-                    transition: 'background-color 0.15s, color 0.15s'
-                  }}
-                  onMouseEnter={e => { if (!active) e.currentTarget.style.backgroundColor = tk.sidebarHoverBg; }}
-                  onMouseLeave={e => { if (!active) e.currentTarget.style.backgroundColor = 'transparent'; }}
-                >
-                  <Icon size={ICON_SIZE} strokeWidth={active ? 2.4 : 2} />
-                  <span style={{ fontWeight: active ? 700 : 500 }}>{item.label}</span>
-                </button>
+                <React.Fragment key={item.path}>
+                  <div
+                    data-testid={`nav-${item.path.replace('/', '')}`}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center',
+                      backgroundColor: active ? tk.sidebarActiveBg : 'transparent',
+                      borderLeftStyle: 'solid', borderLeftWidth: '3px',
+                      borderLeftColor: active || childActive ? '#FF353F' : 'transparent',
+                      transition: 'background-color 0.15s, color 0.15s'
+                    }}
+                    onMouseEnter={e => { if (!active) e.currentTarget.style.backgroundColor = tk.sidebarHoverBg; }}
+                    onMouseLeave={e => { if (!active) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                  >
+                    <button
+                      onClick={() => navigate(item.path)}
+                      style={{
+                        flex: 1, padding: '9px 16px 9px 17px', display: 'flex', alignItems: 'center', gap: '12px',
+                        backgroundColor: 'transparent', border: 'none',
+                        color: active ? tk.sidebarActiveText : tk.sidebarMuted,
+                        cursor: 'pointer', textAlign: 'left', fontSize: '12px',
+                        fontFamily: 'Nunito Sans, sans-serif',
+                      }}
+                    >
+                      <Icon size={ICON_SIZE} strokeWidth={active ? 2.4 : 2} />
+                      <span style={{ fontWeight: active || childActive ? 700 : 500 }}>{item.label}</span>
+                    </button>
+                    {hasChildren && (
+                      <button
+                        data-testid={`nav-toggle-${item.path.replace('/', '')}`}
+                        onClick={() => toggleExpand(item.path)}
+                        aria-label={isExpanded ? 'Collapse' : 'Expand'}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px 14px', color: tk.sidebarMuted }}
+                      >
+                        {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      </button>
+                    )}
+                  </div>
+                  {hasChildren && isExpanded && item.children.map(child => {
+                    const CIcon = child.Icon;
+                    const cActive = isActive(child.path);
+                    return (
+                      <button
+                        key={child.path}
+                        data-testid={`nav-${child.path.replace('/', '')}`}
+                        onClick={() => navigate(child.path)}
+                        style={{
+                          width: '100%', padding: '7px 20px 7px 44px', display: 'flex', alignItems: 'center', gap: '10px',
+                          backgroundColor: cActive ? tk.sidebarActiveBg : 'transparent',
+                          border: 'none',
+                          borderLeftStyle: 'solid', borderLeftWidth: '3px',
+                          borderLeftColor: cActive ? '#FF353F' : 'transparent',
+                          color: cActive ? tk.sidebarActiveText : tk.sidebarMuted,
+                          cursor: 'pointer', textAlign: 'left', fontSize: '11.5px',
+                          fontFamily: 'Nunito Sans, sans-serif',
+                          transition: 'background-color 0.15s, color 0.15s'
+                        }}
+                        onMouseEnter={e => { if (!cActive) e.currentTarget.style.backgroundColor = tk.sidebarHoverBg; }}
+                        onMouseLeave={e => { if (!cActive) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                      >
+                        <CIcon size={13} strokeWidth={cActive ? 2.4 : 2} />
+                        <span style={{ fontWeight: cActive ? 700 : 500 }}>{child.label}</span>
+                      </button>
+                    );
+                  })}
+                </React.Fragment>
               );
             })}
           </div>
