@@ -1,7 +1,8 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 import os
 import logging
@@ -9,6 +10,7 @@ from pathlib import Path
 from database import init_db, close_db
 from automation.engine import automation_engine
 from automation.seed_data import seed_all
+from utils.security import SecurityHeadersMiddleware, BodySizeLimitMiddleware
 
 # Routes
 from routes.auth_routes import router as auth_router
@@ -43,29 +45,46 @@ from routes.email_delivery import router as email_delivery_router
 from routes.onboarding_tour import router as onboarding_tour_router
 from routes.dashboard import router as dashboard_router
 from routes.reminders import router as reminders_router
+from routes.solver_intake import router as solver_intake_router
 from reminders.engine import reminder_engine
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Solvit People Management Platform", version="1.0.0")
+app = FastAPI(
+    title="Solvit People Management Platform",
+    version="1.0.0",
+    docs_url=None,            # disable interactive docs on production
+    redoc_url=None,
+    openapi_url=None,
+)
 
-_ALLOWED_ORIGINS = [
-    o.strip()
-    for o in os.environ.get(
-        "ALLOWED_ORIGINS",
-        "https://people.solvit.co.ke,http://localhost:3000"
-    ).split(",")
-    if o.strip()
-]
-
+# ─── CORS — restrict to the configured frontend origin (was wildcard) ───
+_cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+if not _cors_origins or _cors_origins == ["*"]:
+    _frontend = os.environ.get("FRONTEND_URL", "").strip()
+    _cors_origins = [_frontend] if _frontend else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_ALLOWED_ORIGINS,
+    allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+    expose_headers=["Content-Disposition"],
+    max_age=600,
 )
+
+# ─── Security headers + body-size guard ───
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(BodySizeLimitMiddleware)
+
+
+# ─── Generic error handler — never leak stack traces / internal detail ───
+@app.exception_handler(Exception)
+async def _generic_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500,
+                         content={"detail": "Internal server error."})
 
 API_PREFIX = "/api"
 
@@ -101,6 +120,7 @@ app.include_router(email_delivery_router, prefix=API_PREFIX)
 app.include_router(onboarding_tour_router, prefix=API_PREFIX)
 app.include_router(dashboard_router, prefix=API_PREFIX)
 app.include_router(reminders_router, prefix=API_PREFIX)
+app.include_router(solver_intake_router, prefix=API_PREFIX)
 
 
 @app.get("/api/health")
@@ -118,8 +138,13 @@ async def startup():
     await db.solvers.create_index([("tenant_id", 1), ("phone_number", 1)])
     await db.notifications.create_index([("tenant_id", 1), ("recipient_role", 1), ("is_read", 1)])
     await db.tasks.create_index([("tenant_id", 1), ("status", 1)])
+    # Security collections
+    await db.audit_logs.create_index([("tenant_id", 1), ("timestamp", -1)])
+    await db.audit_logs.create_index([("event", 1), ("timestamp", -1)])
+    await db.revoked_refresh_tokens.create_index("jti", unique=True)
+    await db.revoked_refresh_tokens.create_index("revoked_at", expireAfterSeconds=60 * 60 * 24 * 30)
+    await db.user_session_invalidations.create_index("user_id", unique=True)
 
-    # Seed initial data — only runs when SEED_DEMO=true (dev/first-boot only)
     if os.environ.get("SEED_DEMO", "false").lower() == "true":
         await seed_all(db)
     else:
