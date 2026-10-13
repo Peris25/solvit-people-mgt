@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 
 const API = process.env.REACT_APP_BACKEND_URL;
@@ -9,17 +9,7 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(undefined); // undefined = loading, null = not auth'd, obj = auth'd
 
-  useEffect(() => {
-    // Only probe /auth/me if we have a previous-session hint, otherwise treat as logged-out immediately
-    if (typeof window !== 'undefined' && localStorage.getItem(AUTH_HINT)) {
-      checkAuth();
-    } else {
-      setUser(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     try {
       const res = await axios.get(`${API}/api/auth/me`, {
         withCredentials: true,
@@ -35,7 +25,21 @@ export function AuthProvider({ children }) {
       localStorage.removeItem(AUTH_HINT);
       setUser(null);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (localStorage.getItem(AUTH_HINT)) {
+      checkAuth();
+    } else {
+      setUser(null);
+    }
+  }, [checkAuth]);
+
+  useEffect(() => {
+    const requirePasswordChange = () => setUser(current => current ? { ...current, must_change_password: true } : current);
+    window.addEventListener('solvit:password-change-required', requirePasswordChange);
+    return () => window.removeEventListener('solvit:password-change-required', requirePasswordChange);
+  }, []);
 
   const login = async (email, password) => {
     const res = await axios.post(
@@ -56,8 +60,20 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
+  const changePassword = async (currentPassword, newPassword) => {
+    const res = await axios.post(`${API}/api/auth/password/change`, {
+      current_password: currentPassword,
+      new_password: newPassword,
+    }, { withCredentials: true });
+    // The backend invalidates all pre-change sessions. Sign in again with the
+    // new credential instead of treating this restricted session as upgraded.
+    localStorage.removeItem(AUTH_HINT);
+    setUser(null);
+    return res.data;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, checkAuth }}>
+    <AuthContext.Provider value={{ user, login, logout, checkAuth, changePassword }}>
       {children}
     </AuthContext.Provider>
   );

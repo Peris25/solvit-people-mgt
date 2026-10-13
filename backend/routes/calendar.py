@@ -4,6 +4,8 @@ from typing import Optional, List
 from datetime import datetime, timezone
 from bson import ObjectId
 from database import get_db
+from utils.employee_access import scoped_employee_query, authorize_employee
+from utils.access_matrix import get_module_access
 from utils.auth import get_current_user
 import uuid
 
@@ -71,12 +73,15 @@ async def get_calendar_events(request: Request, days_ahead: int = 90):
             "description": h.get("type", "Public Holiday")
         })
 
+    # Personal calendar events are scoped independently of public holidays/surveys.
+    try:
+        leave_scope = await scoped_employee_query(db, user, "M18")
+    except HTTPException as error:
+        if error.status_code != 403:
+            raise
+        leave_scope = {"employee_id": "__no_personal_access__"}
     # Get leave requests
-    approved_leaves = await db.leave_requests.find({
-        "tenant_id": "solvit",
-        "status": "Approved",
-        "start_date": {"$gte": start_date, "$lte": end_date}
-    }).to_list(100)
+    approved_leaves = await db.leave_requests.find({"$and": [leave_scope, {"status": "Approved", "start_date": {"$gte": start_date, "$lte": end_date}}]}).to_list(100)
     for lr in approved_leaves:
         all_events.append({
             "id": str(lr.get("id", str(lr.get("_id", "")))),
@@ -95,6 +100,16 @@ async def get_calendar_events(request: Request, days_ahead: int = 90):
         "tenant_id": "solvit",
         "lifecycle_state": {"$in": ["Onboarding", "Probation"]}
     }).to_list(50)
+    visible_onboarding = []
+    for employee in onboarding_emps:
+        try:
+            await authorize_employee(db, user, employee.get("id") or str(employee["_id"]), "M04")
+        except HTTPException as error:
+            if error.status_code == 403:
+                continue
+            raise
+        visible_onboarding.append(employee)
+    onboarding_emps = visible_onboarding
     for emp in onboarding_emps:
         start = emp.get("start_date", "")
         if start:

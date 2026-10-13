@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import StatusBadge from '../components/StatusBadge';
@@ -85,7 +85,6 @@ export default function Employees() {
     }
   };
 
-  useEffect(() => { loadEmployees(); }, [search, filterState, filterDept]);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,18 +100,20 @@ export default function Employees() {
   const departmentOptions = [...new Set([...departments, ...(form.department ? [form.department] : [])])];
   const filterDepartments = [...new Set([...departments, ...employees.map(e => e.department).filter(Boolean)])];
 
-  const loadEmployees = async () => {
+  const loadEmployees = useCallback(async () => {
     try {
       setLoading(true);
       const res = await api.getEmployees({ search, lifecycle_state: filterState || undefined, department: filterDept || undefined });
       setEmployees(res.data);
     } finally { setLoading(false); }
-  };
+  }, [search, filterState, filterDept]);
+
+  useEffect(() => { loadEmployees(); }, [loadEmployees]);
 
   const saveEmployee = async (e) => {
     e.preventDefault();
     setSaving(true); setError('');
-    if (!form.line_manager_id) {
+    if (!form.line_manager_id && !form.is_board_chair && (!selected || form.line_manager_id !== selected.line_manager_id)) {
       setError('Line Manager is required for approval routing. Please select one.');
       setSaving(false);
       return;
@@ -120,6 +121,9 @@ export default function Employees() {
     try {
       const data = { ...form, current_salary_kes: form.current_salary_kes ? parseInt(form.current_salary_kes) : null };
       if (selected) {
+        // Preserve legacy identity/reporting values unless explicitly edited.
+        if (form.work_email === selected.work_email) delete data.work_email;
+        if (form.line_manager_id === selected.line_manager_id) delete data.line_manager_id;
         // Omit an unchanged department, including legacy or missing values.
         if (form.department === selected.department) delete data.department;
         await api.updateEmployee(selected.id, data);
@@ -282,6 +286,7 @@ export default function Employees() {
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>{f.label}</label>
                     <input type={f.type} value={form[f.key] || ''} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))} required={f.required}
                       style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', boxSizing: 'border-box', outline: 'none' }} />
+                    {f.key === 'work_email' && selected && <div style={{ fontSize: '10px', marginTop: '4px', color: '#525252' }}>Changing work email does not change the linked account's login email.</div>}
                   </div>
                 ))}
                 {[
@@ -315,13 +320,16 @@ export default function Employees() {
                     excludeId={selected?.id}
                     placeholder="Select line manager (required for approval routing)..."
                     onChange={(emp) => setForm(p => ({ ...p, line_manager_id: emp.id }))}
-                    required
+                    required={!form.is_board_chair}
                   />
                   <div style={{ fontSize: '10px', color: '#525252', marginTop: '4px', fontStyle: 'italic' }}>
                     Every employee must have a Line Manager. This drives leave / training / performance approval routing.
                   </div>
                 </div>
               </div>
+              {!selected && user?.role === 'hr_admin' && <label style={{ display: 'block', fontSize: '12px', marginTop: '12px' }}>
+                <input type="checkbox" checked={!!form.is_board_chair} onChange={e => setForm(p => ({ ...p, is_board_chair: e.target.checked, line_manager_id: e.target.checked ? '' : p.line_manager_id }))} /> Reporting apex (Board Chair; no line manager required)
+              </label>}
               {departmentError && <div role="status" style={{ fontSize: '12px', marginTop: '12px' }}>{departmentError}</div>}
               {error && <div data-testid="employee-lm-error" style={{ color: '#FF353F', fontSize: '12px', marginTop: '12px', padding: '8px', border: '1px solid #FF353F', backgroundColor: 'rgba(255,53,63,0.05)' }}>{error}</div>}
               <div style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>

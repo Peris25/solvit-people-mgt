@@ -11,6 +11,7 @@ from typing import Optional
 from bson import ObjectId
 from bson.errors import InvalidId
 from database import get_db
+from utils.employee_integrity import is_direct_report
 from utils.auth import get_current_user
 import uuid
 import os
@@ -66,7 +67,7 @@ async def _can_view_employee_docs(user: dict, employee_id: str) -> bool:
     if role == "line_manager":
         db = get_db()
         emp = await _find_employee(db, employee_id)
-        if emp and emp.get("line_manager_id") in (user.get("employee_id"), user.get("id")):
+        if emp and is_direct_report(emp, user):
             return True
     return False
 

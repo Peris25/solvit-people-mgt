@@ -4,6 +4,9 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 from database import get_db
+from utils.form_access import form_subject, authorize_signature
+from utils.employee_access import authorize_employee, reference_ids
+from utils.employee_integrity import employee_key
 from utils.auth import get_current_user
 import uuid
 
@@ -362,10 +365,19 @@ async def my_form_tasks(request: Request):
     query = {
         "tenant_id": "solvit",
         "status": "InProgress",
-        "next_required_role": role,
+        "next_required_role": {"$in": [role, "employee"]},
     }
     subs = await db.form_submissions.find(query).sort("created_at", -1).to_list(100)
-    return [fmt(s) for s in subs]
+    visible = []
+    for submission in subs:
+        try:
+            await authorize_signature(db, user, submission.get("next_required_role"), submission.get("subject_employee_id"), submission.get("started_by"))
+        except HTTPException as error:
+            if error.status_code == 403:
+                continue
+            raise
+        visible.append(fmt(submission))
+    return visible
 
 
 @router.post("/{form_id}/start")
@@ -382,6 +394,10 @@ async def start_form_submission(form_id: str, request: Request):
 
     body = await request.json()
     db = get_db()
+    employee = await form_subject(db, user, body, matrix)
+    # Starting a workflow is not permission to impersonate its later signers.
+    if user["role"] not in sequence and user["role"] != "hr_admin" and not ("employee" in sequence and employee and employee_key(employee) == user.get("employee_id")):
+        raise HTTPException(403, "No permission to start this form")
     schema = FORM_SCHEMAS[form_id]
     doc = {
         "id": str(uuid.uuid4()),
@@ -420,12 +436,17 @@ async def sign_form_step(submission_id: str, request: Request):
         raise HTTPException(status_code=400, detail=f"Submission is {sub.get('status')}, not in progress")
 
     expected_role = sub.get("next_required_role")
-    user_role = user.get("role")
-    # Allow hr_admin to act on any role except where the role is the subject employee themselves
-    role_match = (expected_role == user_role) or (expected_role == "employee" and sub.get("subject_employee_id") == user.get("employee_id"))
-    if not role_match and user_role != "hr_admin":
-        raise HTTPException(status_code=403, detail=f"This step requires role: {expected_role}, you are: {user_role}")
-
+    await authorize_signature(db, user, expected_role, sub.get("subject_employee_id"), sub.get("started_by"))
+    if body.get("employee_id") and body["employee_id"] != sub.get("subject_employee_id"):
+        raise HTTPException(403, "Form subject cannot be changed")
+    if body.get("data"):
+        from routes.forms_workflow import FORM_WORKFLOW_MATRIX
+        subject = sub.get("subject_employee_id")
+        validated = {"employee_id": subject, "data": body["data"]}
+        candidate = await form_subject(db, user, validated, FORM_WORKFLOW_MATRIX.get(sub.get("form_id"), {}))
+        if subject and not candidate:
+            raise HTTPException(403, "Form subject cannot be changed")
+        body["data"] = validated["data"]
     signature = body.get("signature") or user.get("full_name") or user.get("email")
     if not signature:
         raise HTTPException(status_code=400, detail="Signature required")
@@ -448,20 +469,27 @@ async def sign_form_step(submission_id: str, request: Request):
         update["status"] = "Completed"
         update["next_required_role"] = None
         update["completed_at"] = datetime.now(timezone.utc).isoformat()
-        # Fire outcome rule
-        if sub.get("outcome_rule"):
-            try:
-                from automation.engine import automation_engine
-                await automation_engine.fire_event(sub["outcome_rule"], {
-                    "form_id": sub["form_id"],
-                    "submission_id": submission_id,
-                    "subject_employee_id": sub.get("subject_employee_id"),
-                    "data": new_data
-                })
-            except Exception as ex:
-                print(f"Outcome rule fire failed: {ex}")
     else:
         update["next_required_role"] = seq[next_idx]
+
+    # A competing/replayed signature must not overwrite a newer step or fire
+    # its employee-state outcome. Commit the step before its side effects.
+    changed = await db.form_submissions.update_one({
+        "id": submission_id, "tenant_id": sub.get("tenant_id", "solvit"),
+        "status": "InProgress", "current_step_index": sub.get("current_step_index", 0),
+    }, {"$set": update})
+    if changed.modified_count != 1:
+        raise HTTPException(409, "Form step changed. Reload before signing.")
+    if update.get("status") == "Completed" and sub.get("outcome_rule"):
+        try:
+            from automation.engine import automation_engine
+            await automation_engine.fire_event(sub["outcome_rule"], {
+                "form_id": sub["form_id"], "submission_id": submission_id,
+                "subject_employee_id": sub.get("subject_employee_id"), "data": new_data,
+            })
+        except Exception as ex:
+            print(f"Outcome rule fire failed: {ex}")
+    elif next_idx < len(seq):
         # Notify next user
         try:
             await db.notifications.insert_one({
@@ -471,14 +499,13 @@ async def sign_form_step(submission_id: str, request: Request):
                 "category": "Form",
                 "title": f"[{sub['form_id']}] {sub['form_title']} awaits your sign-off",
                 "message": f"Step {next_idx + 1} of {len(seq)} ready for your input.",
-                "data": {"submission_id": submission_id, "form_id": sub["form_id"]},
+                "data": {"submission_id": submission_id, "form_id": sub["form_id"], "employee_id": sub.get("subject_employee_id")},
                 "is_read": False,
                 "created_at": datetime.now(timezone.utc).isoformat()
             })
         except Exception:
             pass
 
-    await db.form_submissions.update_one({"id": submission_id}, {"$set": update})
     sub.update(update)
     sub.pop("_id", None)
     return sub
@@ -509,6 +536,14 @@ async def submit_form(form_id: str, request: Request):
     # Enforce required signatures for single-step forms
     from routes.forms_workflow import FORM_WORKFLOW_MATRIX
     matrix = FORM_WORKFLOW_MATRIX.get(form_id, {})
+    employee = await form_subject(db, user, body, matrix)
+    sequence = matrix.get("completing_users_sequence", [])
+    if user["role"] not in sequence and user["role"] != "hr_admin" and not ("employee" in sequence and employee and employee_key(employee) == user.get("employee_id")):
+        raise HTTPException(403, "No permission to submit this form")
+    for signer in (body.get("signatures") or {}):
+        if signer not in matrix.get("required_signatures", []):
+            raise HTTPException(403, "Unexpected form signature")
+        await authorize_signature(db, user, signer, body.get("employee_id"))
     required_sigs = matrix.get("required_signatures", [])
     sigs = body.get("signatures", {}) or {}
     missing = [r for r in required_sigs if r not in sigs]
@@ -521,6 +556,7 @@ async def submit_form(form_id: str, request: Request):
         "form_id": form_id,
         "form_title": schema["title"],
         "submitted_by": user["id"],
+        "subject_employee_id": body.get("employee_id"),
         "data": body.get("data", {}),
         "signatures": sigs,
         "status": "Submitted",
@@ -578,7 +614,13 @@ def _calculate_quiz_score(schema: dict, responses: dict) -> int:
 async def get_submissions(entity_id: str, request: Request, form_id: Optional[str] = None):
     user = await get_current_user(request)
     db = get_db()
-    query = {"tenant_id": "solvit", "$or": [{"submitted_by": entity_id}, {"data.employee_id": entity_id}]}
+    if entity_id == user["id"]:
+        refs = [user.get("employee_id")] if user.get("employee_id") else []
+        query = {"tenant_id": "solvit", "$or": [{"submitted_by": user["id"]}, {"subject_employee_id": {"$in": refs}}, {"data.employee_id": {"$in": refs}}]}
+    else:
+        employee = await authorize_employee(db, user, entity_id, "M04")
+        refs = reference_ids(employee)
+        query = {"tenant_id": "solvit", "$or": [{"subject_employee_id": {"$in": refs}}, {"data.employee_id": {"$in": refs}}]}
     if form_id:
         query["form_id"] = form_id
     subs = await db.form_submissions.find(query).sort("submitted_at", -1).to_list(50)

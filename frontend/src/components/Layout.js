@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import Sidebar from './Sidebar';
 import AIAgent from './AIAgent';
 import FirstLoginTour from './FirstLoginTour';
+import RequiredPasswordChange from './RequiredPasswordChange';
 
 export default function Layout() {
   const { user } = useAuth();
@@ -24,6 +25,7 @@ export default function Layout() {
   }
 
   if (user === null) return <Navigate to="/login" replace />;
+  if (user.must_change_password) return <RequiredPasswordChange />;
 
   // Solver — mobile bottom-nav-only interface (no sidebar)
   if (user.role === 'solver') {

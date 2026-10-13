@@ -4,6 +4,7 @@ from typing import Optional, List
 from datetime import datetime, timezone
 from bson import ObjectId
 from database import get_db
+from utils.employee_access import authorize_employee, scoped_employee_query, find_linked_record, reject_identity_changes
 from utils.auth import get_current_user
 import uuid
 
@@ -35,12 +36,11 @@ async def list_cases(request: Request, status: Optional[str] = None):
     if user["role"] not in ["hr_admin", "hr_manager", "line_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
-    query = {"tenant_id": "solvit"}
+    query = await scoped_employee_query(db, user, "M14")
     if status:
-        query["status"] = status
+        query = {"$and": [query, {"status": status}]}
     if user["role"] == "line_manager":
-        # Only see cases for their direct reports
-        pass
+        query = {"$and": [query, {"status": {"$nin": ["Closed", "Resolved", "Completed"]}}]}
     cases = await db.disciplinary_cases.find(query).sort("created_at", -1).to_list(100)
     return [fmt(c) for c in cases]
 
@@ -51,6 +51,7 @@ async def create_case(case: CaseCreate, request: Request):
     if user["role"] not in ["hr_admin", "hr_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
+    await authorize_employee(db, user, case.employee_id, "M14", write=True)
     case_id = str(uuid.uuid4())
     doc = {
         "id": case_id,
@@ -76,12 +77,10 @@ async def create_case(case: CaseCreate, request: Request):
 async def get_case(case_id: str, request: Request):
     user = await get_current_user(request)
     db = get_db()
-    try:
-        c = await db.disciplinary_cases.find_one({"_id": ObjectId(case_id)})
-    except Exception:
-        c = await db.disciplinary_cases.find_one({"id": case_id})
-    if not c:
-        raise HTTPException(status_code=404, detail="Case not found")
+    c = await find_linked_record(db.disciplinary_cases, case_id, user)
+    await authorize_employee(db, user, c.get("employee_id"), "M14")
+    if user["role"] == "line_manager" and c.get("status") in ("Closed", "Resolved", "Completed"):
+        raise HTTPException(403, "No access to historical cases")
     return fmt(c)
 
 
@@ -91,7 +90,10 @@ async def update_case(case_id: str, request: Request):
     if user["role"] not in ["hr_admin", "hr_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
+    current = await find_linked_record(db.disciplinary_cases, case_id, user)
+    await authorize_employee(db, user, current.get("employee_id"), "M14", write=True)
     body = await request.json()
+    reject_identity_changes(body, current)
     body["updated_at"] = datetime.now(timezone.utc).isoformat()
     if body.get("status"):
         body.setdefault("timeline", [])

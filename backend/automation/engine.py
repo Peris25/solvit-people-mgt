@@ -216,14 +216,8 @@ class AutomationEngine:
         """Update employee lifecycle_state (handles both ObjectId and uuid id)."""
         if not new_state or not emp_id:
             return
-        from bson import ObjectId
-        update = {"lifecycle_state": new_state, "updated_at": datetime.now(timezone.utc).isoformat()}
-        try:
-            res = await self.db.employees.update_one({"_id": ObjectId(emp_id)}, {"$set": update})
-            if res.matched_count == 0:
-                await self.db.employees.update_one({"id": emp_id}, {"$set": update})
-        except Exception:
-            await self.db.employees.update_one({"id": emp_id}, {"$set": update})
+        from utils.employee_integrity import change_employee_state
+        await change_employee_state(self.db, emp_id, new_state)
         # Notify HR Admin
         await self.db.notifications.insert_one({
             "id": str(uuid.uuid4()),
@@ -369,17 +363,8 @@ class AutomationEngine:
         new_state = payload.get("new_state")
         employee_id = data.get("employee_id")
         if new_state and employee_id:
-            from bson import ObjectId
-            try:
-                await self.db.employees.update_one(
-                    {"_id": ObjectId(employee_id)},
-                    {"$set": {"lifecycle_state": new_state, "updated_at": datetime.now(timezone.utc).isoformat()}}
-                )
-            except Exception:
-                await self.db.employees.update_one(
-                    {"id": employee_id},
-                    {"$set": {"lifecycle_state": new_state, "updated_at": datetime.now(timezone.utc).isoformat()}}
-                )
+            from utils.employee_integrity import change_employee_state
+            await change_employee_state(self.db, employee_id, new_state)
 
     async def _trigger_workflow_action(self, rule: dict, data: dict, payload: dict):
         workflow = payload.get("workflow")

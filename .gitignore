@@ -115,3 +115,12 @@ credentials.json
 *.pem
 *.key
 .credentials
+
+# Restricted integrity reports and local test tooling
+integrity-reports/
+.test-deps/
+.mongo-test/
+.mongo-test.zip
+
+.node-test/
+node-test.exe

@@ -6,6 +6,7 @@ from bson import ObjectId
 from database import get_db
 from utils.auth import get_current_user
 import uuid
+from utils.employee_integrity import integrity_write, insert_employee, find_employee
 
 router = APIRouter(prefix="/recruitment", tags=["recruitment"])
 
@@ -198,6 +199,8 @@ async def convert_to_employee(candidate_id: str, request: Request):
         "tenant_id": "solvit",
         "full_name": c["full_name"],
         "work_email": c["email"],
+        "line_manager_id": body.get("line_manager_id"),
+        "source_candidate_id": str(c["_id"]),
         "phone_number": c.get("phone_number"),
         "department": c["department"],
         "role_title": c["position_applied"],
@@ -212,9 +215,23 @@ async def convert_to_employee(candidate_id: str, request: Request):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    result = await db.employees.insert_one(emp_doc)
-    emp_doc["_id"] = str(result.inserted_id)
-    await db.candidates.update_one({"_id": c["_id"]}, {"$set": {"status": "Converted", "employee_id": emp_doc["id"]}})
+    async with integrity_write(db):
+        # Re-read inside the lock: repeated/concurrent conversion is idempotent.
+        c = await db.candidates.find_one({"_id": c["_id"]})
+        if c.get("employee_id"):
+            existing = await find_employee(db, c["employee_id"])
+            if not existing:
+                raise HTTPException(409, "Converted candidate link needs an integrity review.")
+            existing.pop("_id", None)
+            return existing
+        prior = await db.employees.find_one({"tenant_id": "solvit", "source_candidate_id": str(c["_id"])})
+        if prior:
+            # Recover a previous successful insert if the candidate update failed.
+            emp_doc = prior
+        else:
+            emp_doc = await insert_employee(db, emp_doc)
+        await db.candidates.update_one({"_id": c["_id"]}, {"$set": {"status": "Converted", "employee_id": emp_doc["id"]}})
+    emp_doc.pop("_id", None)
     from automation.engine import automation_engine
     await automation_engine.fire_event("employee_created", {"employee_id": emp_doc["id"], "employee": emp_doc})
     return emp_doc

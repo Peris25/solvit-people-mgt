@@ -10,6 +10,10 @@ from utils.access_matrix import (
     apply_override, add_custom_role, remove_custom_role, effective_matrix,
 )
 import uuid
+from typing import Optional
+from pydantic import BaseModel, SecretStr
+from utils.employee_accounts import provision_employee_account
+from utils.employee_access import find_linked_record
 
 router = APIRouter(prefix="/access", tags=["access"])
 
@@ -293,12 +297,7 @@ async def update_user_role(user_id: str, request: Request):
     if new_role not in allowed_roles:
         raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {sorted(allowed_roles)}")
     db = get_db()
-    try:
-        target = await db.users.find_one({"_id": ObjectId(user_id)})
-    except Exception:
-        target = await db.users.find_one({"id": user_id})
-    if not target:
-        raise HTTPException(status_code=404, detail="User not found")
+    target = await find_linked_record(db.users, user_id, actor)
     old_role = target.get("role")
     if old_role == new_role:
         return {"id": user_id, "role": new_role, "unchanged": True}
@@ -327,3 +326,17 @@ async def list_roles(request: Request):
     return {
         "roles": [{"key": r, "label": ROLE_LABELS.get(r, r)} for r in ROLES],
     }
+
+
+class EmployeeAccountRequest(BaseModel):
+    employee_id: str
+    initial_password: Optional[SecretStr] = None
+
+
+@router.post("/users/employee-account")
+async def create_employee_account(body: EmployeeAccountRequest, request: Request):
+    actor = await get_current_user(request)
+    if actor.get("role") != "it_admin":
+        raise HTTPException(403, "IT Admin only")
+    password = body.initial_password.get_secret_value() if body.initial_password else None
+    return await provision_employee_account(get_db(), body.employee_id, password, actor)

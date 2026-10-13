@@ -12,6 +12,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../services/api';
+import EmployeeAccountForm from '../components/EmployeeAccountForm';
 import {
   Shield, Users as UsersIcon, RefreshCw, Plus, Trash2, X, Save, Undo2, KeyRound,
 } from 'lucide-react';
@@ -149,7 +150,7 @@ export default function RolesPermissions() {
         tab === 'matrix' ? (
           <MatrixTable matrix={matrix} onEdit={(m, r) => setEditCell({ module_id: m, role: r })} saving={saving} />
         ) : tab === 'users' ? (
-          <UsersTable users={users} matrix={matrix} onChange={changeRole} saving={saving} />
+          <UsersTable onProvisioned={load} users={users} matrix={matrix} onChange={changeRole} saving={saving} />
         ) : (
           <CustomRoles matrix={matrix} onDelete={deleteRole} onNew={() => setShowRoleModal(true)} saving={saving} />
         )
@@ -298,7 +299,7 @@ function CellEditor({ matrix, cell, onClose, onSave, onReset }) {
   );
 }
 
-function UsersTable({ users, matrix, onChange, saving }) {
+function UsersTable({ users, matrix, onChange, saving, onProvisioned }) {
   const roles = matrix?.roles_order || [];
   return (
     <div data-testid="users-tab" style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
@@ -306,6 +307,7 @@ function UsersTable({ users, matrix, onChange, saving }) {
         <div style={panelTitle}>User Role Assignments</div>
         <div style={panelHint}>Changes take effect on the user's next request and are written to the audit log.</div>
       </div>
+      <EmployeeAccountForm onSaved={onProvisioned} />
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
         <thead><tr style={{ backgroundColor: '#FAFAFA' }}>
           {['Name', 'Email', 'Department', 'Current Role', 'Change To'].map(h => <th key={h} style={th}>{h}</th>)}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import StatusBadge from '../components/StatusBadge';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -10,9 +10,8 @@ export default function Projects() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('active');
 
-  useEffect(() => { load(); }, []);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [pRes, eRes] = await Promise.all([
@@ -22,7 +21,9 @@ export default function Projects() {
       setProjects(pRes.data);
       setEligible(eRes.data);
     } finally { setLoading(false); }
-  };
+  }, [user?.role]);
+
+  useEffect(() => { load(); }, [load]);
 
   return (
     <div data-testid="projects-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>

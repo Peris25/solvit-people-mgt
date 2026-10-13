@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 import os
@@ -47,6 +47,24 @@ from routes.dashboard import router as dashboard_router
 from routes.reminders import router as reminders_router
 from routes.solver_intake import router as solver_intake_router
 from reminders.engine import reminder_engine
+from utils.auth import require_password_change_completed
+
+# Exempt actual registered handlers, never a URL/header supplied by a client.
+# These five auth routes only authenticate, recover credentials or end sessions.
+_AUTH_RECOVERY_ROUTES = {("/auth/login", "POST"), ("/auth/logout", "POST"),
+                         ("/auth/refresh", "POST"), ("/auth/me", "GET"),
+                         ("/auth/password/change", "POST")}
+SESSION_EXEMPT_ENDPOINTS = {route.endpoint for route in auth_router.routes
+                            if any((route.path, method) in _AUTH_RECOVERY_ROUTES for method in route.methods)}
+# Preserve the existing anonymous recruitment application surface.
+SESSION_EXEMPT_ENDPOINTS.update(route.endpoint for route in solver_intake_router.routes
+                                if route.path in ("/solver-intake/counties", "/solver-intake/public/{rid}",
+                                                  "/solver-intake/public/{rid}/challenge", "/solver-intake/public/{rid}/apply"))
+
+
+async def protect_application_session(request: Request):
+    if request.scope.get("endpoint") not in SESSION_EXEMPT_ENDPOINTS:
+        await require_password_change_completed(request)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -57,6 +75,7 @@ app = FastAPI(
     docs_url=None,            # disable interactive docs on production
     redoc_url=None,
     openapi_url=None,
+    dependencies=[Depends(protect_application_session)],
 )
 
 # ─── CORS — restrict to the configured frontend origin (was wildcard) ───
@@ -128,6 +147,9 @@ async def health():
     return {"status": "healthy", "app": "Solvit People Platform"}
 
 
+SESSION_EXEMPT_ENDPOINTS.add(health)
+
+
 @app.on_event("startup")
 async def startup():
     logger.info("Starting Solvit People Platform...")
@@ -145,7 +167,7 @@ async def startup():
     await db.revoked_refresh_tokens.create_index("revoked_at", expireAfterSeconds=60 * 60 * 24 * 30)
     await db.user_session_invalidations.create_index("user_id", unique=True)
 
-    if os.environ.get("SEED_DEMO", "false").lower() == "true":
+    if os.environ.get("APP_ENV") == "development" and os.environ.get("SEED_DEMO", "false").lower() == "true":
         await seed_all(db)
     else:
         logger.info("SEED_DEMO is not set — skipping demo data seed")

@@ -72,10 +72,10 @@ class TestFormsListMetadata:
 class TestFormWorkflowSigning:
     submission_id = None
 
-    def test_a_start_form15(self, hr_session):
+    def test_a_start_form15(self, hr_session, emp_session):
         # Get an employee id
         emps = hr_session.get(f"{BASE_URL}/api/employees").json()
-        emp_id = emps[0].get("id") if emps else "TEST_emp"
+        emp_id = emp_session.get(f"{BASE_URL}/api/auth/me").json()["employee_id"]
         r = hr_session.post(f"{BASE_URL}/api/forms/form-15/start",
                             json={"employee_id": emp_id, "employee_name": "TEST Emp", "data": {"leave_type": "Annual"}})
         assert r.status_code == 200, r.text
@@ -85,10 +85,10 @@ class TestFormWorkflowSigning:
         assert d["next_required_role"] == "employee"
         TestFormWorkflowSigning.submission_id = d["id"]
 
-    def test_b_sign_step1_employee(self, hr_session):
+    def test_b_sign_step1_employee(self, emp_session):
         sid = TestFormWorkflowSigning.submission_id
         assert sid
-        r = hr_session.post(f"{BASE_URL}/api/forms/submissions/{sid}/sign",
+        r = emp_session.post(f"{BASE_URL}/api/forms/submissions/{sid}/sign",
                             json={"signature": "Jessica acting as Employee"})
         assert r.status_code == 200, r.text
         d = r.json()
@@ -124,18 +124,17 @@ class TestSubmitMissingSigs:
 
 
 class TestMyTasks:
-    def test_my_tasks_returns_list(self, mgr_session):
+    def test_my_tasks_returns_list(self, mgr_session, emp_session):
         # Create a fresh submission so manager has a pending task
         emps = mgr_session.get(f"{BASE_URL}/api/employees").json()
-        emp_id = emps[0].get("id") if emps else "TEST_emp"
+        emp_id = emp_session.get(f"{BASE_URL}/api/auth/me").json()["employee_id"]
         start = mgr_session.post(f"{BASE_URL}/api/forms/form-15/start",
                                  json={"employee_id": emp_id, "employee_name": "TEST Emp"})
         assert start.status_code == 200
         sid = start.json()["id"]
         # employee step (manager not employee role; route checks role_match — should fail unless hr override)
         # Use HR session to advance through employee step
-        hr = _login("jessica@solvit.co.ke")
-        sign1 = hr.post(f"{BASE_URL}/api/forms/submissions/{sid}/sign", json={"signature": "HR-asEmp"})
+        sign1 = emp_session.post(f"{BASE_URL}/api/forms/submissions/{sid}/sign", json={"signature": "Employee"})
         assert sign1.status_code == 200
         # Now next_required_role should be line_manager
         r = mgr_session.get(f"{BASE_URL}/api/forms/my-tasks")

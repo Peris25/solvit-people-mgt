@@ -4,6 +4,8 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 from bson import ObjectId
 from database import get_db
+from utils.employee_access import authorize_employee, scoped_employee_query, reference_ids, find_linked_record, reject_identity_changes
+from utils.employee_integrity import user_employee_aliases, find_employee, tenant_of
 from utils.auth import get_current_user
 import uuid
 
@@ -96,19 +98,11 @@ def calculate_overall_score(a: float, b: float, c: float) -> float:
 async def list_reviews(request: Request, employee_id: Optional[str] = None, cycle_year: Optional[int] = None, status: Optional[str] = None):
     user = await get_current_user(request)
     db = get_db()
-    query = {"tenant_id": "solvit"}
-    if employee_id:
-        query["employee_id"] = employee_id
+    query = await scoped_employee_query(db, user, "M05", employee_id)
     if cycle_year:
-        query["cycle_year"] = cycle_year
+        query = {"$and": [query, {"cycle_year": cycle_year}]}
     if status:
-        query["status"] = status
-    if user["role"] == "employee":
-        query["employee_id"] = user.get("employee_id", user["id"])
-    elif user["role"] == "line_manager":
-        direct_reports = await db.employees.find({"line_manager_id": user.get("employee_id", user["id"])}).to_list(100)
-        ids = [str(e.get("id", str(e["_id"]))) for e in direct_reports]
-        query["employee_id"] = {"$in": ids}
+        query = {"$and": [query, {"status": status}]}
     reviews = await db.performance_reviews.find(query).sort("created_at", -1).to_list(200)
     # Enrich with employee name + round scores (D02, D03)
     emp_ids = list({r.get("employee_id") for r in reviews if r.get("employee_id")})
@@ -140,6 +134,8 @@ async def create_review(review: ReviewCreate, request: Request):
     if user["role"] not in ["hr_admin", "hr_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
+    employee = await authorize_employee(db, user, review.employee_id, "M05", write=True)
+    review = review.model_copy(update={"employee_id": employee.get("id") or str(employee["_id"])})
     existing = await db.performance_reviews.find_one({
         "employee_id": review.employee_id,
         "cycle_type": review.cycle_type,
@@ -196,12 +192,11 @@ async def get_review_panel(employee_id: str, request: Request):
     if user["role"] not in ["hr_admin", "hr_manager", "line_manager", "executive", "board", "it_admin"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
-    try:
-        emp = await db.employees.find_one({"_id": ObjectId(employee_id)})
-    except Exception:
-        emp = await db.employees.find_one({"id": employee_id})
+    emp = await find_employee(db, employee_id, tenant_of(user))
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
+    if user["role"] not in ("board", "it_admin"):
+        await authorize_employee(db, user, employee_id, "M05")
 
     role_title = (emp.get("role_title") or "").lower()
     is_md = bool(emp.get("is_md")) or role_title in ("managing director", "ceo", "md", "chief executive officer")
@@ -327,12 +322,8 @@ async def get_md_kpis(request: Request):
 async def get_review(review_id: str, request: Request):
     user = await get_current_user(request)
     db = get_db()
-    try:
-        r = await db.performance_reviews.find_one({"_id": ObjectId(review_id)})
-    except Exception:
-        r = await db.performance_reviews.find_one({"id": review_id})
-    if not r:
-        raise HTTPException(status_code=404, detail="Review not found")
+    r = await find_linked_record(db.performance_reviews, review_id, user)
+    await authorize_employee(db, user, r.get("employee_id"), "M05")
     rec = fmt(r)
     # Enrich + round (D02 / D03)
     emp = await db.employees.find_one({"id": rec.get("employee_id")})
@@ -355,13 +346,8 @@ async def update_review(review_id: str, upd: ReviewUpdate, request: Request):
     if user["role"] not in ["hr_admin", "hr_manager", "line_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
-    try:
-        current = await db.performance_reviews.find_one({"_id": ObjectId(review_id)})
-    except Exception:
-        current = await db.performance_reviews.find_one({"id": review_id})
-    if not current:
-        raise HTTPException(status_code=404, detail="Review not found")
-
+    current = await find_linked_record(db.performance_reviews, review_id, user)
+    await authorize_employee(db, user, current.get("employee_id"), "M05", write=True)
     update_data = {k: v for k, v in upd.model_dump().items() if v is not None}
     if upd.employee_signature:
         update_data["employee_signature_at"] = datetime.now(timezone.utc).isoformat()
@@ -380,14 +366,10 @@ async def update_review(review_id: str, upd: ReviewUpdate, request: Request):
         update_data["rating"] = get_rating(overall)
 
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    try:
-        result = await db.performance_reviews.find_one_and_update(
-            {"_id": ObjectId(review_id)}, {"$set": update_data}, return_document=True
-        )
-    except Exception:
-        result = await db.performance_reviews.find_one_and_update(
-            {"id": review_id}, {"$set": update_data}, return_document=True
-        )
+    result = await db.performance_reviews.find_one_and_update(
+        {"_id": current["_id"], "tenant_id": current.get("tenant_id", "solvit")},
+        {"$set": update_data}, return_document=True)
+
 
     # Fire consequence workflows
     if update_data.get("overall_score"):
@@ -427,7 +409,8 @@ async def update_review(review_id: str, upd: ReviewUpdate, request: Request):
 async def get_review_history(employee_id: str, request: Request):
     user = await get_current_user(request)
     db = get_db()
-    reviews = await db.performance_reviews.find({"employee_id": employee_id}).sort("created_at", -1).to_list(20)
+    employee = await authorize_employee(db, user, employee_id, "M05")
+    reviews = await db.performance_reviews.find({"employee_id": {"$in": reference_ids(employee)}, "tenant_id": "solvit"}).sort("created_at", -1).to_list(20)
     return [fmt(r) for r in reviews]
 
 

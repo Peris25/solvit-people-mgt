@@ -4,6 +4,8 @@ from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 from bson import ObjectId
 from database import get_db
+from utils.employee_integrity import user_employee_aliases, employee_key, integrity_write
+from utils.employee_access import authorize_employee, scoped_employee_query, reference_ids, find_linked_record, saved_manager, reject_identity_changes
 from utils.auth import get_current_user
 import uuid
 
@@ -79,23 +81,9 @@ async def get_leave_types(request: Request):
 async def list_leave_requests(request: Request, employee_id: Optional[str] = None, status: Optional[str] = None):
     user = await get_current_user(request)
     db = get_db()
-    query = {"tenant_id": "solvit"}
-    if employee_id:
-        query["employee_id"] = employee_id
+    query = await scoped_employee_query(db, user, "M18", employee_id)
     if status:
-        query["status"] = status
-    if user["role"] == "employee":
-        query["employee_id"] = user.get("employee_id", user["id"])
-    elif user["role"] == "line_manager":
-        # Resolve the LM's own employees.id (not users.id) for accurate scoping.
-        me = await db.employees.find_one({"tenant_id": "solvit", "work_email": (user.get("email") or "").lower()})
-        my_emp_id = (me.get("id") or str(me.get("_id"))) if me else None
-        direct_reports = await db.employees.find({"line_manager_id": my_emp_id}).to_list(200) if my_emp_id else []
-        ids = [str(e.get("id", str(e["_id"]))) for e in direct_reports]
-        # Include the LM's own leave requests too
-        if my_emp_id:
-            ids.append(my_emp_id)
-        query["employee_id"] = {"$in": ids}
+        query = {"$and": [query, {"status": status}]}
     requests = await db.leave_requests.find(query).sort("created_at", -1).to_list(200)
     return [fmt(r) for r in requests]
 
@@ -104,6 +92,9 @@ async def list_leave_requests(request: Request, employee_id: Optional[str] = Non
 async def create_leave_request(lr: LeaveRequest, request: Request):
     user = await get_current_user(request)
     db = get_db()
+    employee = await authorize_employee(db, user, lr.employee_id, "M18", write=True)
+    canonical_id = employee_key(employee)
+    manager_id = await saved_manager(db, user, employee, lr.line_manager_id)
     working_days = calculate_working_days(lr.start_date, lr.end_date)
 
     # Check for high-activity period flag (Jan, Jul-Dec)
@@ -117,6 +108,7 @@ async def create_leave_request(lr: LeaveRequest, request: Request):
         "id": str(uuid.uuid4()),
         "tenant_id": "solvit",
         **lr.model_dump(),
+        "employee_id": canonical_id, "line_manager_id": manager_id,
         "working_days": working_days,
         "status": "Pending_Manager",
         "flag_hr_attention": flag_hr,
@@ -129,7 +121,10 @@ async def create_leave_request(lr: LeaveRequest, request: Request):
         "submitted_by": user["id"],
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    result = await db.leave_requests.insert_one(doc)
+    async with integrity_write(db):
+        employee = await authorize_employee(db, user, canonical_id, "M18", write=True)
+        doc["line_manager_id"] = await saved_manager(db, user, employee, lr.line_manager_id)
+        result = await db.leave_requests.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
 
     # ── Email notifications ──────────────────────────────────────────────────
@@ -138,7 +133,7 @@ async def create_leave_request(lr: LeaveRequest, request: Request):
     # Both are best-effort: if SMTP isn't configured the leave still saves.
     try:
         from utils.email_service import send_email
-        emp = await db.employees.find_one({"id": lr.employee_id}) or {}
+        emp = employee
         emp_email = emp.get("work_email")
         emp_name = emp.get("full_name", "")
         ctx_base = {
@@ -151,7 +146,7 @@ async def create_leave_request(lr: LeaveRequest, request: Request):
         if emp_email:
             await send_email(db, to=emp_email, template_key="leave.received", context=ctx_base)
         # Resolve line manager email (lr.line_manager_id is canonical employees.id)
-        lm_id = lr.line_manager_id or emp.get("line_manager_id")
+        lm_id = doc["line_manager_id"]
         if lm_id:
             lm = await db.employees.find_one({"id": lm_id}) or {}
             if lm.get("work_email"):
@@ -169,7 +164,7 @@ async def create_leave_request(lr: LeaveRequest, request: Request):
     from automation.engine import automation_engine
     await automation_engine.fire_event("leave_request_submitted", {
         "leave_request_id": doc["id"],
-        "employee_id": lr.employee_id,
+        "employee_id": canonical_id,
         "days": working_days,
         "start_month": start_month if 'start_month' in locals() else 0,
         "leave_type": lr.leave_type,
@@ -183,29 +178,22 @@ async def leave_decision(request_id: str, request: Request):
     user = await get_current_user(request)
     db = get_db()
     body = await request.json()
-    update = {"updated_at": datetime.now(timezone.utc).isoformat()}
-
-    if user["role"] in ["line_manager", "hr_admin", "hr_manager"]:
-        update["manager_decision"] = body.get("decision")
-        update["manager_reason"] = body.get("reason", "")
-        update["manager_decided_at"] = datetime.now(timezone.utc).isoformat()
-        if body.get("decision") == "Approve":
-            update["status"] = "Approved"
-        elif body.get("decision") == "Reject":
-            update["status"] = "Rejected"
-        else:
-            update["status"] = "Discussion_Requested"
-
-    try:
+    if body.get("decision") not in ("Approve", "Reject", "Discussion"):
+        raise HTTPException(422, "Invalid leave decision")
+    async with integrity_write(db):
+        current = await find_linked_record(db.leave_requests, request_id, user)
+        await authorize_employee(db, user, current.get("employee_id"), "M18", approve=True)
+        reject_identity_changes(body, current)
+        update = {"updated_at": datetime.now(timezone.utc).isoformat(),
+                  "manager_decision": body["decision"], "manager_reason": body.get("reason", ""),
+                  "manager_decided_at": datetime.now(timezone.utc).isoformat(),
+                  "status": {"Approve": "Approved", "Reject": "Rejected", "Discussion": "Discussion_Requested"}[body["decision"]]}
         result = await db.leave_requests.find_one_and_update(
-            {"_id": ObjectId(request_id)}, {"$set": update}, return_document=True
+            {"_id": current["_id"], "tenant_id": current.get("tenant_id", "solvit")},
+            {"$set": update}, return_document=True
         )
-    except Exception:
-        result = await db.leave_requests.find_one_and_update(
-            {"id": request_id}, {"$set": update}, return_document=True
-        )
-    if not result:
-        raise HTTPException(status_code=404, detail="Leave request not found")
+        if not result:
+            raise HTTPException(404, "Leave request not found")
 
     # Fix 4d — auto-notify employee on approve/reject
     if update.get("status") in ("Approved", "Rejected"):
@@ -248,13 +236,12 @@ async def leave_decision(request_id: str, request: Request):
 async def get_leave_balances(employee_id: str, request: Request):
     user = await get_current_user(request)
     db = get_db()
-    # Fetch employee for service-month based accrual (Fix 3a)
-    emp = await db.employees.find_one({"id": employee_id}) or await db.employees.find_one({"_id": ObjectId(employee_id) if ObjectId.is_valid(employee_id) else None})
+    emp = await authorize_employee(db, user, employee_id, "M18")
 
     used = {}
     current_year = datetime.now(timezone.utc).year
     requests = await db.leave_requests.find({
-        "employee_id": employee_id,
+        "employee_id": {"$in": reference_ids(emp)},
         "tenant_id": "solvit",
         "status": "Approved",
         "start_date": {"$regex": f"^{current_year}"}
@@ -306,8 +293,9 @@ async def get_rollover_balance(employee_id: str, request: Request):
     """Fix 3b — rollover balance display. Banner if non-zero with 31 March deadline."""
     user = await get_current_user(request)
     db = get_db()
+    emp = await authorize_employee(db, user, employee_id, "M18")
     # rollover record schema: { tenant_id, employee_id, year, carried_forward, used, status }
-    rec = await db.leave_rollover.find_one({"tenant_id": "solvit", "employee_id": employee_id, "year": datetime.now(timezone.utc).year})
+    rec = await db.leave_rollover.find_one({"tenant_id": "solvit", "employee_id": {"$in": reference_ids(emp)}, "year": datetime.now(timezone.utc).year})
     from routes.masters_settings import get_setting
     deadline = await get_setting("retention", "rollover_leave_deadline_month_day", "03-31") or "03-31"
     now = datetime.now(timezone.utc)
@@ -349,18 +337,13 @@ async def leave_calendar(request: Request, year: Optional[int] = None, month: Op
 
     query = {"tenant_id": "solvit", "status": {"$in": ["Approved", "Pending"]},
              "start_date": {"$lt": next_m}, "end_date": {"$gte": start}}
+    query = {"$and": [query, await scoped_employee_query(db, user, "M18")]}
     rows = await db.leave_requests.find(query).to_list(500)
     # Enrich with employee
     emp_ids = list({r.get("employee_id") for r in rows if r.get("employee_id")})
     emps = {}
     async for e in db.employees.find({"id": {"$in": emp_ids}}, {"id": 1, "full_name": 1, "department": 1}):
         emps[e["id"]] = e
-
-    if user["role"] == "line_manager":
-        # Only show employees in the line manager's department
-        my_dept = (await db.employees.find_one({"work_email": user.get("email")}) or {}).get("department")
-        if my_dept:
-            rows = [r for r in rows if (emps.get(r.get("employee_id")) or {}).get("department") == my_dept]
 
     out = []
     for r in rows:

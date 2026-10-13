@@ -40,7 +40,7 @@ export default function EmployeeProfile() {
 
   // Documents tab — HR Admin/HR Manager full, Line Manager view-only for direct reports
   const canSeeDocs = ['hr_admin', 'hr_manager'].includes(user?.role)
-    || (user?.role === 'line_manager' && e.line_manager_id && [user?.employee_id, user?.id].includes(e.line_manager_id));
+    || (user?.role === 'line_manager' && e.line_manager_id && [...(user?.employee_reference_ids || []), user?.employee_id].includes(e.line_manager_id));
   if (canSeeDocs) {
     TABS.push({ k: 'documents', l: 'Documents' });
   }

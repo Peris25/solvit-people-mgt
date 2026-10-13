@@ -6,6 +6,9 @@ from pathlib import Path
 from database import get_db
 from utils.auth import get_current_user
 import uuid
+from utils.employee_integrity import (
+    normalize_email, integrity_write, insert_employee, resolve_manager_name, tenant_query,
+)
 import io
 import os
 from openpyxl import Workbook, load_workbook
@@ -201,8 +204,12 @@ async def _validate_rows(kind: str, rows: list, db) -> list:
 
     # Existing IDs to detect duplicates
     if kind == "fte_employee":
-        existing_ids = {e.get("employee_code") for e in await db.employees.find({}, {"employee_code": 1}).to_list(1000)}
-        existing_emails = {e.get("work_email") for e in await db.employees.find({}, {"work_email": 1}).to_list(1000)}
+        existing_ids, existing_emails = set(), set()
+        async for e in db.employees.find(tenant_query("solvit"), {"employee_code": 1, "work_email": 1}):
+            if e.get("employee_code"):
+                existing_ids.add(str(e["employee_code"]).strip())
+            if e.get("work_email"):
+                existing_emails.add(str(e["work_email"]).strip().lower())
     elif kind == "solver":
         existing_ids = {s.get("solver_code") for s in await db.solvers.find({}, {"solver_code": 1}).to_list(1000)}
         existing_emails = set()
@@ -251,9 +258,19 @@ async def _validate_rows(kind: str, rows: list, db) -> list:
             if rid and str(rid).strip() in existing_ids:
                 errors.append(f"`{id_field}` '{rid}' already exists in the system")
         if kind == "fte_employee":
-            email = record.get("Work Email")
-            if email and email in existing_emails:
-                errors.append(f"`Work Email` '{email}' already exists in the system")
+            try:
+                email = normalize_email(record.get("Work Email"))
+                normalized["Work Email"] = email
+                if email in existing_emails:
+                    errors.append("Work Email already exists in the system or import batch")
+                existing_emails.add(email)
+                code = str(record.get("Employee ID") or "").strip()
+                if code:
+                    normalized["Employee ID"] = code
+                    existing_ids.add(code)
+                normalized["line_manager_id"] = await resolve_manager_name(db, record.get("Line Manager Full Name"))
+            except HTTPException as ex:
+                errors.append(ex.detail)
 
         out.append({
             "row_index": idx,
@@ -364,7 +381,9 @@ async def execute_import(request: Request):
                     "imported_at": now,
                     "imported_by": user["id"],
                 }
-                await db.employees.insert_one(doc)
+                doc["line_manager_id"] = rec.get("line_manager_id")
+                async with integrity_write(db):
+                    await insert_employee(db, doc)
                 imported += 1
             elif kind == "solver":
                 doc = {
@@ -411,7 +430,8 @@ async def execute_import(request: Request):
                 imported += 1
         except Exception as ex:
             skipped += 1
-            print(f"[data_import] row {r['row_index']} failed: {ex}")
+            # Never log Mongo duplicate errors: they can contain employee data.
+            print(f"[data_import] row {r['row_index']} rejected ({type(ex).__name__})")
 
     # Log import history
     log_id = str(uuid.uuid4())

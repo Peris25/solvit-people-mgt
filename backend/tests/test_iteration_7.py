@@ -254,6 +254,9 @@ class TestProbationFromSettings:
             "start_date": start_date,
             "employment_type": "Full_Time",
         }
+        manager = next(e for e in hr.get(f"{BASE_URL}/api/employees").json()
+                       if e.get("work_email") == "manager@solvit.co.ke")
+        body["line_manager_id"] = manager["id"]
         r = hr.post(f"{BASE_URL}/api/employees", json=body, timeout=20)
         assert r.status_code in (200, 201), r.text
         return r.json()

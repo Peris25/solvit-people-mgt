@@ -2,7 +2,7 @@
  * EmailDelivery — Testing (Mailtrap) / Production (Office 365) toggle.
  * Embedded in Settings page; IT Admin only edit, HR Admin view active mode.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import * as api from '../services/api';
 
 const FIELDS_TESTING = ['smtp_host', 'smtp_port', 'username', 'password', 'from_name', 'from_email'];
@@ -27,15 +27,15 @@ export default function EmailDelivery() {
   const [logFilter, setLogFilter] = useState('all');
   const [logLoading, setLogLoading] = useState(false);
 
-  const loadLog = async () => {
+  const loadLog = useCallback(async () => {
     setLogLoading(true);
     try {
       const r = await api.getEmailLog(logFilter === 'all' ? null : logFilter);
       setSendLog(r.data || []);
     } catch {} finally { setLogLoading(false); }
-  };
+  }, [logFilter]);
 
-  const load = async () => {
+  const loadSettings = useCallback(async () => {
     try {
       const r = await api.getEmailDelivery();
       setCfg(r.data);
@@ -46,10 +46,13 @@ export default function EmailDelivery() {
       const a = await api.getEmailDeliveryAudit();
       setAudit(a.data || []);
     } catch {}
+  }, []);
+  const load = useCallback(async () => {
+    await loadSettings();
     await loadLog();
-  };
-  useEffect(() => { load(); }, []);
-  useEffect(() => { loadLog(); /* eslint-disable-next-line */ }, [logFilter]);
+  }, [loadSettings, loadLog]);
+  useEffect(() => { loadSettings(); }, [loadSettings]);
+  useEffect(() => { loadLog(); }, [loadLog]);
 
   if (!cfg) return <div style={{ padding: '24px', color: '#525252' }}>Loading…</div>;
   const canEdit = !!cfg.can_edit;

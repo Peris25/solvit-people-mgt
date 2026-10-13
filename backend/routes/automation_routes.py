@@ -1,5 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from database import get_db
+from utils.employee_access import find_linked_record, reject_identity_changes
+from utils.task_access import authorize_task, authorize_notification
 from utils.auth import get_current_user
 from datetime import datetime, timezone
 import uuid
@@ -54,29 +56,34 @@ async def list_tasks(request: Request, status: str = None):
     elif user["role"] == "line_manager":
         query["assigned_role"] = "line_manager"
     tasks = await db.tasks.find(query).sort("created_at", -1).to_list(200)
-    return [fmt(t) for t in tasks]
+    visible = []
+    for task in tasks:
+        try:
+            await authorize_task(db, user, task)
+        except HTTPException as error:
+            if error.status_code == 403:
+                continue
+            raise
+        visible.append(fmt(task))
+    return visible
 
 
 @router.put("/tasks/{task_id}")
 async def update_task(task_id: str, request: Request):
     user = await get_current_user(request)
     db = get_db()
+    current = await find_linked_record(db.tasks, task_id, user)
+    await authorize_task(db, user, current, write=True)
     body = await request.json()
-    body["updated_at"] = datetime.now(timezone.utc).isoformat()
+    reject_identity_changes(body, current, ("id", "_id", "tenant_id", "employee_id", "entity_id", "assigned_to", "assigned_role"))
+    update = {k: v for k, v in body.items() if k in {"status", "notes"}}
+    update["updated_at"] = datetime.now(timezone.utc).isoformat()
     if body.get("status") == "Completed":
-        body["completed_at"] = datetime.now(timezone.utc).isoformat()
-        body["completed_by"] = user["id"]
-    from bson import ObjectId
-    try:
-        result = await db.tasks.find_one_and_update(
-            {"_id": ObjectId(task_id)}, {"$set": body}, return_document=True
-        )
-    except Exception:
-        result = await db.tasks.find_one_and_update(
-            {"id": task_id}, {"$set": body}, return_document=True
-        )
+        update["completed_at"] = datetime.now(timezone.utc).isoformat()
+        update["completed_by"] = user["id"]
+    result = await db.tasks.find_one_and_update({"_id": current["_id"]}, {"$set": update}, return_document=True)
     if not result:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(404, "Task not found")
     return fmt(result)
 
 
@@ -86,16 +93,23 @@ async def get_notifications(request: Request):
     db = get_db()
     query = {"tenant_id": "solvit", "$or": [{"recipient_id": user["id"]}, {"recipient_role": user["role"]}]}
     notifications = await db.notifications.find(query).sort("created_at", -1).limit(50).to_list(50)
-    return [fmt(n) for n in notifications]
+    visible = []
+    for notification in notifications:
+        try:
+            await authorize_notification(db, user, notification)
+        except HTTPException as error:
+            if error.status_code == 403:
+                continue
+            raise
+        visible.append(fmt(notification))
+    return visible
 
 
 @router.put("/notifications/{notif_id}/read")
 async def mark_read(notif_id: str, request: Request):
     user = await get_current_user(request)
     db = get_db()
-    from bson import ObjectId
-    try:
-        await db.notifications.update_one({"_id": ObjectId(notif_id)}, {"$set": {"is_read": True}})
-    except Exception:
-        await db.notifications.update_one({"id": notif_id}, {"$set": {"is_read": True}})
+    current = await find_linked_record(db.notifications, notif_id, user)
+    await authorize_notification(db, user, current)
+    await db.notifications.update_one({"_id": current["_id"]}, {"$set": {"is_read": True}})
     return {"message": "Marked as read"}

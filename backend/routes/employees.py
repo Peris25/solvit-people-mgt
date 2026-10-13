@@ -6,6 +6,14 @@ from bson import ObjectId
 from database import get_db
 from utils.auth import get_current_user, require_roles, format_doc
 import uuid
+from pymongo.errors import DuplicateKeyError
+from utils.employee_access import authorize_employee, scoped_employee_query
+from utils.access_matrix import get_module_access
+from utils.employee_integrity import (
+    employee_key, find_employee, resolve_user_employee, normalize_email,
+    ensure_unique_employee, validate_manager, integrity_write, insert_employee, email_matches, is_direct_report, user_employee_aliases,
+    validate_manager_departure, change_employee_state,
+)
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 
@@ -32,7 +40,8 @@ class EmployeeCreate(BaseModel):
     # Mandatory per UAT Fix — every employee must have a Line Manager for
     # approval routing. The only exception is the Board Chair record itself
     # (which sits at the apex of the reporting tree).
-    line_manager_id: str
+    line_manager_id: Optional[str] = None
+    is_board_chair: bool = False
     start_date: str
     employment_type: str = "Full_Time"
     lifecycle_state: Optional[str] = "Onboarding"
@@ -41,6 +50,7 @@ class EmployeeCreate(BaseModel):
 
 
 class EmployeeUpdate(BaseModel):
+    work_email: Optional[str] = None
     full_name: Optional[str] = None
     preferred_name: Optional[str] = None
     phone_number: Optional[str] = None
@@ -90,19 +100,19 @@ async def bulk_transition(request: Request):
     if new_state not in valid_states:
         raise HTTPException(status_code=400, detail=f"Invalid state. Must be one of: {valid_states}")
     updated = 0
-    for emp_id in employee_ids:
-        try:
-            res = await db.employees.update_one(
-                {"_id": ObjectId(emp_id)},
-                {"$set": {"lifecycle_state": new_state, "updated_at": datetime.now(timezone.utc).isoformat()}}
-            )
-        except Exception:
-            res = await db.employees.update_one(
-                {"id": emp_id},
-                {"$set": {"lifecycle_state": new_state, "updated_at": datetime.now(timezone.utc).isoformat()}}
-            )
-        if res.modified_count > 0:
-            updated += 1
+    async with integrity_write(db):
+        records = []
+        for emp_id in dict.fromkeys(employee_ids):
+            current = await find_employee(db, emp_id)
+            if not current:
+                raise HTTPException(404, "Employee not found")
+            await validate_manager_departure(db, current, new_state)
+            records.append(current)
+        for current in records:
+            res = await db.employees.update_one({"_id": current["_id"]}, {"$set": {
+                "lifecycle_state": new_state, "updated_at": datetime.now(timezone.utc).isoformat()
+            }})
+            updated += res.modified_count
     # Audit
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),
@@ -123,7 +133,8 @@ async def seed_demo_employees_endpoint(request: Request):
     if user["role"] != "hr_admin":
         raise HTTPException(status_code=403, detail="Only HR Admin can seed demo employees")
     db = get_db()
-    from automation.seed_data import seed_extended_employees
+    from automation.seed_data import seed_extended_employees, require_demo_data_access
+    require_demo_data_access()
     inserted = await seed_extended_employees(db)
     return {"status": "success", "inserted": inserted, "message": f"{inserted} demo employees added covering all lifecycle states"}
 
@@ -131,22 +142,15 @@ async def seed_demo_employees_endpoint(request: Request):
 async def _my_employee_id(db, user) -> Optional[str]:
     """Resolve the calling user's own employees.id from their work email.
     Returns None if the user has no matching employee record (system role)."""
-    emp = await db.employees.find_one({
-        "tenant_id": "solvit",
-        "work_email": (user.get("email") or "").lower(),
-    })
-    if not emp:
-        return None
-    return emp.get("id") or str(emp.get("_id"))
+    emp = await resolve_user_employee(db, user)
+    return employee_key(emp) if emp else None
 
 
 async def _line_manager_name(db, manager_id):
     """Resolve display data only; keep the canonical relationship ID unchanged."""
     if not manager_id:
         return None
-    manager = await db.employees.find_one({"id": manager_id}, {"full_name": 1})
-    if not manager and ObjectId.is_valid(manager_id):
-        manager = await db.employees.find_one({"_id": ObjectId(manager_id)}, {"full_name": 1})
+    manager = await find_employee(db, manager_id)
     return manager.get("full_name") if manager else None
 
 
@@ -160,10 +164,7 @@ async def get_my_employee(request: Request):
     """
     user = await get_current_user(request)
     db = get_db()
-    emp = await db.employees.find_one({
-        "tenant_id": "solvit",
-        "work_email": (user.get("email") or "").lower(),
-    })
+    emp = await resolve_user_employee(db, user)
     if not emp:
         raise HTTPException(status_code=404, detail="No employee record for this account")
     formatted = fmt(emp)
@@ -187,7 +188,7 @@ async def employee_directory(request: Request):
     out = []
     for e in employees:
         if e.get("board_only") and user["role"] not in ("board", "it_admin") \
-                and e.get("work_email") != user.get("email"):
+                and employee_key(e) != user.get("employee_id"):
             continue
         out.append({
             "id": e.get("id") or str(e.get("_id")),
@@ -265,7 +266,10 @@ async def list_employees(request: Request, lifecycle_state: Optional[str] = None
             {"role_title": {"$regex": search, "$options": "i"}}
         ]
     if user["role"] == "employee":
-        query["work_email"] = user["email"]
+        own = await find_employee(db, user.get("employee_id"))
+        if not own:
+            return []
+        query["_id"] = own["_id"]
     elif user["role"] == "solver":
         return []
     elif user["role"] == "line_manager":
@@ -275,7 +279,8 @@ async def list_employees(request: Request, lifecycle_state: Optional[str] = None
         my_emp_id = await _my_employee_id(db, user)
         if not my_emp_id:
             return []
-        lm_scope = [{"id": my_emp_id}, {"line_manager_id": my_emp_id}]
+        me = await find_employee(db, my_emp_id)
+        lm_scope = [{"_id": me["_id"]}, {"line_manager_id": {"$in": user_employee_aliases(user)}}]
         if "$or" in query:
             # Preserve the existing search $or — combine with scope using $and
             query["$and"] = [{"$or": query.pop("$or")}, {"$or": lm_scope}]
@@ -284,6 +289,14 @@ async def list_employees(request: Request, lifecycle_state: Optional[str] = None
     elif user["role"] == "finance":
         # Finance only sees compensation data
         pass
+    grant = get_module_access("M01", user["role"])
+    finance_view = grant and grant.get("scope") == "salary_band"
+    # Preserve the existing explicitly authorized Board/system-admin directory.
+    if not finance_view and user["role"] not in ("board", "it_admin"):
+        scope = await scoped_employee_query(db, user, "M01", field="id")
+        # Legacy own records without UUID are already constrained by the _id branch.
+        if user["role"] != "employee":
+            query = {"$and": [query, scope]}
     employees = await db.employees.find(query).sort("full_name", 1).to_list(500)
     # Section §7/§9 Board-only visibility for MD/ED records.
     # Filter out board_only records (MD, ED) for everyone except Board, the
@@ -291,8 +304,11 @@ async def list_employees(request: Request, lifecycle_state: Optional[str] = None
     if user["role"] not in ("board", "it_admin"):
         employees = [
             e for e in employees
-            if not e.get("board_only") or e.get("work_email") == user.get("email")
+            if not e.get("board_only") or employee_key(e) == user.get("employee_id")
         ]
+    if finance_view:
+        allowed = {"id", "full_name", "department", "role_title", "role_level", "current_salary_kes", "lifecycle_state", "work_email", "start_date"}
+        return [{k: v for k, v in fmt(e).items() if k in allowed} for e in employees]
     return [fmt(e) for e in employees]
 
 
@@ -301,27 +317,25 @@ async def get_employee_profile(employee_id: str, request: Request):
     """Aggregated profile: timeline, IDP, leave history, recognitions, performance, training."""
     user = await get_current_user(request)
     db = get_db()
-    try:
-        emp = await db.employees.find_one({"_id": ObjectId(employee_id)})
-    except Exception:
-        emp = await db.employees.find_one({"id": employee_id})
+    emp = await find_employee(db, employee_id)
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
     emp_id = str(emp.get("id", str(emp["_id"])))
+    if user["role"] not in ("board", "it_admin"):
+        await authorize_employee(db, user, employee_id, "M01")
 
     # Permission gate: employee can only view self; line_manager only direct reports; HR/exec all.
     # Board-only override: MD/ED records hidden from everyone except Board, IT Admin, and the person themselves.
-    if emp.get("board_only") and user["role"] not in ("board", "it_admin") and emp.get("work_email") != user.get("email"):
+    if emp.get("board_only") and user["role"] not in ("board", "it_admin") and employee_key(emp) != user.get("employee_id"):
         raise HTTPException(status_code=403, detail="MD / ED record — Board access only")
-    if user["role"] == "employee" and emp.get("work_email") != user.get("email"):
+    if user["role"] == "employee" and employee_key(emp) != user.get("employee_id"):
         raise HTTPException(status_code=403, detail="Not allowed")
     if user["role"] == "line_manager":
         # LM can view self + direct reports. Resolve the LM's employees.id and
         # match against the target's line_manager_id (canonical UUID).
-        my_emp_id = await _my_employee_id(db, user)
-        is_self = emp.get("work_email") == user.get("email")
-        is_direct_report = my_emp_id and emp.get("line_manager_id") == my_emp_id
-        if not (is_self or is_direct_report):
+        is_self = employee_key(emp) == user.get("employee_id")
+        is_report = is_direct_report(emp, user)
+        if not (is_self or is_report):
             raise HTTPException(status_code=403, detail="Not allowed")
 
     emp["line_manager_name"] = await _line_manager_name(db, emp.get("line_manager_id"))
@@ -334,7 +348,7 @@ async def get_employee_profile(employee_id: str, request: Request):
     trainings = await db.training_requests.find({"employee_id": emp_id}).sort("created_at", -1).to_list(50)
     idp = await db.idps.find_one({"employee_id": emp_id})
     cases = await db.disciplinary_cases.find({"employee_id": emp_id}).sort("created_at", -1).to_list(20) if user["role"] in ["hr_admin", "hr_manager"] else []
-    notifications = await db.notifications.find({"recipient_id": emp_id}).sort("created_at", -1).to_list(20) if user["role"] in ["hr_admin", "hr_manager"] or emp.get("work_email") == user.get("email") else []
+    notifications = await db.notifications.find({"recipient_id": emp_id}).sort("created_at", -1).to_list(20) if user["role"] in ["hr_admin", "hr_manager"] or employee_key(emp) == user.get("employee_id") else []
 
     # Build timeline
     timeline = []
@@ -419,19 +433,8 @@ async def create_employee(emp: EmployeeCreate, request: Request):
     if user["role"] not in ["hr_admin", "hr_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
-    existing = await db.employees.find_one({"work_email": emp.work_email.lower(), "tenant_id": "solvit"})
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already exists")
-
-    # Validate Line Manager exists (UAT Fix — mandatory for approval routing).
-    if not emp.line_manager_id or not str(emp.line_manager_id).strip():
-        raise HTTPException(status_code=400, detail="Line Manager is required for every employee.")
-    try:
-        lm = await db.employees.find_one({"_id": ObjectId(emp.line_manager_id), "tenant_id": "solvit"})
-    except Exception:
-        lm = await db.employees.find_one({"id": emp.line_manager_id, "tenant_id": "solvit"})
-    if not lm:
-        raise HTTPException(status_code=400, detail="Selected Line Manager not found.")
+    if emp.is_board_chair and user["role"] != "hr_admin":
+        raise HTTPException(403, "Only HR Admin may create the reporting apex.")
 
     from dateutil.relativedelta import relativedelta
     from routes.masters_settings import get_setting
@@ -455,11 +458,8 @@ async def create_employee(emp: EmployeeCreate, request: Request):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    result = await db.employees.insert_one(emp_doc)
-    # Fetch the freshly-inserted record and route it through fmt() so we don't
-    # leak the Mongo _id back to the client.
-    inserted_doc = await db.employees.find_one({"_id": result.inserted_id})
-    response_doc = fmt(inserted_doc)
+    async with integrity_write(db):
+        response_doc = fmt(await insert_employee(db, emp_doc))
 
     # Fire automation event
     from automation.engine import automation_engine
@@ -487,23 +487,21 @@ async def create_employee(emp: EmployeeCreate, request: Request):
 async def get_employee(employee_id: str, request: Request):
     user = await get_current_user(request)
     db = get_db()
-    try:
-        emp = await db.employees.find_one({"_id": ObjectId(employee_id)})
-    except Exception:
-        emp = await db.employees.find_one({"id": employee_id})
+    emp = await find_employee(db, employee_id)
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
     # Board-only override (MD / ED): hidden from everyone except Board, IT Admin, self.
-    if emp.get("board_only") and user["role"] not in ("board", "it_admin") and emp.get("work_email") != user.get("email"):
+    if emp.get("board_only") and user["role"] not in ("board", "it_admin") and employee_key(emp) != user.get("employee_id"):
         raise HTTPException(status_code=403, detail="MD / ED record — Board access only")
-    if user["role"] == "employee" and emp.get("work_email") != user["email"]:
+    if user["role"] == "employee" and employee_key(emp) != user.get("employee_id"):
         raise HTTPException(status_code=403, detail="Access denied")
     if user["role"] == "line_manager":
-        my_emp_id = await _my_employee_id(db, user)
-        is_self = emp.get("work_email") == user.get("email")
-        is_report = my_emp_id and emp.get("line_manager_id") == my_emp_id
+        is_self = employee_key(emp) == user.get("employee_id")
+        is_report = is_direct_report(emp, user)
         if not (is_self or is_report):
             raise HTTPException(status_code=403, detail="Access denied")
+    if user["role"] not in ("board", "it_admin"):
+        await authorize_employee(db, user, employee_id, "M01")
     return fmt(emp)
 
 
@@ -513,22 +511,53 @@ async def update_employee(employee_id: str, upd: EmployeeUpdate, request: Reques
     if user["role"] not in ["hr_admin", "hr_manager", "line_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
-    update_data = {k: v for k, v in upd.model_dump().items() if v is not None}
-    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    try:
-        result = await db.employees.find_one_and_update(
-            {"_id": ObjectId(employee_id)},
-            {"$set": update_data},
-            return_document=True
-        )
-    except Exception:
-        result = await db.employees.find_one_and_update(
-            {"id": employee_id},
-            {"$set": update_data},
-            return_document=True
-        )
-    if not result:
-        raise HTTPException(status_code=404, detail="Employee not found")
+    async with integrity_write(db):
+        current = await find_employee(db, employee_id)
+        if not current:
+            raise HTTPException(404, "Employee not found")
+        if user["role"] == "line_manager":
+            my_id = await _my_employee_id(db, user)
+            if not my_id or not is_direct_report(current, user):
+                raise HTTPException(403, "Access denied")
+            if upd.model_fields_set & {"line_manager_id", "work_email", "is_md", "reports_to_md", "reports_to_finance_ops"}:
+                raise HTTPException(403, "HR must change identity or reporting relationships.")
+        update_data = {k: v for k, v in upd.model_dump(exclude_unset=True).items() if v is not None}
+        if "work_email" in upd.model_fields_set:
+            if upd.work_email == current.get("work_email"):
+                update_data.pop("work_email", None)
+            else:
+                email = normalize_email(upd.work_email)
+                old_email = str(current.get("work_email") or "").strip().lower()
+                await ensure_unique_employee(db, email, "solvit", exclude_id=current["_id"])
+                aliases = [employee_key(current), str(current["_id"])]
+                if email != old_email:
+                    owners = await email_matches(db.users, "email", old_email)
+                    if any(owner.get("employee_id") not in aliases for owner in owners):
+                        raise HTTPException(409, "Review the legacy account link before changing employee email.")
+                    candidates = await email_matches(db.users, "email", email)
+                    if any(owner.get("employee_id") not in aliases for owner in candidates):
+                        raise HTTPException(409, "Email belongs to a different login account.")
+                # Linked account login email, password and sessions remain unchanged.
+                update_data.update(work_email=email, work_email_normalized=email)
+        if "line_manager_id" in upd.model_fields_set:
+            if upd.line_manager_id != current.get("line_manager_id"):
+                update_data["line_manager_id"] = await validate_manager(db, upd.line_manager_id, current)
+            else:
+                update_data.pop("line_manager_id", None)
+        if "lifecycle_state" in update_data:
+            if update_data["lifecycle_state"] != current.get("lifecycle_state"):
+                from utils.access_matrix import enforce_destructive
+                enforce_destructive("employee.lifecycle.manual_change", user["role"])
+            await validate_manager_departure(db, current, update_data["lifecycle_state"])
+        update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        try:
+            result = await db.employees.find_one_and_update(
+                {"_id": current["_id"]}, {"$set": update_data}, return_document=True
+            )
+        except DuplicateKeyError:
+            raise HTTPException(409, "Employee identity already exists.")
+        if not result:
+            raise HTTPException(404, "Employee not found")
     await db.audit_log.insert_one({
         "tenant_id": "solvit",
         "action": "employee_updated",
@@ -552,26 +581,13 @@ async def transition_state(employee_id: str, request: Request):
     if new_state not in LIFECYCLE_STATES:
         raise HTTPException(status_code=400, detail="Invalid lifecycle state")
     db = get_db()
-    try:
-        emp = await db.employees.find_one_and_update(
-            {"_id": ObjectId(employee_id)},
-            {"$set": {"lifecycle_state": new_state, "updated_at": datetime.now(timezone.utc).isoformat()}},
-            return_document=True
-        )
-    except Exception:
-        emp = await db.employees.find_one_and_update(
-            {"id": employee_id},
-            {"$set": {"lifecycle_state": new_state, "updated_at": datetime.now(timezone.utc).isoformat()}},
-            return_document=True
-        )
-    if not emp:
-        raise HTTPException(status_code=404, detail="Employee not found")
+    emp, old_state = await change_employee_state(db, employee_id, new_state)
 
     from automation.engine import automation_engine
     await automation_engine.fire_event("lifecycle_state_changed", {
         "employee_id": employee_id,
         "new_state": new_state,
-        "old_state": emp.get("lifecycle_state")
+        "old_state": old_state
     })
 
     if new_state == "Exiting":
@@ -582,7 +598,7 @@ async def transition_state(employee_id: str, request: Request):
         "action": "lifecycle_transition",
         "entity": "employee",
         "entity_id": employee_id,
-        "from_state": emp.get("lifecycle_state"),
+        "from_state": old_state,
         "to_state": new_state,
         "performed_by": user["id"],
         "timestamp": datetime.now(timezone.utc).isoformat()

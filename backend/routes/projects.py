@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timezone
 from database import get_db
+from utils.employee_access import authorize_employee, scoped_employee_query, find_linked_record, reject_identity_changes
 from utils.auth import get_current_user
 import uuid
 
@@ -34,9 +35,7 @@ def fmt(doc):
 async def list_projects(request: Request):
     user = await get_current_user(request)
     db = get_db()
-    query = {"tenant_id": "solvit"}
-    if user["role"] == "employee":
-        query["employee_id"] = user.get("employee_id", user["id"])
+    query = await scoped_employee_query(db, user, "M09")
     projects = await db.projects.find(query).sort("created_at", -1).to_list(100)
     return [fmt(p) for p in projects]
 
@@ -47,6 +46,7 @@ async def create_project(proj: ProjectCreate, request: Request):
     if user["role"] not in ["hr_admin", "hr_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
+    await authorize_employee(db, user, proj.employee_id, "M09", write=True)
     doc = {
         "id": str(uuid.uuid4()),
         "tenant_id": "solvit",
@@ -94,19 +94,16 @@ async def get_eligible_employees(request: Request):
 async def update_project(project_id: str, request: Request):
     user = await get_current_user(request)
     db = get_db()
+    current = await find_linked_record(db.projects, project_id, user)
+    await authorize_employee(db, user, current.get("employee_id"), "M09", write=True)
     body = await request.json()
-    body["updated_at"] = datetime.now(timezone.utc).isoformat()
-    from bson import ObjectId
-    try:
-        result = await db.projects.find_one_and_update(
-            {"_id": ObjectId(project_id)}, {"$set": body}, return_document=True
-        )
-    except Exception:
-        result = await db.projects.find_one_and_update(
-            {"id": project_id}, {"$set": body}, return_document=True
-        )
+    reject_identity_changes(body, current)
+    allowed = {"project_name", "project_objective", "success_criteria", "milestones", "support_resources", "reward_on_completion", "expected_completion_date", "status", "progress_notes"}
+    update = {k: v for k, v in body.items() if k in allowed}
+    update["updated_at"] = datetime.now(timezone.utc).isoformat()
+    result = await db.projects.find_one_and_update({"_id": current["_id"]}, {"$set": update}, return_document=True)
     if not result:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(404, "Project not found")
     # On status → Completed, fire the project completion + reward email
     try:
         if body.get("status") == "Completed":

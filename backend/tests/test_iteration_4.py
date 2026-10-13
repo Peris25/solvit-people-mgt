@@ -24,6 +24,7 @@ BASE_URL = _load_base_url()
 PASSWORD = _DEMO_PWD
 
 ROLE_EMAIL = {
+    "board": "board@solvit.co.ke",
     "hr_admin": "jessica@solvit.co.ke",
     "line_manager": "manager@solvit.co.ke",
     "finance": "finance@solvit.co.ke",
@@ -128,7 +129,7 @@ class TestReviewPanel:
 
     def test_standard_panel(self, hr_session):
         # Pick a normal employee (not MD, not reports_to_md)
-        emp = self._get_emp_id(hr_session, lambda e: not e.get("is_md") and not e.get("reports_to_md"))
+        emp = self._get_emp_id(hr_session, lambda e: not any(e.get(k) for k in ("is_md", "is_ed", "reports_to_md", "reports_to_finance_ops")))
         assert emp, "no standard employee found"
         r = hr_session.get(f"{BASE_URL}/api/performance/review-panel/{emp['id']}")
         assert r.status_code == 200, r.text
@@ -156,6 +157,7 @@ class TestReviewPanel:
             pytest.skip(f"PUT /employees did not persist reports_to_md; panel_type={data['panel_type']}")
 
     def test_md_employee_board_led(self, hr_session):
+        hr_session = _login("board")
         # Find MD or set is_md
         emp = self._get_emp_id(hr_session, lambda e: e.get("is_md") or (e.get("role_title") or "").lower() in ("managing director", "md", "ceo"))
         if not emp:
@@ -171,7 +173,7 @@ class TestReviewPanel:
         data = r.json()
         if data["panel_type"] == "board_led":
             assert data["panel"] == []
-            assert data["casting_vote_role"] is None
+            assert data["casting_vote_role"] == "board_chair"
         else:
             pytest.skip(f"is_md not persisted; panel_type={data['panel_type']}")
 
@@ -200,6 +202,8 @@ class TestDestructiveActions:
 # ---------- Form Outcome Triggers ----------
 class TestFormOutcomes:
     def _create_test_emp(self, hr_session, lifecycle="Active"):
+        manager = next(e for e in hr_session.get(f"{BASE_URL}/api/employees").json()
+                       if e.get("work_email") == "manager@solvit.co.ke")
         r = hr_session.post(f"{BASE_URL}/api/employees", json={
             "full_name": f"TEST_OutcomeEmp_{int(time.time()*1000)}",
             "work_email": f"test_outcome_{int(time.time()*1000)}@solvit.co.ke",
@@ -209,17 +213,14 @@ class TestFormOutcomes:
             "lifecycle_state": lifecycle,
             "start_date": "2025-01-01",
             "role_level": "L2",
+            "line_manager_id": manager["id"],
         })
         assert r.status_code in (200, 201), r.text
         return r.json()
 
-    def test_form31_resignation_transitions_to_exiting_and_creates_7_tasks(self, hr_session):
+    def test_form31_resignation_transitions_to_exiting_and_creates_7_tasks(self, hr_session, complete_employee_form):
         emp = self._create_test_emp(hr_session, "Active")
-        r = hr_session.post(f"{BASE_URL}/api/forms/form-31/submit", json={
-            "employee_id": emp["id"],
-            "data": {"reason": "Personal", "last_day": "2026-02-15"},
-            "signatures": {"employee": "James Test"}
-        })
+        r = complete_employee_form(hr_session, emp, "form-31", {"reason": "Personal", "last_day": "2026-02-15"})
         assert r.status_code in (200, 201), r.text
         # Wait briefly for async fire_event completion
         time.sleep(1.5)
@@ -236,58 +237,34 @@ class TestFormOutcomes:
             exit_tasks = [t for t in tasks if t.get("task_type") == "exit_workflow" or (t.get("task_key") or "").startswith("ET")]
             assert len(exit_tasks) >= 7, f"expected ≥7 exit tasks, got {len(exit_tasks)}"
 
-    def test_form08_pass_transitions_probation_to_active(self, hr_session):
+    def test_form08_pass_transitions_probation_to_active(self, hr_session, complete_employee_form):
         emp = self._create_test_emp(hr_session, "Probation")
-        r = hr_session.post(f"{BASE_URL}/api/forms/form-08/submit", json={
-            "employee_id": emp["id"],
-            "data": {"decision": "Pass", "comments": "Strong performance"},
-            "signatures": {"employee": "X", "line_manager": "Y", "hr_admin": "Z"}
-        })
-        # If signatures don't match required_sigs the API returns 400 — retry minimally
-        if r.status_code == 400:
-            # Re-submit with empty sigs allowed
-            r = hr_session.post(f"{BASE_URL}/api/forms/form-08/submit", json={
-                "employee_id": emp["id"],
-                "data": {"decision": "Pass"},
-                "signatures": {"employee": "X", "line_manager": "Y", "hr_admin": "Z"}
-            })
+        r = complete_employee_form(hr_session, emp, "form-08", {"decision": "Pass", "comments": "Strong performance"})
         assert r.status_code in (200, 201), r.text
         time.sleep(1.5)
         r2 = hr_session.get(f"{BASE_URL}/api/employees/{emp['id']}")
         assert r2.status_code == 200
         assert r2.json().get("lifecycle_state") == "Active", f"got {r2.json().get('lifecycle_state')}"
 
-    def test_form08_fail_transitions_probation_to_exiting(self, hr_session):
+    def test_form08_fail_transitions_probation_to_exiting(self, hr_session, complete_employee_form):
         emp = self._create_test_emp(hr_session, "Probation")
-        r = hr_session.post(f"{BASE_URL}/api/forms/form-08/submit", json={
-            "employee_id": emp["id"],
-            "data": {"decision": "Fail", "comments": "Failed"},
-            "signatures": {"employee": "X", "line_manager": "Y", "hr_admin": "Z"}
-        })
+        r = complete_employee_form(hr_session, emp, "form-08", {"decision": "Fail", "comments": "Failed"})
         assert r.status_code in (200, 201), r.text
         time.sleep(1.5)
         r2 = hr_session.get(f"{BASE_URL}/api/employees/{emp['id']}")
         assert r2.json().get("lifecycle_state") == "Exiting"
 
-    def test_form09_pip_activation(self, hr_session):
+    def test_form09_pip_activation(self, hr_session, complete_employee_form):
         emp = self._create_test_emp(hr_session, "Active")
-        r = hr_session.post(f"{BASE_URL}/api/forms/form-09/submit", json={
-            "employee_id": emp["id"],
-            "data": {"reason": "Below performance", "duration_weeks": 12},
-            "signatures": {"employee": "X", "line_manager": "Y", "hr_admin": "Z"}
-        })
+        r = complete_employee_form(hr_session, emp, "form-09", {"reason": "Below performance", "duration_weeks": 12})
         assert r.status_code in (200, 201), r.text
         time.sleep(1.5)
         r2 = hr_session.get(f"{BASE_URL}/api/employees/{emp['id']}")
         assert r2.json().get("lifecycle_state") == "PIP", f"got {r2.json().get('lifecycle_state')}"
 
-    def test_form10_realignment_activation(self, hr_session):
+    def test_form10_realignment_activation(self, hr_session, complete_employee_form):
         emp = self._create_test_emp(hr_session, "Active")
-        r = hr_session.post(f"{BASE_URL}/api/forms/form-10/submit", json={
-            "employee_id": emp["id"],
-            "data": {"new_role": "Analyst"},
-            "signatures": {"employee": "X", "line_manager": "Y", "hr_admin": "Z"}
-        })
+        r = complete_employee_form(hr_session, emp, "form-10", {"new_role": "Analyst"})
         assert r.status_code in (200, 201), r.text
         time.sleep(1.5)
         r2 = hr_session.get(f"{BASE_URL}/api/employees/{emp['id']}")

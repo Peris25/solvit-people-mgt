@@ -14,6 +14,9 @@ api.interceptors.response.use(
   (error) => {
     const status = error?.response?.status;
     const url = error?.config?.url || '';
+    if (typeof window !== 'undefined' && status === 403 && error?.response?.data?.detail?.code === 'password_change_required') {
+      window.dispatchEvent(new CustomEvent('solvit:password-change-required'));
+    }
     if (status === 401) {
       // Session expired or not authenticated — clear hint, redirect to login.
       try {
@@ -352,3 +355,5 @@ export const resetTourForUser = (userId) => api.post(`/onboarding-tour/reset/${u
 export const getTourReport = () => api.get('/onboarding-tour/report');
 
 export default api;
+
+export const provisionEmployeeAccount = (data) => api.post('/access/users/employee-account', data);

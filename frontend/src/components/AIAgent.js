@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme, themeTokens } from '../context/ThemeContext';
 import { X, Send, RefreshCw, Sparkles } from 'lucide-react';
@@ -26,10 +26,10 @@ export default function AIAgent({ onClose }) {
   const [conversationId, setConversationId] = useState(null);
   const messagesEndRef = useRef(null);
 
-  useEffect(() => { runInitialBrief(); }, []);
+  const initialBriefStarted = useRef(false);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  const runInitialBrief = async () => {
+  const runInitialBrief = useCallback(async () => {
     try {
       const res = await api.getAiSnapshot();
       const s = res.data;
@@ -62,7 +62,15 @@ export default function AIAgent({ onClose }) {
         timestamp: new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }),
       }]);
     }
-  };
+  }, [user?.full_name]);
+
+  useEffect(() => {
+    if (!initialBriefStarted.current) {
+      initialBriefStarted.current = true;
+      runInitialBrief();
+    }
+  }, [runInitialBrief]);
+
 
   const sendMessage = async (e, override) => {
     if (e) e.preventDefault();

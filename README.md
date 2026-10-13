@@ -337,3 +337,8 @@ tail -f /var/log/supervisor/frontend.err.log      # frontend build errors
 ## License
 
 Proprietary — Solvit Limited. All rights reserved.
+
+
+## Employee accounts and data integrity
+
+See [the integrity rollout and audit guide](docs/employee-integrity-rollout.md) for account provisioning, read-only duplicate reporting, compatibility rules, and the separately approved migration/index plan. New integrity indexes are not installed at startup.

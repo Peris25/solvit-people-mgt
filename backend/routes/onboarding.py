@@ -4,6 +4,7 @@ from typing import Optional, List
 from datetime import datetime, timezone
 from bson import ObjectId
 from database import get_db
+from utils.employee_access import authorize_employee, reference_ids, find_linked_record
 from utils.auth import get_current_user
 import uuid
 
@@ -59,7 +60,8 @@ def fmt(doc):
 async def get_employee_onboarding(employee_id: str, request: Request):
     user = await get_current_user(request)
     db = get_db()
-    tasks = await db.onboarding_tasks.find({"entity_id": employee_id, "entity_type": "employee"}).to_list(50)
+    employee = await authorize_employee(db, user, employee_id, "M04")
+    tasks = await db.onboarding_tasks.find({"tenant_id": "solvit", "entity_id": {"$in": reference_ids(employee)}, "entity_type": "employee"}).to_list(50)
     if not tasks:
         # Check if we should create them
         try:
@@ -140,6 +142,12 @@ async def _create_solver_induction(db, solver_id: str, solver: dict):
 async def update_task(task_id: str, upd: TaskUpdate, request: Request):
     user = await get_current_user(request)
     db = get_db()
+    current = await find_linked_record(db.onboarding_tasks, task_id, user)
+    if current.get("entity_type") != "employee":
+        if user["role"] not in ("hr_admin", "hr_manager"):
+            raise HTTPException(403, "No permission for this induction task")
+    else:
+        await authorize_employee(db, user, current.get("entity_id"), "M04", write=True)
     update_data = {}
     if upd.status:
         update_data["status"] = upd.status
@@ -149,14 +157,7 @@ async def update_task(task_id: str, upd: TaskUpdate, request: Request):
     if upd.notes:
         update_data["notes"] = upd.notes
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    try:
-        result = await db.onboarding_tasks.find_one_and_update(
-            {"_id": ObjectId(task_id)}, {"$set": update_data}, return_document=True
-        )
-    except Exception:
-        result = await db.onboarding_tasks.find_one_and_update(
-            {"id": task_id}, {"$set": update_data}, return_document=True
-        )
+    result = await db.onboarding_tasks.find_one_and_update({"_id": current["_id"]}, {"$set": update_data}, return_document=True)
     if not result:
         raise HTTPException(status_code=404, detail="Task not found")
     return fmt(result)

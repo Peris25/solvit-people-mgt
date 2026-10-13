@@ -38,7 +38,9 @@ test.each([
     await act(async () => { select.value = 'Operations'; select.dispatchEvent(new Event('change', { bubbles: true })); });
   }
   await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
-  expect(api.updateEmployee).toHaveBeenCalledWith('jessica', expect.objectContaining({ line_manager_id: 'manager-id' }));
+  expect(api.updateEmployee).toHaveBeenCalledWith('jessica', expect.objectContaining({ full_name: 'Jessica Mining' }));
+  expect(api.updateEmployee.mock.calls[0][1]).not.toHaveProperty('line_manager_id');
+  expect(api.updateEmployee.mock.calls[0][1]).not.toHaveProperty('work_email');
   if (change) expect(api.updateEmployee.mock.calls[0][1].department).toBe('Operations');
   else expect(api.updateEmployee.mock.calls[0][1]).not.toHaveProperty('department');
 });

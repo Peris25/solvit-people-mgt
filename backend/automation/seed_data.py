@@ -1,5 +1,7 @@
 """Seed initial data for the Solvit People Platform"""
 import os
+from utils.employee_integrity import email_matches, normalize_email, employee_key, integrity_write
+from fastapi import HTTPException
 from datetime import datetime, timezone
 from utils.auth import hash_password
 import uuid
@@ -153,6 +155,7 @@ EXIT_INTERVIEW_STEPHEN = {
 async def seed_extended_employees(db):
     """Add additional demo employees covering all 9 FTE lifecycle states.
     Idempotent — only creates each emp if not already present (by email)."""
+    require_demo_data_access()
     today = datetime.now(timezone.utc).date()
     extra = [
         {"full_name": "Daniel Kimani", "work_email": "daniel.kimani@solvit.co.ke", "department": "Marketing", "role_title": "Marketing Lead", "role_level": "L3", "start_date": str(today.replace(year=today.year - 2)), "lifecycle_state": "On_Leave", "current_salary_kes": 95000, "phone_number": "+254700111201"},
@@ -197,6 +200,12 @@ async def seed_extended_employees(db):
     return inserted
 
 
+def require_demo_data_access():
+    from fastapi import HTTPException
+    if os.environ.get("APP_ENV") != "development" or os.environ.get("ALLOW_DESTRUCTIVE_DEMO_DATA") != "true":
+        raise HTTPException(403, "Demo data operations are disabled outside explicitly enabled development environments.")
+
+
 async def seed_all(db):
     """Run all seed operations.
 
@@ -206,7 +215,7 @@ async def seed_all(db):
     alerts / exit interviews / stay interviews are NO LONGER seeded — HR will
     populate real users via the platform.
     """
-    await purge_legacy_demo_data(db)
+    require_demo_data_access()
     await seed_users(db)
     await seed_admin_employees(db)
     await seed_pay_bands(db)
@@ -221,6 +230,7 @@ async def purge_legacy_demo_data(db):
     starts clean. Idempotent: only deletes records that AREN'T the two
     canonical admin accounts.
     """
+    require_demo_data_access()
     keep_emails = list(CANONICAL_USER_EMAILS)
     deleted_users = await db.users.delete_many(
         {"tenant_id": "solvit", "email": {"$nin": keep_emails}})
@@ -255,6 +265,7 @@ async def purge_legacy_demo_data(db):
 async def seed_admin_employees(db):
     """Ensure each canonical admin user has a matching `employees` record so
     they appear in directory, RBAC and the organogram. Idempotent."""
+    require_demo_data_access()
     by_email = {
         "jmining@solvit.co.ke": {
             "full_name": "HR Admin", "department": "HR & People",
@@ -266,12 +277,15 @@ async def seed_admin_employees(db):
         },
     }
     for email, props in by_email.items():
-        existing = await db.employees.find_one({"tenant_id": "solvit", "work_email": email})
+        matches = await email_matches(db.employees, "work_email", normalize_email(email), "solvit")
+        if len(matches) > 1:
+            raise HTTPException(409, "Development employee identities need review")
+        existing = matches[0] if matches else None
         if existing:
             continue
         await db.employees.insert_one({
             "id": str(uuid.uuid4()), "tenant_id": "solvit",
-            "work_email": email, **props,
+            "work_email": normalize_email(email), "work_email_normalized": normalize_email(email), **props,
             "start_date": datetime.now(timezone.utc).date().isoformat(),
             "lifecycle_state": "Active", "employment_type": "Full_Time",
             "line_manager_id": None,
@@ -358,6 +372,7 @@ async def seed_policies(db):
 async def migrate_department_labels(db):
     """Remap historical/incorrect department labels to the 5 canonical Solvit
     departments and remove UAT/test data + B1a/B1b employee levels."""
+    require_demo_data_access()
     REMAP = {
         "Leadership": "HR & People",
         "HR_People": "HR & People",
@@ -461,16 +476,15 @@ async def migrate_department_labels(db):
 async def seed_notifications_and_stay_interviews(db):
     """Seed sample notifications and a stay interview so UIs have data"""
     if await db.notifications.count_documents({"tenant_id": "solvit"}) == 0:
-        # Find HR admin user
-        hr = await db.users.find_one({"role": "hr_admin", "tenant_id": "solvit"})
-        hr_id = str(hr.get("id", str(hr["_id"]))) if hr else None
         notifs = [
             {"title": "[Compliance] PAYE deadline approaching", "message": "Monthly PAYE remittance is due on the 9th of next month. Confirm KRA submission.", "recipient_role": "hr_admin", "category": "Compliance", "is_read": False},
             {"title": "[Probation] Review due — John Mwangi", "message": "John Mwangi's 3-month probation review is due in 7 days.", "recipient_role": "hr_admin", "category": "Probation", "is_read": False},
             {"title": "[Pay Band] 3 employees below band minimum", "message": "Pay band compliance: 3 employees flagged. Review Compensation page.", "recipient_role": "hr_admin", "category": "Compensation", "is_read": False},
             {"title": "[Onboarding] Robert Kiprop overdue", "message": "Robert's onboarding day-7 task list has 2 overdue items.", "recipient_role": "hr_admin", "category": "Onboarding", "is_read": True},
         ]
-        docs = [{**n, "id": str(uuid.uuid4()), "tenant_id": "solvit", "recipient_id": hr_id, "data": {}, "created_at": datetime.now(timezone.utc).isoformat()} for n in notifs]
+        # These development samples are role broadcasts, not private messages
+        # addressed to whichever HR account happens to be returned first.
+        docs = [{**n, "id": str(uuid.uuid4()), "tenant_id": "solvit", "recipient_id": None, "data": {}, "created_at": datetime.now(timezone.utc).isoformat()} for n in notifs]
         await db.notifications.insert_many(docs)
         print(f"✅ {len(docs)} demo notifications seeded")
 
@@ -502,6 +516,7 @@ async def seed_notifications_and_stay_interviews(db):
 
 async def reset_demo_data(db):
     """Reset all demo data (keeps users intact)"""
+    require_demo_data_access()
     collections_to_reset = [
         "employees", "solvers", "candidates", "performance_reviews",
         "leave_requests", "training_requests", "idps", "skills_matrix",
@@ -522,24 +537,31 @@ async def reset_demo_data(db):
     await seed_pay_band_alerts(db)
     await seed_performance_reviews(db)
     await seed_notifications_and_stay_interviews(db)
+    await seed_admin_employees(db)
+    async for user in db.users.find({"tenant_id": "solvit"}):
+        matches = await email_matches(db.employees, "work_email", normalize_email(user["email"]), "solvit")
+        if len(matches) > 1:
+            raise HTTPException(409, "Development reset account mapping is ambiguous")
+        if matches:
+            await db.users.update_one({"_id": user["_id"]}, {"$set": {"employee_id": employee_key(matches[0])}})
     print("✅ Demo data reset completed")
 
 
 async def seed_users(db):
     """Seed demo user accounts"""
+    require_demo_data_access()
     for user_data in DEMO_USERS:
-        existing = await db.users.find_one({"email": user_data["email"]})
+        email = normalize_email(user_data["email"])
+        matches = await email_matches(db.users, "email", email)
+        if len(matches) > 1:
+            raise HTTPException(409, "Development account identities need review")
+        existing = matches[0] if matches else None
         if existing:
-            # Update password in case it changed
-            if not __import__('bcrypt').checkpw(user_data["password"].encode(), existing["password_hash"].encode()):
-                await db.users.update_one(
-                    {"email": user_data["email"]},
-                    {"$set": {"password_hash": hash_password(user_data["password"])}}
-                )
+            continue  # Never reset an existing account password during bootstrap.
         else:
             doc = {
                 "id": str(uuid.uuid4()),
-                "email": user_data["email"],
+                "email": email, "email_normalized": email,
                 "full_name": user_data["full_name"],
                 "role": user_data["role"],
                 "department": user_data.get("department"),
@@ -548,9 +570,8 @@ async def seed_users(db):
                 "is_active": True,
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
-            result = await db.users.insert_one(doc)
-            doc["employee_id"] = str(result.inserted_id)
-            await db.users.update_one({"_id": result.inserted_id}, {"$set": {"employee_id": str(result.inserted_id)}})
+            await db.users.insert_one(doc)
+            # Leave unlinked until an employee match is explicitly reviewed/provisioned.
     print("✅ Demo users seeded")
 
 
@@ -601,6 +622,7 @@ async def seed_holidays(db):
 
 async def seed_demo_employees(db):
     """Seed demo employee records"""
+    require_demo_data_access()
     existing = await db.employees.count_documents({"tenant_id": "solvit"})
     if existing > 0:
         return

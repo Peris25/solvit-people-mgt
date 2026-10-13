@@ -35,15 +35,9 @@ def fmt(doc):
         return None
     doc["id"] = str(doc.get("_id", ""))
     doc["_id"] = str(doc.get("_id", ""))
-    # Mask API keys
-    if doc.get("llm_api_key"):
-        key = doc["llm_api_key"]
-        doc["llm_api_key"] = key[:8] + "..." + key[-4:] if len(key) > 12 else "***"
-    if doc.get("email_api_key"):
-        key = doc["email_api_key"]
-        doc["email_api_key"] = key[:4] + "..." + key[-4:] if len(key) > 8 else "***"
-    if doc.get("smtp_password"):
-        doc["smtp_password"] = "***"
+    for field in ("llm_api_key", "email_api_key", "smtp_password"):
+        if doc.get(field):
+            doc[field] = "***"
     return doc
 
 
@@ -77,6 +71,9 @@ async def update_settings(settings: PlatformSettings, request: Request):
         raise HTTPException(status_code=403, detail="Only HR Admin can update settings")
     db = get_db()
     update_data = {k: v for k, v in settings.model_dump().items() if v is not None}
+    for field in ("llm_api_key", "email_api_key", "smtp_password"):
+        if update_data.get(field) == "***":
+            update_data.pop(field)
     update_data["updated_by"] = user["id"]
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     result = await db.platform_settings.find_one_and_update(

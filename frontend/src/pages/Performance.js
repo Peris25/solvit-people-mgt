@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import StatusBadge from '../components/StatusBadge';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -20,9 +20,9 @@ export default function Performance() {
   const [viewReview, setViewReview] = useState(null);
   const [viewEmpName, setViewEmpName] = useState('');
 
-  useEffect(() => { load(); if (['hr_admin', 'hr_manager', 'executive'].includes(user?.role)) api.getTalentDensity().then(r => setTalentDensity(r.data)).catch(() => {}); }, []);
 
-  const load = async () => {
+
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [revRes, cycleRes] = await Promise.all([api.getReviews(), api.getActiveCycle()]);
@@ -33,7 +33,9 @@ export default function Performance() {
         setEmployees(empRes.data.filter(e => e.lifecycle_state === 'Active'));
       }
     } finally { setLoading(false); }
-  };
+  }, [user?.role]);
+
+  useEffect(() => { load(); if (['hr_admin', 'hr_manager', 'executive'].includes(user?.role)) api.getTalentDensity().then(r => setTalentDensity(r.data)).catch(() => {}); }, [load, user?.role]);
 
   const loadNineBox = async () => {
     const res = await api.getNineBoxMatrix();

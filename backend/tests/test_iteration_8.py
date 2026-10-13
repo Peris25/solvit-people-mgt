@@ -117,6 +117,13 @@ class TestLeaveCreateWithLM:
         lm = next((e for e in emps if "David Ochieng" in e.get("full_name", "")), None) or (emps[0] if emps else None)
         assert lm, "no employees to choose line manager"
         lm_id = lm["id"]
+        own = hr.get(f"{BASE_URL}/api/employees/{emp_id}", timeout=15)
+        assert own.status_code == 200
+        if not own.json().get("line_manager_id"):
+            assigned = hr.put(f"{BASE_URL}/api/employees/{emp_id}", json={"line_manager_id": lm_id}, timeout=15)
+            assert assigned.status_code == 200, assigned.text
+        else:
+            lm_id = own.json()["line_manager_id"]
         body = {
             "employee_id": emp_id,
             "leave_type": "Annual",

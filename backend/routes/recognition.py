@@ -4,6 +4,8 @@ from typing import Optional, List
 from datetime import datetime, timezone
 from bson import ObjectId
 from database import get_db
+from utils.employee_access import authorize_employee
+from utils.employee_integrity import employee_key, find_employee
 from utils.auth import get_current_user
 import uuid
 
@@ -41,6 +43,11 @@ async def list_recognitions(request: Request, recognition_type: Optional[str] = 
 async def create_peer_nomination(nom: PeerNomination, request: Request):
     user = await get_current_user(request)
     db = get_db()
+    # Peer nominations intentionally target other staff; sender identity is server-owned.
+    target = await find_employee(db, nom.nominee_id)
+    if not target:
+        raise HTTPException(404, "Nominee not found")
+    nom = nom.model_copy(update={"nominee_id": employee_key(target)})
     doc = {
         "id": str(uuid.uuid4()),
         "tenant_id": "solvit",
@@ -79,6 +86,12 @@ async def create_manager_recognition(request: Request):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     body = await request.json()
+    target = await authorize_employee(db, user, body.get("nominee_id") or body.get("employee_id"), "M11", write=True)
+    body["nominee_id"] = employee_key(target)
+    body["employee_id"] = employee_key(target)
+    body.pop("tenant_id", None)
+    body.pop("id", None)
+    body.pop("_id", None)
     doc = {
         "id": str(uuid.uuid4()),
         "tenant_id": "solvit",

@@ -98,7 +98,7 @@ class TestCreateEmployeeMandatoryLM:
         r = s.post(f"{BASE}/api/employees", json=payload, timeout=20)
         assert r.status_code == 422, f"expected 422 got {r.status_code}: {r.text}"
 
-    def test_bad_lm_returns_400(self):
+    def test_bad_lm_returns_422(self):
         s = login("jessica@solvit.co.ke")
         ts = int(time.time())
         payload = {
@@ -111,7 +111,7 @@ class TestCreateEmployeeMandatoryLM:
             "line_manager_id": "507f1f77bcf86cd799439011",  # non-existent ObjectId
         }
         r = s.post(f"{BASE}/api/employees", json=payload, timeout=20)
-        assert r.status_code == 400, f"expected 400 got {r.status_code}: {r.text}"
+        assert r.status_code == 422, f"expected 422 got {r.status_code}: {r.text}"
         assert "Line Manager" in r.text
 
     def test_valid_lm_succeeds(self):

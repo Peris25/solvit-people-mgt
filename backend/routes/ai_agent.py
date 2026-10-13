@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
 from database import get_db
+from utils.employee_access import authorize_employee
 from utils.auth import get_current_user
 from routes import ai_actions
 import os
@@ -491,6 +492,7 @@ async def employee_status(request: Request, query: str):
     info = await lookup_employee_status(db, query)
     if not info:
         raise HTTPException(status_code=404, detail="No employee matched that query")
+    await authorize_employee(db, user, info.get("employee_id") or info.get("id"), "M01")
     return info
 
 
@@ -533,6 +535,9 @@ async def execute_action(action_id: str, request: Request):
     except Exception:
         body = {}
     if isinstance(body, dict) and body.get("params_override"):
+        allowed_edits = set(pending.get("editable", {}))
+        if any(key not in allowed_edits or key in {"employee_id", "leave_id", "task_id", "line_manager_id", "tenant_id"} for key in body["params_override"]):
+            raise HTTPException(403, "Only the proposed editable fields may be changed")
         pending["params"].update(body["params_override"])
 
     executor = ai_actions.EXECUTORS.get(pending["kind"])

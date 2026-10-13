@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import StatusBadge from '../components/StatusBadge';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -17,14 +17,9 @@ export default function Retention() {
   const [conductForm, setConductForm] = useState({});
   const [attrition, setAttrition] = useState(null);
 
-  useEffect(() => {
-    load();
-    if (['hr_admin', 'hr_manager', 'executive'].includes(user?.role)) {
-      api.getVoluntaryAttrition().then(r => setAttrition(r.data)).catch(() => {});
-    }
-  }, []);
 
-  const load = async () => {
+
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [risksRes, summaryRes, exitRes, stayRes] = await Promise.all([
@@ -38,7 +33,14 @@ export default function Retention() {
       setExitInsights(exitRes.data);
       setStayInterviews(stayRes.data);
     } finally { setLoading(false); }
-  };
+  }, []);
+
+  useEffect(() => {
+    load();
+    if (['hr_admin', 'hr_manager', 'executive'].includes(user?.role)) {
+      api.getVoluntaryAttrition().then(r => setAttrition(r.data)).catch(() => {});
+    }
+  }, [load, user?.role]);
 
   const calcRisk = async (empId) => {
     await api.calculateRisk(empId);

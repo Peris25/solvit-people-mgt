@@ -327,7 +327,8 @@ class TestForms:
             pytest.skip("form-03 not available")
         form = r.json()
         # Submit some answers
-        payload = {"answers": {}, "employee_id": "test-employee"}
+        subject = hr_session.get(f"{BASE_URL}/api/auth/me").json()["employee_id"]
+        payload = {"answers": {}, "employee_id": subject}
         r = hr_session.post(f"{BASE_URL}/api/forms/form-03/submit", json=payload, timeout=15)
         assert r.status_code in (200, 201, 400, 422)
 

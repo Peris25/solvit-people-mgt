@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import StatusBadge from '../components/StatusBadge';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -19,9 +19,8 @@ export default function Solvers() {
 
   const canEdit = ['hr_admin', 'hr_manager', 'line_manager'].includes(user?.role);
 
-  useEffect(() => { loadSolvers(); }, [search, filterState]);
 
-  const loadSolvers = async () => {
+  const loadSolvers = useCallback(async () => {
     setLoading(true);
     try {
       const [sRes, statsRes] = await Promise.all([
@@ -31,7 +30,9 @@ export default function Solvers() {
       setSolvers(sRes.data);
       setStats(statsRes.data);
     } finally { setLoading(false); }
-  };
+  }, [search, filterState]);
+
+  useEffect(() => { loadSolvers(); }, [loadSolvers]);
 
   const saveSolver = async (e) => {
     e.preventDefault();

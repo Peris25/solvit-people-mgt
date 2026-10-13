@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import * as api from '../services/api';
 
 export default function Calendar() {
@@ -7,15 +7,16 @@ export default function Calendar() {
   const [filter, setFilter] = useState('all');
   const [daysAhead, setDaysAhead] = useState(90);
 
-  useEffect(() => { load(); }, [daysAhead]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const r = await api.getCalendarEvents(daysAhead);
       setEvents(r.data);
     } finally { setLoading(false); }
-  };
+  }, [daysAhead]);
+
+  useEffect(() => { load(); }, [load]);
 
   const filtered = filter === 'all' ? events : events.filter(e => e.event_type === filter);
   const types = [...new Set(events.map(e => e.event_type))];

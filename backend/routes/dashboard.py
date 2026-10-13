@@ -8,6 +8,7 @@ Currently implemented:
 from fastapi import APIRouter, HTTPException, Request
 from datetime import datetime, timezone
 from database import get_db
+from utils.employee_integrity import user_employee_aliases
 from utils.auth import get_current_user
 from bson import ObjectId
 
@@ -15,11 +16,7 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 async def _resolve_emp_id(db, user) -> str | None:
-    emp = await db.employees.find_one({
-        "tenant_id": "solvit",
-        "work_email": (user.get("email") or "").lower(),
-    })
-    return (emp.get("id") or str(emp.get("_id"))) if emp else None
+    return user.get("employee_id")
 
 
 @router.get("/line-manager")
@@ -53,7 +50,7 @@ async def line_manager_widget(request: Request):
     # Direct reports (exclude Exited)
     reports = await db.employees.find({
         "tenant_id": "solvit",
-        "line_manager_id": my_emp_id,
+        "line_manager_id": {"$in": user_employee_aliases(user)},
         "lifecycle_state": {"$ne": "Exited"},
     }).sort("full_name", 1).to_list(200)
 
