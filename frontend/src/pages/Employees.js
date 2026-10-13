@@ -6,7 +6,6 @@ import EmployeePicker from '../components/EmployeePicker';
 import * as api from '../services/api';
 
 const LIFECYCLE_STATES = ['Onboarding', 'Probation', 'Active', 'On_Leave', 'PIP', 'Realignment', 'Exiting', 'Exited'];
-const DEPARTMENTS = ['Operations', 'Commercial', 'Finance', 'Technology', 'HR_People', 'Valuation', 'Leadership'];
 const ROLE_LEVELS = ['L1', 'L2', 'L3', 'L4', 'L5', 'B1a', 'B1b'];
 
 const fmtKES = (n) => n ? `KES ${Number(n).toLocaleString('en-KE')}` : '—';
@@ -16,13 +15,15 @@ export default function Employees() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [employees, setEmployees] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [departmentError, setDepartmentError] = useState('');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterState, setFilterState] = useState('');
   const [filterDept, setFilterDept] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [selected, setSelected] = useState(null);
-  const [form, setForm] = useState({ full_name: '', work_email: '', department: 'Operations', role_title: '', role_level: 'L2', start_date: '', employment_type: 'Full_Time', current_salary_kes: '', lifecycle_state: 'Onboarding', line_manager_id: '' });
+  const [form, setForm] = useState({ full_name: '', work_email: '', department: '', role_title: '', role_level: 'L2', start_date: '', employment_type: 'Full_Time', current_salary_kes: '', lifecycle_state: 'Onboarding', line_manager_id: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [seeding, setSeeding] = useState(false);
@@ -86,6 +87,20 @@ export default function Employees() {
 
   useEffect(() => { loadEmployees(); }, [search, filterState, filterDept]);
 
+  useEffect(() => {
+    let cancelled = false;
+    api.getAllMastersSettings().then(r => {
+      if (!cancelled) setDepartments((r.data?.workforce?.departments || [])
+        .filter(d => d.active !== false).map(d => d.name).filter(Boolean));
+    }).catch(() => {
+      if (!cancelled) setDepartmentError('Departments could not be loaded. The saved department has been preserved.');
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const departmentOptions = [...new Set([...departments, ...(form.department ? [form.department] : [])])];
+  const filterDepartments = [...new Set([...departments, ...employees.map(e => e.department).filter(Boolean)])];
+
   const loadEmployees = async () => {
     try {
       setLoading(true);
@@ -105,13 +120,15 @@ export default function Employees() {
     try {
       const data = { ...form, current_salary_kes: form.current_salary_kes ? parseInt(form.current_salary_kes) : null };
       if (selected) {
+        // Omit an unchanged department, including legacy or missing values.
+        if (form.department === selected.department) delete data.department;
         await api.updateEmployee(selected.id, data);
       } else {
         await api.createEmployee(data);
       }
       setShowForm(false);
       setSelected(null);
-      setForm({ full_name: '', work_email: '', department: 'Operations', role_title: '', role_level: 'L2', start_date: '', employment_type: 'Full_Time', current_salary_kes: '', lifecycle_state: 'Onboarding', line_manager_id: '' });
+      setForm({ full_name: '', work_email: '', department: '', role_title: '', role_level: 'L2', start_date: '', employment_type: 'Full_Time', current_salary_kes: '', lifecycle_state: 'Onboarding', line_manager_id: '' });
       loadEmployees();
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to save');
@@ -179,7 +196,7 @@ export default function Employees() {
         </select>
         <select data-testid="filter-dept" value={filterDept} onChange={e => setFilterDept(e.target.value)} style={{ padding: '8px 12px', border: '1px solid rgba(25,25,25,0.15)', fontSize: '13px', fontFamily: 'Arial', outline: 'none' }}>
           <option value="">All Departments</option>
-          {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+          {filterDepartments.map(d => <option key={d} value={d}>{d}</option>)}
         </select>
       </div>
 
@@ -268,15 +285,16 @@ export default function Employees() {
                   </div>
                 ))}
                 {[
-                  { key: 'department', label: 'Department', options: DEPARTMENTS },
+                  { key: 'department', label: 'Department', options: departmentOptions },
                   { key: 'role_level', label: 'Role Level', options: ROLE_LEVELS },
                   { key: 'employment_type', label: 'Employment Type', options: ['Full_Time', 'Part_Time', 'Fixed_Term'] },
                   { key: 'lifecycle_state', label: 'Lifecycle State', options: LIFECYCLE_STATES },
                 ].map(f => (
                   <div key={f.key}>
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>{f.label}</label>
-                    <select value={form[f.key] || ''} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
+                    <select required={f.key === 'department' && !selected} data-testid={`employee-${f.key}`} value={form[f.key] || ''} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
                       style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', boxSizing: 'border-box', outline: 'none' }}>
+                      {f.key === 'department' && <option value="">Select department</option>}
                       {f.options.map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
                   </div>
@@ -304,6 +322,7 @@ export default function Employees() {
                   </div>
                 </div>
               </div>
+              {departmentError && <div role="status" style={{ fontSize: '12px', marginTop: '12px' }}>{departmentError}</div>}
               {error && <div data-testid="employee-lm-error" style={{ color: '#FF353F', fontSize: '12px', marginTop: '12px', padding: '8px', border: '1px solid #FF353F', backgroundColor: 'rgba(255,53,63,0.05)' }}>{error}</div>}
               <div style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                 <button type="button" onClick={() => setShowForm(false)} style={{ padding: '10px 20px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Arial' }}>Cancel</button>

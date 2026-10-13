@@ -140,6 +140,16 @@ async def _my_employee_id(db, user) -> Optional[str]:
     return emp.get("id") or str(emp.get("_id"))
 
 
+async def _line_manager_name(db, manager_id):
+    """Resolve display data only; keep the canonical relationship ID unchanged."""
+    if not manager_id:
+        return None
+    manager = await db.employees.find_one({"id": manager_id}, {"full_name": 1})
+    if not manager and ObjectId.is_valid(manager_id):
+        manager = await db.employees.find_one({"_id": ObjectId(manager_id)}, {"full_name": 1})
+    return manager.get("full_name") if manager else None
+
+
 @router.get("/me")
 async def get_my_employee(request: Request):
     """Return the current authenticated user's own employee record.
@@ -157,17 +167,7 @@ async def get_my_employee(request: Request):
     if not emp:
         raise HTTPException(status_code=404, detail="No employee record for this account")
     formatted = fmt(emp)
-    # Enrich with line manager name for read-only display in forms
-    lm_id = formatted.get("line_manager_id")
-    lm_name = None
-    if lm_id:
-        try:
-            lm = await db.employees.find_one({"_id": ObjectId(lm_id)})
-        except Exception:
-            lm = await db.employees.find_one({"id": lm_id})
-        if lm:
-            lm_name = lm.get("full_name")
-    formatted["line_manager_name"] = lm_name
+    formatted["line_manager_name"] = await _line_manager_name(db, formatted.get("line_manager_id"))
     return formatted
 
 
@@ -323,6 +323,8 @@ async def get_employee_profile(employee_id: str, request: Request):
         is_direct_report = my_emp_id and emp.get("line_manager_id") == my_emp_id
         if not (is_self or is_direct_report):
             raise HTTPException(status_code=403, detail="Not allowed")
+
+    emp["line_manager_name"] = await _line_manager_name(db, emp.get("line_manager_id"))
 
     # Parallel-ish gathers
     reviews = await db.performance_reviews.find({"employee_id": emp_id}).sort("created_at", -1).to_list(20)
