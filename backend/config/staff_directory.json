@@ -1,0 +1,11 @@
+{
+  "source": "Solvit Team Directory - 2026.pdf, pages 1-2; Developer Brief v1, Appendix A",
+  "departments": [
+    {"name": "Leadership", "contact_for": "Company direction, strategy and senior escalations."},
+    {"name": "Valuation", "contact_for": "Valuation standards, report quality, underwriting requirements and approvals."},
+    {"name": "Account Management", "contact_for": "Client relationships, new business, client accounts and payment confirmation."},
+    {"name": "Operations", "contact_for": ""},
+    {"name": "IT Support", "contact_for": "System access, the Solvit app, devices and technical issues."},
+    {"name": "Human Resources", "contact_for": "Onboarding, contracts, leave, payroll queries, policies and staff welfare."}
+  ]
+}

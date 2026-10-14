@@ -20,7 +20,8 @@ const MENU_ITEMS = [
   { section: 'Core', items: [
     { path: '/dashboard',   label: 'Dashboard',    Icon: LayoutDashboard, roles: ['hr_admin','hr_manager','executive','line_manager','finance','employee','solver','board','it_admin'] },
     { path: '/employees',   label: 'Employees',    Icon: Users,           roles: ['hr_admin','hr_manager','line_manager','finance','executive'] },
-    { path: '/organogram',  label: 'Organogram',   Icon: Network,         roles: ['hr_admin','hr_manager','line_manager','finance','executive','employee','it_admin','solver','board'] },
+    { path: '/staff-directory', label: 'Staff Directory', Icon: Users, roles: ['employee','line_manager','hr_admin','hr_manager','finance','executive','it_admin','board'] },
+    { path: '/organogram',  label: 'Organogram',   Icon: Network,         roles: ['hr_admin','hr_manager','line_manager','finance','executive','employee','it_admin','board'] },
     { path: '/solvers',     label: 'Solvers',      Icon: Zap,             roles: ['hr_admin','hr_manager','line_manager','solver','executive','solvers_manager'],
       children: [
         { path: '/solver-requisitions', label: 'Solver Requisitions', Icon: Target,   roles: ['hr_admin','hr_manager','executive','solvers_manager'] },

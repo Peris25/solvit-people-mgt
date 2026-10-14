@@ -142,6 +142,7 @@ class Database:
         self.audit_log = Collection()
         self.revoked_refresh_tokens = Collection()
         self.user_session_invalidations = Collection()
+        self.system_settings = Collection()
 
 
 def employee(key="staff", email="staff@example.com", **kwargs):

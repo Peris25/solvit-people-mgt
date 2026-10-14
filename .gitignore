@@ -124,3 +124,6 @@ integrity-reports/
 
 .node-test/
 node-test.exe
+
+# Confidential source documents stay local; this repository is public.
+/docs/reference/

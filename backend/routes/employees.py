@@ -150,7 +150,12 @@ async def _line_manager_name(db, manager_id):
     """Resolve display data only; keep the canonical relationship ID unchanged."""
     if not manager_id:
         return None
-    manager = await find_employee(db, manager_id)
+    try:
+        manager = await find_employee(db, manager_id)
+    except HTTPException as error:
+        if error.status_code != 409:
+            raise
+        return None  # Display fallback only; authorization still rejects ambiguity.
     return manager.get("full_name") if manager else None
 
 
@@ -174,78 +179,42 @@ async def get_my_employee(request: Request):
 
 @router.get("/directory")
 async def employee_directory(request: Request):
-    """Minimal-info directory of active employees, accessible to ALL authenticated
-    users. Used by shared pickers (Peer Recognition nominee, survey targeting,
-    handover contacts, etc.). Returns only public-safe fields — no salary,
-    national ID, KRA, NSSF, SHA, DOB, etc. Excludes Exited records and any
-    board_only (MD / ED) records unless the caller is Board or IT Admin.
-    """
+    """Public-safe, non-exited staff metadata with shared Board-only visibility."""
+    user = await get_current_user(request)
+    from utils.staff_directory import require_staff_directory
+    from utils.staff_views import read_staff_views
+    db = get_db()
+    await require_staff_directory(db, user)
+    directory, _ = await read_staff_views(db, user)
+    return directory
+
+
+@router.get("/staff-directory")
+async def staff_directory(request: Request):
+    """Staff-facing contact list; privileged private HR endpoints stay separate."""
     user = await get_current_user(request)
     db = get_db()
-    employees = await db.employees.find(
-        {"tenant_id": "solvit", "lifecycle_state": {"$ne": "Exited"}}
-    ).sort("full_name", 1).to_list(1000)
-    out = []
-    for e in employees:
-        if e.get("board_only") and user["role"] not in ("board", "it_admin") \
-                and employee_key(e) != user.get("employee_id"):
-            continue
-        out.append({
-            "id": e.get("id") or str(e.get("_id")),
-            "full_name": e.get("full_name"),
-            "preferred_name": e.get("preferred_name"),
-            "role_title": e.get("role_title"),
-            "department": e.get("department"),
-            "work_email": e.get("work_email"),
-            "lifecycle_state": e.get("lifecycle_state"),
-            "profile_photo_url": e.get("profile_photo_url"),
-        })
-    return out
+    from utils.staff_directory import require_staff_directory, directory_departments, normalized
+    from utils.staff_views import read_staff_views
+    await require_staff_directory(db, user)
+    directory, _ = await read_staff_views(db, user)
+    departments = await directory_departments(db, user)
+    notes = {normalized(d["name"]): d["contact_for"] for d in departments}
+    for entry in directory:
+        entry["contact_for"] = notes.get(normalized(entry["department_label"]), "")
+    return {"employees": directory, "departments": departments}
 
 
 @router.get("/organogram")
 async def organogram(request: Request):
-    """Return the org reporting hierarchy as a tree of nodes for the
-    Organogram view. Includes all Active / Onboarding / Probation employees
-    with their line_manager_id wiring. Accessible to ALL authenticated users.
-    """
-    await get_current_user(request)
+    """Read-only reporting forest; unresolved/ambiguous edges are not guessed."""
+    user = await get_current_user(request)
+    from utils.staff_directory import require_staff_directory
+    from utils.staff_views import read_staff_views
     db = get_db()
-    emps = await db.employees.find(
-        {"tenant_id": "solvit",
-         "lifecycle_state": {"$nin": ["Exited"]}}
-    ).to_list(2000)
-    nodes = {}
-    for e in emps:
-        eid = e.get("id") or str(e.get("_id"))
-        nodes[eid] = {
-            "id": eid,
-            "name": e.get("full_name"),
-            "role_title": e.get("role_title"),
-            "department": e.get("department"),
-            "work_email": e.get("work_email"),
-            "lifecycle_state": e.get("lifecycle_state"),
-            "profile_photo_url": e.get("profile_photo_url"),
-            "line_manager_id": e.get("line_manager_id"),
-            "direct_reports": [],
-        }
-    # Build tree
-    roots = []
-    for n in nodes.values():
-        parent_id = n.get("line_manager_id")
-        if parent_id and parent_id in nodes:
-            nodes[parent_id]["direct_reports"].append(n)
-        else:
-            roots.append(n)
-    # Stable order
-    def sort_recursive(node):
-        node["direct_reports"].sort(key=lambda x: (x.get("name") or "").lower())
-        for c in node["direct_reports"]:
-            sort_recursive(c)
-    for r in roots:
-        sort_recursive(r)
-    roots.sort(key=lambda x: (x.get("name") or "").lower())
-    return {"roots": roots, "total": len(nodes)}
+    await require_staff_directory(db, user)
+    _, hierarchy = await read_staff_views(db, user)
+    return hierarchy
 
 
 @router.get("")

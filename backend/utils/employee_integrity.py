@@ -66,11 +66,13 @@ async def email_matches(collection, field, email, tenant=None):
 
 
 async def find_employee(db, reference, tenant="solvit"):
+    if isinstance(reference, ObjectId):
+        reference = str(reference)
     if not isinstance(reference, str) or not reference.strip():
         return None
-    clauses = [{"id": reference}]
+    clauses = [{"id": reference}, {"_id": reference}]
     if ObjectId.is_valid(reference):
-        clauses.append({"_id": ObjectId(reference)})
+        clauses.extend([{"_id": ObjectId(reference)}, {"id": ObjectId(reference)}])
     rows = await db.employees.find({"$and": [tenant_query(tenant), {"$or": clauses}]}).to_list(2)
     if len(rows) > 1:
         raise HTTPException(409, "Employee reference is ambiguous. Request an integrity review.")
@@ -94,6 +96,12 @@ async def resolve_user_employee(db, user):
             raise HTTPException(409, "Account employee match is ambiguous. Request an integrity review.")
         employee = rows[0] if rows else None
     if employee:
+        # A unique legacy storage alias must not authorize an ambiguous canonical
+        # identity shared with another record. Keep reads fail-closed before
+        # exposing employee_key as the account's application identity.
+        canonical = await find_employee(db, employee_key(employee), tenant)
+        if not canonical or canonical["_id"] != employee["_id"]:
+            raise HTTPException(409, "Account employee identity needs an integrity review.")
         # Do not authorize two accounts for one employee, even before migration.
         aliases = [employee_key(employee), str(employee["_id"])]
         owners = await db.users.find({"$and": [tenant_query(tenant), {

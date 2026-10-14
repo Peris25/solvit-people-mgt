@@ -126,6 +126,9 @@ export default function Employees() {
         if (form.line_manager_id === selected.line_manager_id) delete data.line_manager_id;
         // Omit an unchanged department, including legacy or missing values.
         if (form.department === selected.department) delete data.department;
+        if (form.role_level === (selected.role_level ?? selected.job_level ?? '')) delete data.role_level;
+        if (form.employment_type === selected.employment_type) delete data.employment_type;
+        if (form.lifecycle_state === (selected.lifecycle_state ?? selected.employment_status ?? selected.status ?? '')) delete data.lifecycle_state;
         await api.updateEmployee(selected.id, data);
       } else {
         await api.createEmployee(data);
@@ -150,7 +153,9 @@ export default function Employees() {
 
   const openEdit = (emp) => {
     setSelected(emp);
-    setForm({ ...emp, current_salary_kes: emp.current_salary_kes || '' });
+    setForm({ ...emp, role_level: emp.role_level ?? emp.job_level ?? '',
+      lifecycle_state: emp.lifecycle_state ?? emp.employment_status ?? emp.status ?? '',
+      current_salary_kes: emp.current_salary_kes || '' });
     setShowForm(true);
   };
 
@@ -300,7 +305,8 @@ export default function Employees() {
                     <select required={f.key === 'department' && !selected} data-testid={`employee-${f.key}`} value={form[f.key] || ''} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
                       style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', boxSizing: 'border-box', outline: 'none' }}>
                       {f.key === 'department' && <option value="">Select department</option>}
-                      {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+                      {f.key !== 'department' && !form[f.key] && <option value="">Not specified</option>}
+                      {[...new Set([...f.options, ...(typeof form[f.key] === 'string' && form[f.key] ? [form[f.key]] : [])])].map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
                   </div>
                 ))}

@@ -58,6 +58,7 @@ export const getMe = () => api.get('/auth/me');
 // Employees
 export const getEmployees = (params) => api.get('/employees', { params });
 export const getEmployeeDirectory = () => api.get('/employees/directory');
+export const getStaffDirectory = () => api.get('/employees/staff-directory');
 export const getOrganogram = () => api.get('/employees/organogram');
 
 // Solver Intake

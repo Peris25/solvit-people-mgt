@@ -25,7 +25,7 @@ export default function EmployeePicker({ value, onChange, excludeId, placeholder
     let cancelled = false;
     api.getEmployeeDirectory().then(r => {
       if (!cancelled) {
-        setEmployees((r.data || []).filter(e => e.lifecycle_state !== 'Exited'));
+        setEmployees((r.data || []).filter(e => e.lifecycle_state !== 'Exited' && e.id && e.identity_status !== 'ambiguous'));
         setLoading(false);
       }
     }).catch(() => { if (!cancelled) setLoading(false); });
@@ -90,7 +90,7 @@ export default function EmployeePicker({ value, onChange, excludeId, placeholder
               <div style={{ padding: '14px', textAlign: 'center', color: '#9CA3AF', fontSize: '12px' }}>No matches</div>
             ) : filtered.map(e => (
               <button
-                key={e.id}
+                key={e.node_id || e.id}
                 type="button"
                 data-testid={`${testId}-option-${e.id}`}
                 onClick={() => { onChange(e); setOpen(false); setSearch(''); }}
@@ -104,7 +104,7 @@ export default function EmployeePicker({ value, onChange, excludeId, placeholder
                 onMouseLeave={ev => ev.currentTarget.style.backgroundColor = e.id === value ? '#FEF2F2' : 'transparent'}
               >
                 <div style={{ fontSize: '12px', fontWeight: 700, color: '#191919' }}>{e.full_name}</div>
-                <div style={{ fontSize: '11px', color: '#525252' }}>{e.role_title} · {e.department}</div>
+                <div style={{ fontSize: '11px', color: '#525252' }}>{e.role_title} · {e.department_label || e.department}</div>
               </button>
             ))}
           </div>
