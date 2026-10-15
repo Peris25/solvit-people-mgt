@@ -189,7 +189,7 @@ async def session_invalidated_after(db, user_id: str, issued_at_epoch: int) -> b
         return False
     try:
         invalidated_at = datetime.fromisoformat(doc["invalidated_at"].replace("Z", "+00:00"))
-        return invalidated_at.timestamp() > issued_at_epoch
+        return invalidated_at.timestamp() >= issued_at_epoch
     except (KeyError, ValueError, TypeError):
         return False
 

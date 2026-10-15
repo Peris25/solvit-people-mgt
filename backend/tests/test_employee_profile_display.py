@@ -22,7 +22,7 @@ def test_manager_lookup(manager_id, canonical, legacy, expected):
         result = asyncio.run(employees._line_manager_name(None, manager_id))
     assert result == expected
     if manager_id:
-        lookup.assert_awaited_once_with(None, manager_id)
+        lookup.assert_awaited_once_with(None, manager_id, "solvit")
     else:
         lookup.assert_not_called()
 

@@ -242,52 +242,20 @@ INTENT_PROPOSERS = {
 # ---- Action EXECUTORS — run after HR confirms ----
 
 async def execute_approve_leave(db, params: dict, user: dict) -> Dict[str, Any]:
-    leave_id = params["leave_id"]
-    lv = await db.leave_requests.find_one({"id": leave_id})
-    if not lv:
-        return {"ok": False, "error": "Leave request not found"}
-    now = datetime.now(timezone.utc).isoformat()
-    # Mirror /api/leave/{id}/decision logic — flip to next stage or Approved.
-    new_status = "Pending_HR" if lv.get("status") == "Pending_Manager" else "Approved"
-    if user.get("role") in ("hr_admin", "hr_manager"):
-        new_status = "Approved"
-    await db.leave_requests.update_one(
-        {"id": leave_id},
-        {"$set": {"status": new_status, "approved_by": user["id"],
-                  "approved_by_name": user.get("full_name") or user.get("email"),
-                  "approved_at": now}}
-    )
-    # Notify employee
-    await db.notifications.insert_one({
-        "id": str(uuid.uuid4()), "tenant_id": "solvit",
-        "user_id": lv.get("employee_id"),
-        "title": "Leave approved",
-        "message": f"Your {lv.get('leave_type')} leave ({lv.get('start_date')} → {lv.get('end_date')}) was approved by {user.get('full_name') or user.get('email')} via AI Assistant.",
-        "is_read": False, "created_at": now,
-    })
-    return {"ok": True, "new_status": new_status, "leave_id": leave_id}
+    # An AI confirmation cannot substitute for handover, contract and evidence
+    # review. Keep the proposal, but use the checked Leave workflow to approve.
+    return {"ok": False, "error": "Open Leave Management to complete the required manager/HR policy checks."}
 
 
 async def execute_reject_leave(db, params: dict, user: dict) -> Dict[str, Any]:
-    leave_id = params["leave_id"]
-    now = datetime.now(timezone.utc).isoformat()
-    lv = await db.leave_requests.find_one({"id": leave_id})
-    if not lv:
-        return {"ok": False, "error": "Leave request not found"}
-    await db.leave_requests.update_one(
-        {"id": leave_id},
-        {"$set": {"status": "Rejected", "rejection_reason": params.get("reason") or "No reason given",
-                  "rejected_by": user["id"], "rejected_by_name": user.get("full_name") or user.get("email"),
-                  "rejected_at": now}}
-    )
-    await db.notifications.insert_one({
-        "id": str(uuid.uuid4()), "tenant_id": "solvit",
-        "user_id": lv.get("employee_id"),
-        "title": "Leave rejected",
-        "message": f"Your {lv.get('leave_type')} leave was rejected. Reason: {params.get('reason') or '—'}.",
-        "is_read": False, "created_at": now,
-    })
-    return {"ok": True, "leave_id": leave_id}
+    from utils.leave_workflow import decide
+    from utils.leave_balances import balances
+    from utils.employee_access import authorize_employee
+    async def balance_loader(employee_id):
+        employee = await authorize_employee(db, user, employee_id, "M18")
+        return await balances(db, employee)
+    result = await decide(db, user, params["leave_id"], {"decision": "Reject", "reason": params.get("reason") or ""}, balance_loader)
+    return {"ok": True, "leave_id": result["id"], "new_status": result["status"]}
 
 
 async def execute_send_recognition(db, params: dict, user: dict) -> Dict[str, Any]:

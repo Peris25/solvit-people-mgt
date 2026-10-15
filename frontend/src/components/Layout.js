@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Outlet, Navigate } from 'react-router-dom';
+import { Outlet, Navigate, Link } from 'react-router-dom';
+import { useNotifications } from '../context/NotificationContext';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from './Sidebar';
 import AIAgent from './AIAgent';
@@ -8,6 +9,7 @@ import RequiredPasswordChange from './RequiredPasswordChange';
 
 export default function Layout() {
   const { user } = useAuth();
+  const unreadCount = useNotifications()?.unreadCount;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
 
@@ -31,6 +33,7 @@ export default function Layout() {
   if (user.role === 'solver') {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#F5F5F5', fontFamily: 'Nunito Sans, sans-serif' }}>
+        <nav style={{ padding: '12px', textAlign: 'right' }}><Link to="/notifications">Notifications{unreadCount > 0 ? ` (${unreadCount} unread)` : ''}</Link></nav>
         <Outlet />
         <FirstLoginTour />
       </div>

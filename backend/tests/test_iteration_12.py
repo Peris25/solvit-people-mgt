@@ -13,6 +13,7 @@ import os
 import time
 import pytest
 import requests
+from datetime import date, timedelta
 
 BASE = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 PWD = _DEMO_PWD
@@ -186,8 +187,9 @@ class TestLeaveCreate:
         payload = {
             "employee_id": me["id"],
             "leave_type": "Annual",
-            "start_date": "2026-03-02",
-            "end_date": "2026-03-04",
+            "start_date": (date.today() + timedelta(days=14)).isoformat(),
+            "end_date": (date.today() + timedelta(days=16)).isoformat(),
+            "handover_contact_id": me["line_manager_id"],
             "handover_contact": "Will hand over to deputy",
             "line_manager_id": me["line_manager_id"],
             "notes": "UAT regression",

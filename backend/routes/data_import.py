@@ -7,8 +7,9 @@ from database import get_db
 from utils.auth import get_current_user
 import uuid
 from utils.employee_integrity import (
-    normalize_email, integrity_write, insert_employee, resolve_manager_name, tenant_query,
+    normalize_email, integrity_write, insert_employee, resolve_manager_name, tenant_query, tenant_of,
 )
+from utils.solver_access import normalize_phone, solver_identity_write, solver_access
 import io
 import os
 from openpyxl import Workbook, load_workbook
@@ -211,7 +212,14 @@ async def _validate_rows(kind: str, rows: list, db) -> list:
             if e.get("work_email"):
                 existing_emails.add(str(e["work_email"]).strip().lower())
     elif kind == "solver":
-        existing_ids = {s.get("solver_code") for s in await db.solvers.find({}, {"solver_code": 1}).to_list(1000)}
+        saved_solvers = await db.solvers.find(tenant_query("solvit"), {"solver_code": 1, "phone_number": 1}).to_list(None)
+        existing_ids = {s.get("solver_code") for s in saved_solvers}
+        existing_phones = set()
+        for saved in saved_solvers:
+            try:
+                existing_phones.add(normalize_phone(saved.get("phone_number")))
+            except HTTPException:
+                pass  # Report legacy bad phones separately; never silently rewrite.
         existing_emails = set()
     else:
         existing_ids = set()
@@ -269,6 +277,18 @@ async def _validate_rows(kind: str, rows: list, db) -> list:
                     normalized["Employee ID"] = code
                     existing_ids.add(code)
                 normalized["line_manager_id"] = await resolve_manager_name(db, record.get("Line Manager Full Name"))
+            except HTTPException as ex:
+                errors.append(ex.detail)
+        elif kind == "solver":
+            try:
+                phone = normalize_phone(record.get("Phone Number"))
+                normalized["Phone Number"] = phone
+                if phone in existing_phones:
+                    errors.append("Solver phone already exists in the system or import batch")
+                existing_phones.add(phone)
+                code = str(record.get("Solver ID") or "").strip()
+                if code:
+                    existing_ids.add(code)
             except HTTPException as ex:
                 errors.append(ex.detail)
 
@@ -340,6 +360,10 @@ async def execute_import(request: Request):
     if not cache_path.exists():
         raise HTTPException(status_code=404, detail="Validation cache expired — re-upload the file")
     db = get_db()
+    if kind == "solver":
+        if tenant_of(user) != "solvit":
+            raise HTTPException(403, "Solver import template is configured for the Solvit tenant only")
+        await solver_access(db, user, write=True)
     rows = _read_xlsx(cache_path.read_bytes())
     results = await _validate_rows(kind, rows, db)
 
@@ -406,7 +430,12 @@ async def execute_import(request: Request):
                     "imported_at": now,
                     "imported_by": user["id"],
                 }
-                await db.solvers.insert_one(doc)
+                async with integrity_write(db):
+                    checked = await solver_identity_write(db, {"phone_number": doc["phone_number"], "email": doc.get("email")}, user)
+                    doc.update(checked)
+                    if await db.solvers.find_one({"$and": [tenant_query(tenant_of(user)), {"solver_code": doc["solver_code"]}]}):
+                        raise HTTPException(409, "Solver code already registered")
+                    await db.solvers.insert_one(doc)
                 imported += 1
             else:  # historical_performance
                 doc = {

@@ -83,6 +83,8 @@ def test_first_login_has_only_recovery_access_and_secure_cookies(session):
     ("GET", "/api/leave"), ("GET", "/api/lnd/training"),
     ("GET", "/api/lnd/idp/staff"), ("GET", "/api/lnd/skills-matrix/staff"),
     ("GET", "/api/exports/employees.csv"), ("GET", "/api/dashboard/line-manager"),
+    ("GET", "/api/dashboard/staff-home?employee_id=other"),
+    ("GET", "/api/automation/notifications/centre"), ("PUT", "/api/automation/notifications/forged/read"),
     ("POST", "/api/access/users/employee-account"), ("PUT", "/api/access/users/forged/role"),
     ("POST", "/api/forms/form-31/submit"), ("PUT", "/api/leave/forged/decision"),
     ("PUT", "/api/lnd/training/forged/decision"), ("POST", "/api/leave"),
@@ -311,6 +313,29 @@ def test_legacy_access_logout_uses_safe_user_cutoff(session):
     assert client.post("/api/auth/refresh").status_code == 401
     client.cookies.clear()
     assert sign_in(client).status_code == 200
+
+
+def test_legacy_logout_revokes_tokens_issued_at_exactly_the_cutoff_clock_tick(session):
+    client, _, user = session
+    fixed = datetime.now(timezone.utc) - timedelta(seconds=2)
+
+    class FixedClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed
+
+    with patch.object(auth, "datetime", FixedClock), patch.object(security, "datetime", FixedClock):
+        payload = jwt.decode(access_for(user), auth.get_jwt_secret(), algorithms=["HS256"])
+        for key in ("pwd", "jti", "sid"):
+            payload.pop(key, None)
+        old_access = jwt.encode(payload, auth.get_jwt_secret(), algorithm="HS256")
+        old_refresh = refresh_for(user)
+        set_cookie(client, "access_token", old_access)
+        assert client.post("/api/auth/logout").status_code == 200
+        set_cookie(client, "access_token", old_access)
+        assert client.get("/api/auth/me").status_code == 401
+        set_cookie(client, "refresh_token", old_refresh)
+        assert client.post("/api/auth/refresh").status_code == 401
 
 
 def test_normal_refresh_does_not_revoke_an_unexpired_access_token(session):

@@ -68,15 +68,15 @@ class TestFormsListMetadata:
         assert "finance" in roles or any("finance" in str(r).lower() for r in roles)
 
 
-# ---------------- Sequential signing flow form-15 ----------------
+# ---------------- Sequential signing flow form-13 ----------------
 class TestFormWorkflowSigning:
     submission_id = None
 
-    def test_a_start_form15(self, hr_session, emp_session):
+    def test_a_start_form13(self, hr_session, emp_session):
         # Get an employee id
         emps = hr_session.get(f"{BASE_URL}/api/employees").json()
         emp_id = emp_session.get(f"{BASE_URL}/api/auth/me").json()["employee_id"]
-        r = hr_session.post(f"{BASE_URL}/api/forms/form-15/start",
+        r = hr_session.post(f"{BASE_URL}/api/forms/form-13/start",
                             json={"employee_id": emp_id, "employee_name": "TEST Emp", "data": {"leave_type": "Annual"}})
         assert r.status_code == 200, r.text
         d = r.json()
@@ -116,7 +116,7 @@ class TestFormWorkflowSigning:
 
 class TestSubmitMissingSigs:
     def test_submit_missing_required_returns_400(self, hr_session):
-        r = hr_session.post(f"{BASE_URL}/api/forms/form-15/submit",
+        r = hr_session.post(f"{BASE_URL}/api/forms/form-13/submit",
                             json={"data": {"leave_type": "Annual"}, "signatures": {}})
         assert r.status_code == 400
         msg = r.json().get("detail", "")
@@ -128,7 +128,7 @@ class TestMyTasks:
         # Create a fresh submission so manager has a pending task
         emps = mgr_session.get(f"{BASE_URL}/api/employees").json()
         emp_id = emp_session.get(f"{BASE_URL}/api/auth/me").json()["employee_id"]
-        start = mgr_session.post(f"{BASE_URL}/api/forms/form-15/start",
+        start = mgr_session.post(f"{BASE_URL}/api/forms/form-13/start",
                                  json={"employee_id": emp_id, "employee_name": "TEST Emp"})
         assert start.status_code == 200
         sid = start.json()["id"]

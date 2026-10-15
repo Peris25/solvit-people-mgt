@@ -102,6 +102,9 @@ async def resolve_user_employee(db, user):
         canonical = await find_employee(db, employee_key(employee), tenant)
         if not canonical or canonical["_id"] != employee["_id"]:
             raise HTTPException(409, "Account employee identity needs an integrity review.")
+        storage = await find_employee(db, str(employee["_id"]), tenant)
+        if not storage or storage["_id"] != employee["_id"]:
+            raise HTTPException(409, "Account employee aliases need an integrity review.")
         # Do not authorize two accounts for one employee, even before migration.
         aliases = [employee_key(employee), str(employee["_id"])]
         owners = await db.users.find({"$and": [tenant_query(tenant), {

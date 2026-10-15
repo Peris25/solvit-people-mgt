@@ -1,13 +1,16 @@
-from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 from bson import ObjectId
 from database import get_db
-from utils.employee_integrity import user_employee_aliases, employee_key, integrity_write
+from utils.employee_integrity import user_employee_aliases, employee_key, integrity_write, tenant_of, tenant_query
 from utils.employee_access import authorize_employee, scoped_employee_query, reference_ids, find_linked_record, saved_manager, reject_identity_changes
 from utils.auth import get_current_user
 import uuid
+from pathlib import Path
+import os
 
 router = APIRouter(prefix="/leave", tags=["leave"])
 
@@ -18,7 +21,7 @@ LEAVE_TYPE_DETAILS = {
     "Sick":          {"days_entitlement": 30, "description": "30 days full pay + 15 days half pay"},
     "Maternity":     {"days_entitlement": 90, "description": "3 months paid maternity leave"},
     "Paternity":     {"days_entitlement": 14, "description": "2 weeks paternity leave"},
-    "Compassionate": {"days_entitlement": 14, "description": "Compassionate leave — 14 days per event"},
+    "Compassionate": {"days_entitlement": 14, "description": "Handbook v2: 14 working days per calendar year; additional unpaid days require HR exception"},
     "Unpaid":        {"days_entitlement": 0,  "description": "Unpaid leave — entitlement at HR discretion"},
 }
 
@@ -43,7 +46,14 @@ class LeaveRequest(BaseModel):
     handover_contact: Optional[str] = None
     handover_contact_id: Optional[str] = None
     line_manager_id: Optional[str] = None
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(None, max_length=8000)
+    supporting_document_id: Optional[str] = None
+    expected_delivery_date: Optional[str] = None
+    birth_date: Optional[str] = None
+    family_relationship: Optional[str] = None
+    emergency_sick: bool = False
+    early_maternity_advice: bool = False
+    request_token: Optional[str] = Field(None, max_length=128)
 
 
 def fmt(doc):
@@ -57,23 +67,14 @@ def fmt(doc):
     return doc
 
 
-def calculate_working_days(start: str, end: str) -> int:
-    try:
-        start_dt = datetime.fromisoformat(start)
-        end_dt = datetime.fromisoformat(end)
-        days = 0
-        current = start_dt
-        while current <= end_dt:
-            if current.weekday() < 5:  # Mon-Fri
-                days += 1
-            current += timedelta(days=1)
-        return max(days, 1)
-    except Exception:
-        return 1
+def calculate_working_days(start: str, end: str) -> float:
+    from utils.leave_policy import working_units
+    return working_units(start, end)
 
 
 @router.get("/types")
 async def get_leave_types(request: Request):
+    await get_current_user(request)
     return await _active_leave_types()
 
 
@@ -85,217 +86,145 @@ async def list_leave_requests(request: Request, employee_id: Optional[str] = Non
     if status:
         query = {"$and": [query, {"status": status}]}
     requests = await db.leave_requests.find(query).sort("created_at", -1).to_list(200)
-    return [fmt(r) for r in requests]
+    from utils.leave_workflow import view
+    return [await view(db, user, row) for row in requests]
 
 
 @router.post("")
 async def create_leave_request(lr: LeaveRequest, request: Request):
+    from utils.leave_workflow import create
+    user = await get_current_user(request)
+    if lr.leave_type not in await _active_leave_types():
+        raise HTTPException(422, "This leave category is not currently available; contact HR")
+    async def balance_loader(employee_id):
+        return await get_leave_balances(employee_id, request)
+    return await create(get_db(), user, lr.model_dump(), balance_loader)
+
+
+@router.post("/preview")
+async def preview_leave(lr: LeaveRequest, request: Request, request_id: Optional[str] = None):
+    from utils.leave_policy import preview
     user = await get_current_user(request)
     db = get_db()
-    employee = await authorize_employee(db, user, lr.employee_id, "M18", write=True)
-    canonical_id = employee_key(employee)
-    manager_id = await saved_manager(db, user, employee, lr.line_manager_id)
-    working_days = calculate_working_days(lr.start_date, lr.end_date)
-
-    # Check for high-activity period flag (Jan, Jul-Dec)
-    try:
-        start_month = int(lr.start_date.split("-")[1])
-        flag_hr = lr.leave_type == "Annual" and working_days > 5 and start_month in [1, 7, 8, 9, 10, 11, 12]
-    except Exception:
-        flag_hr = False
-
-    doc = {
-        "id": str(uuid.uuid4()),
-        "tenant_id": "solvit",
-        **lr.model_dump(),
-        "employee_id": canonical_id, "line_manager_id": manager_id,
-        "working_days": working_days,
-        "status": "Pending_Manager",
-        "flag_hr_attention": flag_hr,
-        "employee_signature": None,
-        "manager_decision": None,
-        "manager_reason": None,
-        "manager_decided_at": None,
-        "hr_confirmed": False,
-        "return_confirmed": False,
-        "submitted_by": user["id"],
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    async with integrity_write(db):
-        employee = await authorize_employee(db, user, canonical_id, "M18", write=True)
-        doc["line_manager_id"] = await saved_manager(db, user, employee, lr.line_manager_id)
-        result = await db.leave_requests.insert_one(doc)
-    doc["_id"] = str(result.inserted_id)
-
-    # ── Email notifications ──────────────────────────────────────────────────
-    # 1) Confirmation to the requesting employee (leave.received)
-    # 2) Approval request to the line manager (leave.pending_lm)
-    # Both are best-effort: if SMTP isn't configured the leave still saves.
-    try:
-        from utils.email_service import send_email
-        emp = employee
-        emp_email = emp.get("work_email")
-        emp_name = emp.get("full_name", "")
-        ctx_base = {
-            "employee_name": emp_name,
-            "leave_type": lr.leave_type,
-            "start_date": lr.start_date,
-            "end_date": lr.end_date,
-            "days": working_days,
-        }
-        if emp_email:
-            await send_email(db, to=emp_email, template_key="leave.received", context=ctx_base)
-        # Resolve line manager email (lr.line_manager_id is canonical employees.id)
-        lm_id = doc["line_manager_id"]
-        if lm_id:
-            lm = await db.employees.find_one({"id": lm_id}) or {}
-            if lm.get("work_email"):
-                await send_email(
-                    db,
-                    to=lm["work_email"],
-                    template_key="leave.pending_lm",
-                    context={**ctx_base, "manager_name": lm.get("full_name", "")},
-                )
-    except Exception as e:
-        # Never let email failure block the API response.
-        import logging
-        logging.getLogger(__name__).warning("Leave-submit email side-effect failed: %s", e)
-
-    from automation.engine import automation_engine
-    await automation_engine.fire_event("leave_request_submitted", {
-        "leave_request_id": doc["id"],
-        "employee_id": canonical_id,
-        "days": working_days,
-        "start_month": start_month if 'start_month' in locals() else 0,
-        "leave_type": lr.leave_type,
-        "flag_hr": flag_hr
-    })
-    return doc
+    employee = await authorize_employee(db, user, lr.employee_id, "M18")
+    existing = await find_linked_record(db.leave_requests, request_id, user) if request_id else None
+    if existing:
+        target = await authorize_employee(db, user, existing.get("employee_id"), "M18")
+        if target["_id"] != employee["_id"]:
+            raise HTTPException(403, "Preview reference belongs to another employee")
+    return await preview(db, employee, lr.model_dump(), enforce=False, exclude=existing["_id"] if existing else None)
 
 
 @router.put("/{request_id}/decision")
 async def leave_decision(request_id: str, request: Request):
+    from utils.leave_workflow import decide
+    user = await get_current_user(request)
+    body = await request.json()
+    if not isinstance(body, dict) or not isinstance(body.get("reason", ""), str) or len(body.get("reason", "")) > 4000:
+        raise HTTPException(422, "A valid decision and text reason are required")
+    async def balance_loader(employee_id):
+        return await get_leave_balances(employee_id, request)
+    return await decide(get_db(), user, request_id, body, balance_loader)
+
+
+@router.put("/{request_id}/cancel")
+async def cancel_leave(request_id: str, request: Request):
+    from utils.leave_workflow import cancel
+    user = await get_current_user(request)
+    body = await request.json()
+    if not isinstance(body, dict) or not isinstance(body.get("reason", ""), str) or len(body.get("reason", "")) > 4000:
+        raise HTTPException(422, "A valid withdrawal reason is required")
+    return await cancel(get_db(), user, request_id, body.get("reason", ""))
+
+
+@router.post("/evidence")
+async def upload_leave_evidence(request: Request, file: UploadFile = File(...), document_type: str = Form(...), employee_id: Optional[str] = Form(None)):
     user = await get_current_user(request)
     db = get_db()
+    target = employee_id or user.get("employee_id")
+    employee = await authorize_employee(db, user, target, "M18", write=True)
+    if employee_key(employee) != user.get("employee_id") and user.get("role") not in ("hr_admin", "hr_manager"):
+        raise HTTPException(403, "Only HR may provide a document for another employee")
+    if document_type not in ("medical_certificate", "maternity_confirmation", "birth_notification"):
+        raise HTTPException(422, "Unsupported leave document type")
+    content = await file.read(5 * 1024 * 1024 + 1)
+    if not content or len(content) > 5 * 1024 * 1024:
+        raise HTTPException(422, "Supporting documents must be non-empty and at most 5 MB")
+    extension = ".pdf" if content.startswith(b"%PDF-") else ".png" if content.startswith(b"\x89PNG\r\n\x1a\n") else ".jpg" if content.startswith(b"\xff\xd8\xff") else None
+    if not extension:
+        raise HTTPException(422, "Upload a PDF, PNG or JPEG supporting document")
+    key = str(uuid.uuid4())
+    root = Path(os.environ.get("LEAVE_EVIDENCE_ROOT", str(Path(__file__).resolve().parents[1] / "private_uploads" / "leave"))).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    path = (root / (key + extension)).resolve()
+    if not path.is_relative_to(root):
+        raise HTTPException(422, "Invalid document path")
+    try:
+        with path.open("xb") as destination:
+            destination.write(content)
+    except OSError:
+        raise HTTPException(503, "Private document storage is unavailable")
+    try:
+        await db.leave_evidence.insert_one({"id": key, "tenant_id": tenant_of(user), "employee_id": employee_key(employee),
+                                           "document_type": document_type, "storage_name": path.name, "size_bytes": len(content),
+                                           "uploaded_by": user["id"], "created_at": datetime.now(timezone.utc).isoformat()})
+    except Exception:
+        path.unlink(missing_ok=True)  # Only this newly created, checked file.
+        raise HTTPException(503, "The supporting document could not be saved")
+    return {"id": key, "document_type": document_type, "size_bytes": len(content)}
+
+
+@router.put("/{request_id}/supporting-info")
+async def supplement_leave(request_id: str, request: Request):
+    from utils.leave_workflow import supplement
+    user = await get_current_user(request)
     body = await request.json()
-    if body.get("decision") not in ("Approve", "Reject", "Discussion"):
-        raise HTTPException(422, "Invalid leave decision")
-    async with integrity_write(db):
-        current = await find_linked_record(db.leave_requests, request_id, user)
-        await authorize_employee(db, user, current.get("employee_id"), "M18", approve=True)
-        reject_identity_changes(body, current)
-        update = {"updated_at": datetime.now(timezone.utc).isoformat(),
-                  "manager_decision": body["decision"], "manager_reason": body.get("reason", ""),
-                  "manager_decided_at": datetime.now(timezone.utc).isoformat(),
-                  "status": {"Approve": "Approved", "Reject": "Rejected", "Discussion": "Discussion_Requested"}[body["decision"]]}
-        result = await db.leave_requests.find_one_and_update(
-            {"_id": current["_id"], "tenant_id": current.get("tenant_id", "solvit")},
-            {"$set": update}, return_document=True
-        )
-        if not result:
-            raise HTTPException(404, "Leave request not found")
+    if not isinstance(body, dict):
+        raise HTTPException(422, "Supporting information must be an object")
+    for key, value in body.items():
+        if key in {"emergency_sick", "early_maternity_advice"} and not isinstance(value, bool):
+            raise HTTPException(422, "Leave flags must be booleans")
+        if key not in {"emergency_sick", "early_maternity_advice"} and (not isinstance(value, str) or len(value) > 8000):
+            raise HTTPException(422, "Supporting information must contain valid text")
+    return await supplement(get_db(), user, request_id, body)
 
-    # Fix 4d — auto-notify employee on approve/reject
-    if update.get("status") in ("Approved", "Rejected"):
-        await db.notifications.insert_one({
-            "id": str(uuid.uuid4()),
-            "tenant_id": "solvit",
-            "recipient_id": result.get("employee_id"),
-            "category": "Leave",
-            "title": f"Leave {update['status']}",
-            "message": f"{result.get('leave_type','Annual')} leave ({result.get('start_date')} → {result.get('end_date')}) {update['status'].lower()} by {user.get('full_name') or user.get('email')}. {('Reason: ' + update.get('manager_reason','')) if update['status']=='Rejected' else ''}".strip(),
-            "is_read": False,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        })
-        # Email the employee with the decision (best-effort)
-        try:
-            from utils.email_service import send_email
-            emp = await db.employees.find_one({"id": result.get("employee_id")}) or {}
-            if emp.get("work_email"):
-                tpl_key = "leave.approved" if update["status"] == "Approved" else "leave.rejected"
-                ctx = {
-                    "employee_name": emp.get("full_name", ""),
-                    "leave_type": result.get("leave_type", "Annual"),
-                    "start_date": result.get("start_date"),
-                    "end_date": result.get("end_date"),
-                    "reason": update.get("manager_reason") or "—",
-                }
-                await send_email(db, to=emp["work_email"], template_key=tpl_key, context=ctx)
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning("Leave-decision email side-effect failed: %s", e)
 
-    if update.get("status") == "Approved":
-        from automation.engine import automation_engine
-        await automation_engine.fire_event("leave_approved", {"employee_id": result.get("employee_id"), "start_date": result.get("start_date")})
-
-    return fmt(result)
+@router.get("/evidence/{document_id}")
+async def download_leave_evidence(document_id: str, request: Request):
+    user = await get_current_user(request)
+    db = get_db()
+    row = await find_linked_record(db.leave_evidence, document_id, user)
+    employee = await authorize_employee(db, user, row.get("employee_id"), "M18")
+    if employee_key(employee) != user.get("employee_id") and user.get("role") not in ("hr_admin", "hr_manager"):
+        raise HTTPException(403, "Medical/birth documents are restricted to the employee and HR")
+    root = Path(os.environ.get("LEAVE_EVIDENCE_ROOT", str(Path(__file__).resolve().parents[1] / "private_uploads" / "leave"))).resolve()
+    path = (root / str(row.get("storage_name", ""))).resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        raise HTTPException(404, "Supporting document unavailable")
+    return FileResponse(path, filename="leave-evidence" + path.suffix, headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
 
 @router.get("/balances/{employee_id}")
 async def get_leave_balances(employee_id: str, request: Request):
+    from utils.leave_balances import balances
     user = await get_current_user(request)
     db = get_db()
-    emp = await authorize_employee(db, user, employee_id, "M18")
-
-    used = {}
-    current_year = datetime.now(timezone.utc).year
-    requests = await db.leave_requests.find({
-        "employee_id": {"$in": reference_ids(emp)},
-        "tenant_id": "solvit",
-        "status": "Approved",
-        "start_date": {"$regex": f"^{current_year}"}
-    }).to_list(100)
-    for r in requests:
-        lt = r.get("leave_type", "Annual")
-        used[lt] = used.get(lt, 0) + r.get("working_days", 0)
-
-    # Compute completed months of service in current leave year (Jan-current month)
-    now = datetime.now(timezone.utc)
-    completed_months_in_year = max(0, now.month - 1)  # Jan = 0 completed months
-    if emp and emp.get("start_date"):
-        try:
-            sd = datetime.fromisoformat(emp["start_date"])
-            if sd.year == now.year:
-                completed_months_in_year = max(0, now.month - sd.month - (0 if now.day >= sd.day else 1))
-        except Exception:
-            pass
-    accrued_annual = round(completed_months_in_year * 1.75, 2)
-
-    balances = {}
-    types = await _active_leave_types()
-    for leave_type, info in types.items():
-        entitlement = info["days_entitlement"]
-        used_days = used.get(leave_type, 0)
-        entry = {
-            "entitlement": entitlement,
-            "used": used_days,
-            "remaining": max(0, entitlement - used_days),
-            "description": info["description"]
-        }
-        if leave_type == "Annual":
-            # Fix 3a — show accrued working figure alongside annual entitlement
-            entry["accrued_kenyan_act"] = accrued_annual
-            entry["completed_months_in_year"] = completed_months_in_year
-            entry["remaining"] = round(max(0, accrued_annual - used_days), 2)
-            entry["balance_label"] = "Accrued Balance"
-        balances[leave_type] = entry
-
-    # Top-level convenience keys
-    annual_days_remaining = balances.get("Annual", {}).get("remaining", 0)
-    sick_days_remaining = balances.get("Sick", {}).get("remaining", 0)
-    return {**balances, "annual_days_remaining": annual_days_remaining, "sick_days_remaining": sick_days_remaining,
-            "accrued_annual": accrued_annual}
+    employee = await authorize_employee(db, user, employee_id, "M18")
+    return await balances(db, employee)
 
 
 @router.get("/rollover/{employee_id}")
 async def get_rollover_balance(employee_id: str, request: Request):
-    """Fix 3b — rollover balance display. Banner if non-zero with 31 March deadline."""
+    """Display preserved carry-forward without applying automatic forfeiture."""
     user = await get_current_user(request)
     db = get_db()
     emp = await authorize_employee(db, user, employee_id, "M18")
     # rollover record schema: { tenant_id, employee_id, year, carried_forward, used, status }
-    rec = await db.leave_rollover.find_one({"tenant_id": "solvit", "employee_id": {"$in": reference_ids(emp)}, "year": datetime.now(timezone.utc).year})
+    records = await db.leave_rollover.find({"$and": [tenant_query(tenant_of(user)), {
+        "employee_id": {"$in": [*reference_ids(emp), emp["_id"]]}, "year": datetime.now(timezone.utc).year}]}).to_list(2)
+    if len(records) > 1:
+        raise HTTPException(409, "Duplicate carry-forward records require HR reconciliation")
+    rec = records[0] if records else None
     from routes.masters_settings import get_setting
     deadline = await get_setting("retention", "rollover_leave_deadline_month_day", "03-31") or "03-31"
     now = datetime.now(timezone.utc)
@@ -305,10 +234,13 @@ async def get_rollover_balance(employee_id: str, request: Request):
         return {
             "year": now.year, "carried_forward": 0, "used": 0, "remaining": 0,
             "deadline": deadline, "deadline_passed": deadline_passed,
-            "banner": f"No carry-forward leave from {now.year - 1}. Rollover deadline is {deadline.replace('-', '/')}.",
+            "banner": "No carry-forward record is available. HR and manager confirmation is required before using carry-forward leave.",
         }
-    used = int(rec.get("used", 0))
-    cf = int(rec.get("carried_forward", 0))
+    used = rec.get("used", 0)
+    cf = rec.get("carried_forward", 0)
+    from utils.leave_balances import numeric
+    if not numeric(used) or not numeric(cf):
+        raise HTTPException(409, "Rollover figures require HR reconciliation")
     return {
         "year": rec.get("year"),
         "carried_forward": cf,
@@ -316,7 +248,7 @@ async def get_rollover_balance(employee_id: str, request: Request):
         "remaining": max(0, cf - used),
         "deadline": deadline,
         "deadline_passed": deadline_passed,
-        "banner": f"Unutilised rollover leave must be taken by {deadline.replace('-', '/')}. Days not taken by this date will be forfeited.",
+        "banner": "Recorded carry-forward is preserved. Any planning deadline or forfeiture requires HR and manager confirmation; no automatic forfeiture is applied.",
     }
 
 
@@ -328,6 +260,8 @@ async def leave_calendar(request: Request, year: Optional[int] = None, month: Op
     now = datetime.now(timezone.utc)
     year = year or now.year
     month = month or now.month
+    if not 1 <= month <= 12 or not 1900 <= year <= 2200:
+        raise HTTPException(422, "A valid calendar month and year are required")
     start = f"{year:04d}-{month:02d}-01"
     # Compute month end
     if month == 12:
@@ -335,19 +269,17 @@ async def leave_calendar(request: Request, year: Optional[int] = None, month: Op
     else:
         next_m = f"{year:04d}-{month+1:02d}-01"
 
-    query = {"tenant_id": "solvit", "status": {"$in": ["Approved", "Pending"]},
+    query = {"status": {"$in": ["Approved", "Pending", "Pending_Manager", "Pending_HR"]},
              "start_date": {"$lt": next_m}, "end_date": {"$gte": start}}
     query = {"$and": [query, await scoped_employee_query(db, user, "M18")]}
     rows = await db.leave_requests.find(query).to_list(500)
     # Enrich with employee
-    emp_ids = list({r.get("employee_id") for r in rows if r.get("employee_id")})
-    emps = {}
-    async for e in db.employees.find({"id": {"$in": emp_ids}}, {"id": 1, "full_name": 1, "department": 1}):
-        emps[e["id"]] = e
-
     out = []
     for r in rows:
-        emp = emps.get(r.get("employee_id"), {})
+        try:
+            emp = await authorize_employee(db, user, r.get("employee_id"), "M18")
+        except HTTPException:
+            continue
         out.append({
             "id": str(r.get("id", r.get("_id", ""))),
             "employee_id": r.get("employee_id"),

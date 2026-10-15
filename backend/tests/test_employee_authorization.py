@@ -116,7 +116,11 @@ def test_forged_employee_read_is_denied(kind):
 
 def test_forged_manager_rejected_and_saved_manager_used():
     db = fixture()
-    data = {"employee_id": "staff", "leave_type": "Annual", "start_date": "2026-10-20", "end_date": "2026-10-21"}
+    from datetime import timedelta
+    from utils.leave_policy import today
+    db.employees.docs[1].update(start_date="2020-01-01", department="Operations")
+    start = today() + timedelta(days=14)
+    data = {"employee_id": "staff", "leave_type": "Annual", "start_date": start.isoformat(), "end_date": (start + timedelta(days=1)).isoformat(), "notes": "Cover responsibilities and deadlines", "handover_contact_id": "other"}
     with as_user(leave, db, actor()):
         with pytest.raises(HTTPException):
             run(leave.create_leave_request(leave.LeaveRequest(**data, line_manager_id="other-boss"), None))
@@ -194,7 +198,7 @@ def test_form_solver_id_cannot_bypass_subject_authorization():
 
 def test_signing_rejects_forged_nested_manager_without_employee_field():
     db = fixture()
-    db.form_submissions.docs = [{"_id": ObjectId(), "id": "form", "form_id": "form-15", "tenant_id": "solvit", "status": "InProgress", "subject_employee_id": "staff", "next_required_role": "employee", "data": {}}]
+    db.form_submissions.docs = [{"_id": ObjectId(), "id": "form", "form_id": "form-13", "tenant_id": "solvit", "status": "InProgress", "subject_employee_id": "staff", "next_required_role": "employee", "data": {}}]
     with as_user(forms, db, actor()):
         with pytest.raises(HTTPException) as error:
             run(forms.sign_form_step("form", request({"signature": "Synthetic", "data": {"line_manager_id": "other-boss"}})))

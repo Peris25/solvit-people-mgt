@@ -71,6 +71,8 @@ class TestFinanceLeaveAccess:
             "start_date": start,
             "end_date": end,
             "reason": "TEST_iter16 finance leave",
+            "notes": "Synthetic handover: cover open tasks and deadlines",
+            "handover_contact_id": me["line_manager_id"],
         }
         r = sessions["finance"].post(f"{BASE_URL}/api/leave", json=payload)
         assert r.status_code in (200, 201), f"POST /api/leave failed: {r.status_code} {r.text}"

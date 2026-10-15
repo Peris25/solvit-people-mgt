@@ -101,6 +101,7 @@ export const getReminderRuns = (params) => api.get('/reminders/runs', { params }
 export const getEmployee = (id) => api.get(`/employees/${id}`);
 export const getMyEmployee = () => api.get('/employees/me');
 export const getLineManagerWidget = () => api.get('/dashboard/line-manager');
+export const getStaffHome = () => api.get('/dashboard/staff-home');
 export const getAccessMatrix = () => api.get('/access/matrix');
 export const listUsersWithRoles = () => api.get('/access/users');
 export const updateUserRole = (user_id, role) => api.put(`/access/users/${user_id}/role`, { role });
@@ -223,6 +224,12 @@ export const updateDisCase = (id, data) => api.put(`/disciplinary/${id}`, data);
 export const getLeaveRequests = (params) => api.get('/leave', { params });
 export const createLeaveRequest = (data) => api.post('/leave', data);
 export const leaveDecision = (id, data) => api.put(`/leave/${id}/decision`, data);
+export const previewLeave = (data, params) => api.post('/leave/preview', data, { params });
+export const cancelLeave = (id, reason) => api.put(`/leave/${id}/cancel`, { reason });
+export const supplementLeave = (id, data) => api.put(`/leave/${id}/supporting-info`, data);
+export const uploadLeaveEvidence = data => api.post('/leave/evidence', data);
+export const leaveEvidenceUrl = id => `${api.defaults.baseURL}/leave/evidence/${encodeURIComponent(id)}`;
+export const downloadLeaveEvidence = id => api.get(`/leave/evidence/${encodeURIComponent(id)}`, { responseType: 'blob' });
 export const getLeaveBalances = (empId) => api.get(`/leave/balances/${empId}`);
 export const getLeaveTypes = () => api.get('/leave/types');
 export const getLeaveRollover = (empId) => api.get(`/leave/rollover/${empId}`);
@@ -296,6 +303,7 @@ export const toggleRule = (ruleId) => api.put(`/automation/${ruleId}/toggle`);
 export const getTasks = (params) => api.get('/automation/tasks', { params });
 export const updateTask = (id, data) => api.put(`/automation/tasks/${id}`, data);
 export const getNotifications = () => api.get('/automation/notifications');
+export const getNotificationCentre = params => api.get('/automation/notifications/centre', { params });
 export const markNotificationRead = (id) => api.put(`/automation/notifications/${id}/read`);
 
 // Documents

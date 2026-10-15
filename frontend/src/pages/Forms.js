@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 export default function Forms() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [forms, setForms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
@@ -23,6 +25,7 @@ export default function Forms() {
   };
 
   const openForm = async (form) => {
+    if (form.id === 'form-15') { navigate('/leave'); return; }
     setResult(null);
     setResponses({});
     setSignature('');

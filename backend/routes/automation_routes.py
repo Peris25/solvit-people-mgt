@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Query
+from typing import Literal, Optional
 from database import get_db
 from utils.employee_access import find_linked_record, reject_identity_changes
-from utils.task_access import authorize_task, authorize_notification
+from utils.task_access import authorize_task
 from utils.auth import get_current_user
 from datetime import datetime, timezone
 import uuid
@@ -89,27 +90,20 @@ async def update_task(task_id: str, request: Request):
 
 @router.get("/notifications")
 async def get_notifications(request: Request):
+    from utils.notification_centre import list_inbox
     user = await get_current_user(request)
-    db = get_db()
-    query = {"tenant_id": "solvit", "$or": [{"recipient_id": user["id"]}, {"recipient_role": user["role"]}]}
-    notifications = await db.notifications.find(query).sort("created_at", -1).limit(50).to_list(50)
-    visible = []
-    for notification in notifications:
-        try:
-            await authorize_notification(db, user, notification)
-        except HTTPException as error:
-            if error.status_code == 403:
-                continue
-            raise
-        visible.append(fmt(notification))
-    return visible
+    return (await list_inbox(get_db(), user))["items"]
+
+
+@router.get("/notifications/centre")
+async def notification_centre(request: Request, category: Optional[Literal["Leave", "Approvals", "Onboarding", "Training", "Announcements", "Performance", "Recognition", "Policies", "System"]] = None,
+                              kind: Optional[Literal["Action required", "Updates", "Approvals"]] = None, read_status: Literal["all", "unread", "read"] = "all", offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100)):
+    from utils.notification_centre import list_inbox
+    return await list_inbox(get_db(), await get_current_user(request), category=category, kind=kind, read_status=read_status, offset=offset, limit=limit)
 
 
 @router.put("/notifications/{notif_id}/read")
 async def mark_read(notif_id: str, request: Request):
+    from utils.notification_centre import read_notification
     user = await get_current_user(request)
-    db = get_db()
-    current = await find_linked_record(db.notifications, notif_id, user)
-    await authorize_notification(db, user, current)
-    await db.notifications.update_one({"_id": current["_id"]}, {"$set": {"is_read": True}})
-    return {"message": "Marked as read"}
+    return await read_notification(get_db(), user, notif_id)

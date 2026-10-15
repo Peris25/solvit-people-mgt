@@ -6,13 +6,14 @@ from bson import ObjectId
 from database import get_db
 from utils.auth import get_current_user, require_roles, format_doc
 import uuid
+from copy import deepcopy
 from pymongo.errors import DuplicateKeyError
 from utils.employee_access import authorize_employee, scoped_employee_query
 from utils.access_matrix import get_module_access
 from utils.employee_integrity import (
     employee_key, find_employee, resolve_user_employee, normalize_email,
     ensure_unique_employee, validate_manager, integrity_write, insert_employee, email_matches, is_direct_report, user_employee_aliases,
-    validate_manager_departure, change_employee_state,
+    validate_manager_departure, change_employee_state, tenant_of,
 )
 
 router = APIRouter(prefix="/employees", tags=["employees"])
@@ -84,6 +85,26 @@ def fmt(doc):
     return doc
 
 
+def employee_view(doc, user):
+    """Private HR/self views stay distinct from a manager's team metadata."""
+    if user.get("role") in ("hr_admin", "hr_manager", "board", "it_admin"):
+        selected = deepcopy(doc)
+    else:
+        fields = {"id", "_id", "full_name", "preferred_name", "work_email", "department", "role_title",
+                  "role_level", "job_level", "start_date", "employment_type", "lifecycle_state",
+                  "line_manager_id", "line_manager_name", "probation_end_date", "is_md", "is_board_chair",
+                  "reports_to_md", "reports_to_finance_ops"}
+        if employee_key(doc) == user.get("employee_id"):
+            fields |= {"personal_email", "phone_number", "national_id_number", "kra_pin", "nssf_number", "sha_number",
+                       "bank_name", "bank_branch", "bank_account_number", "bank_account", "mpesa_number",
+                       "payment_method", "current_salary_kes", "salary_kes", "gender", "date_of_birth",
+                       "profile_photo_url", "emergency_contact", "next_of_kin"}
+        selected = {key: deepcopy(value) for key, value in doc.items() if key in fields}
+    for key in ("password_hash", "password_history", "refresh_tokens", "access_token"):
+        selected.pop(key, None)
+    return fmt(selected)
+
+
 @router.post("/bulk-transition")
 async def bulk_transition(request: Request):
     """Transition multiple employees to a new lifecycle state in one call. HR Admin only."""
@@ -146,17 +167,17 @@ async def _my_employee_id(db, user) -> Optional[str]:
     return employee_key(emp) if emp else None
 
 
-async def _line_manager_name(db, manager_id):
+async def _line_manager_name(db, manager_id, tenant="solvit"):
     """Resolve display data only; keep the canonical relationship ID unchanged."""
     if not manager_id:
         return None
     try:
-        manager = await find_employee(db, manager_id)
+        manager = await find_employee(db, manager_id, tenant)
     except HTTPException as error:
         if error.status_code != 409:
             raise
         return None  # Display fallback only; authorization still rejects ambiguity.
-    return manager.get("full_name") if manager else None
+    return manager.get("full_name") if manager and isinstance(manager.get("full_name"), str) else None
 
 
 @router.get("/me")
@@ -172,8 +193,8 @@ async def get_my_employee(request: Request):
     emp = await resolve_user_employee(db, user)
     if not emp:
         raise HTTPException(status_code=404, detail="No employee record for this account")
-    formatted = fmt(emp)
-    formatted["line_manager_name"] = await _line_manager_name(db, formatted.get("line_manager_id"))
+    formatted = employee_view(emp, user)
+    formatted["line_manager_name"] = await _line_manager_name(db, formatted.get("line_manager_id"), tenant_of(user))
     return formatted
 
 
@@ -278,7 +299,7 @@ async def list_employees(request: Request, lifecycle_state: Optional[str] = None
     if finance_view:
         allowed = {"id", "full_name", "department", "role_title", "role_level", "current_salary_kes", "lifecycle_state", "work_email", "start_date"}
         return [{k: v for k, v in fmt(e).items() if k in allowed} for e in employees]
-    return [fmt(e) for e in employees]
+    return [employee_view(e, user) for e in employees]
 
 
 @router.get("/{employee_id}/profile")
@@ -286,7 +307,7 @@ async def get_employee_profile(employee_id: str, request: Request):
     """Aggregated profile: timeline, IDP, leave history, recognitions, performance, training."""
     user = await get_current_user(request)
     db = get_db()
-    emp = await find_employee(db, employee_id)
+    emp = await find_employee(db, employee_id, tenant_of(user))
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
     emp_id = str(emp.get("id", str(emp["_id"])))
@@ -307,7 +328,7 @@ async def get_employee_profile(employee_id: str, request: Request):
         if not (is_self or is_report):
             raise HTTPException(status_code=403, detail="Not allowed")
 
-    emp["line_manager_name"] = await _line_manager_name(db, emp.get("line_manager_id"))
+    emp["line_manager_name"] = await _line_manager_name(db, emp.get("line_manager_id"), tenant_of(user))
 
     # Parallel-ish gathers
     reviews = await db.performance_reviews.find({"employee_id": emp_id}).sort("created_at", -1).to_list(20)
@@ -338,7 +359,7 @@ async def get_employee_profile(employee_id: str, request: Request):
     timeline.sort(key=lambda x: x["date"] or "", reverse=True)
 
     return {
-        "employee": fmt(emp),
+        "employee": employee_view(emp, user),
         "timeline": timeline,
         "performance_history": [{"id": str(r.get("_id")), "cycle": f"{r.get('cycle_type','').replace('_',' ')} {r.get('cycle_year','')}", "score": r.get("overall_score"), "rating": r.get("rating"), "placement": r.get("nine_box_placement"), "status": r.get("status")} for r in reviews],
         "leave_history": [{"id": str(l.get("_id")), "type": l.get("leave_type"), "start": l.get("start_date"), "end": l.get("end_date"), "days": l.get("working_days"), "status": l.get("status")} for l in leave],
@@ -456,7 +477,7 @@ async def create_employee(emp: EmployeeCreate, request: Request):
 async def get_employee(employee_id: str, request: Request):
     user = await get_current_user(request)
     db = get_db()
-    emp = await find_employee(db, employee_id)
+    emp = await find_employee(db, employee_id, tenant_of(user))
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
     # Board-only override (MD / ED): hidden from everyone except Board, IT Admin, self.
@@ -471,7 +492,7 @@ async def get_employee(employee_id: str, request: Request):
             raise HTTPException(status_code=403, detail="Access denied")
     if user["role"] not in ("board", "it_admin"):
         await authorize_employee(db, user, employee_id, "M01")
-    return fmt(emp)
+    return employee_view(emp, user)
 
 
 @router.put("/{employee_id}")
@@ -481,7 +502,7 @@ async def update_employee(employee_id: str, upd: EmployeeUpdate, request: Reques
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     async with integrity_write(db):
-        current = await find_employee(db, employee_id)
+        current = await find_employee(db, employee_id, tenant_of(user))
         if not current:
             raise HTTPException(404, "Employee not found")
         if user["role"] == "line_manager":
@@ -490,6 +511,10 @@ async def update_employee(employee_id: str, upd: EmployeeUpdate, request: Reques
                 raise HTTPException(403, "Access denied")
             if upd.model_fields_set & {"line_manager_id", "work_email", "is_md", "reports_to_md", "reports_to_finance_ops"}:
                 raise HTTPException(403, "HR must change identity or reporting relationships.")
+            protected = {"role_title", "current_salary_kes", "national_id_number", "kra_pin", "nssf_number", "sha_number"}
+            proposed = upd.model_dump(exclude_unset=True, exclude_none=True)
+            if any(field in proposed and proposed[field] != current.get(field) for field in protected):
+                raise HTTPException(403, "HR must change role titles or restricted identity/pay fields.")
         update_data = {k: v for k, v in upd.model_dump(exclude_unset=True).items() if v is not None}
         if "work_email" in upd.model_fields_set:
             if upd.work_email == current.get("work_email"):
@@ -497,20 +522,20 @@ async def update_employee(employee_id: str, upd: EmployeeUpdate, request: Reques
             else:
                 email = normalize_email(upd.work_email)
                 old_email = str(current.get("work_email") or "").strip().lower()
-                await ensure_unique_employee(db, email, "solvit", exclude_id=current["_id"])
+                await ensure_unique_employee(db, email, tenant_of(user), exclude_id=current["_id"])
                 aliases = [employee_key(current), str(current["_id"])]
                 if email != old_email:
                     owners = await email_matches(db.users, "email", old_email)
-                    if any(owner.get("employee_id") not in aliases for owner in owners):
+                    if any(tenant_of(owner) != tenant_of(user) or owner.get("employee_id") not in aliases for owner in owners):
                         raise HTTPException(409, "Review the legacy account link before changing employee email.")
                     candidates = await email_matches(db.users, "email", email)
-                    if any(owner.get("employee_id") not in aliases for owner in candidates):
+                    if any(tenant_of(owner) != tenant_of(user) or owner.get("employee_id") not in aliases for owner in candidates):
                         raise HTTPException(409, "Email belongs to a different login account.")
                 # Linked account login email, password and sessions remain unchanged.
                 update_data.update(work_email=email, work_email_normalized=email)
         if "line_manager_id" in upd.model_fields_set:
             if upd.line_manager_id != current.get("line_manager_id"):
-                update_data["line_manager_id"] = await validate_manager(db, upd.line_manager_id, current)
+                update_data["line_manager_id"] = await validate_manager(db, upd.line_manager_id, current, tenant_of(user))
             else:
                 update_data.pop("line_manager_id", None)
         if "lifecycle_state" in update_data:
@@ -528,7 +553,7 @@ async def update_employee(employee_id: str, upd: EmployeeUpdate, request: Reques
         if not result:
             raise HTTPException(404, "Employee not found")
     await db.audit_log.insert_one({
-        "tenant_id": "solvit",
+        "tenant_id": tenant_of(user),
         "action": "employee_updated",
         "entity": "employee",
         "entity_id": employee_id,
@@ -536,7 +561,7 @@ async def update_employee(employee_id: str, upd: EmployeeUpdate, request: Reques
         "performed_by": user["id"],
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
-    return fmt(result)
+    return employee_view(result, user)
 
 
 @router.post("/{employee_id}/transition")

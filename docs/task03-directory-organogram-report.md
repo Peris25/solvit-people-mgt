@@ -1,6 +1,7 @@
 # Task 03 - Staff Directory and Organogram
 
-Updated 14 October 2026. Task 04 has not started.
+Updated 14 October 2026. Task 04 has not started. The additional local closure
+work described below is uncommitted; prior Task 03 commit 7afbe1f is preserved.
 
 ## Status and preserved baseline
 
@@ -9,11 +10,13 @@ explicitly authorized by the user. Controlled staging UAT is the next step;
 HR policy approval and actual roster reconciliation are still pending.
 This report supersedes earlier missing-document and incomplete-directory findings.
 
-HEAD remains `cbdba84c72a2601ff261b08da4c40c52ff576309` (Task 02).
+The original clean baseline was `cbdba84c72a2601ff261b08da4c40c52ff576309`
+(Task 02). Task 03 was subsequently committed/pushed as
+`7afbe1f700fc17352cce58d644419b4efbff14ce`; HEAD remains at that commit.
 Task 01 `83f0b4f4401f013ae694fe11e57b0e9b3c80bb88` remains an ancestor.
-All previous uncommitted Task 03 fixes are preserved, with further privacy
-hardening described below. No production access, live employee updates,
-migration, index installation, commit, push or deployment occurred.
+All prior Task 01/02/03 fixes are preserved, with additional local Solver
+security and read-only reporting verification below. No production access, live employee updates,
+migration, index installation, new commit, push or deployment occurred during this additional closure work.
 
 ## Reference documents and requirements traceability
 
@@ -113,8 +116,11 @@ addresses must remain distinct.
 
 ## Validation
 
-- Full backend suite: **550 passed**, six warnings; fresh full run completed in 114.97 seconds.
-- Full frontend suite: **57 passed across 11 suites**.
+- Full backend suite: **637 passed**, six warnings; final fresh full run completed in 122.44 seconds.
+  Earlier runs exposed the logout cutoff edge and three lookup mock assertions
+  affected by explicit tenant scoping. Both were corrected and the entire suite
+  rerun; failed/interrupted attempts are not counted as passing checks.
+- Full frontend suite: **60 passed across 12 suites**.
 - Strict CI build (`CI=true`): **passed**, no lint/hook-dependency warnings.
 - Normal production build (`CI=false`): **passed**.
 - Python compilation and tracked/new-file whitespace checks: **Passed**.
@@ -130,7 +136,10 @@ optional document-review dependency; no service dependency manifest changed.
 The first full backend attempt was interrupted by a very long elapsed run
 (1h51m) and reported 11 failures in one HTTP module. The fresh full rerun outcome
 is recorded above; the interrupted run is not counted as a passing check.
-Cleanup status: Both owned disposable databases were dropped and absence verified; API/Mongo processes stopped; workspace runtimes/downloads removed; neither localhost test port retained a listener.
+Cleanup status: All eight owned disposable databases were dropped and absence
+verified; API/Mongo processes stopped; workspace runtimes/downloads removed;
+neither localhost test port retained a listener. MongoDB file handles initially
+delayed runtime removal; the verified workspace cleanup retry succeeded.
 
 ## Modified files (all local Task 03 changes relative to Task 02)
 
@@ -205,3 +214,163 @@ all application/privacy/reconciliation unit tests remain independent of them.
 
 All requested technical checks passed. Ready for controlled staging validation under the interim defaults.
 This is not HR policy sign-off, production readiness, or authorization to deploy.
+
+
+## Additional closure: confirmed structure and Solver security
+
+The user authorized proceeding with the supplied reference documents and confirmed
+IT/Valuation reporting structure. This authorizes local implementation and
+verification work, not production access, record mutation, migration or deployment.
+
+### Reference data and confirmations
+
+- HR confirmed IT Lead and Valuation Team manager. Their actual names are in
+  ignored `docs/reference/hr-reporting-confirmations.json`, not application
+  runtime constants. The original PDFs remain byte-for-byte unchanged.
+- The private reference-only plan is
+  `integrity-reports/task03-confirmed-reference-plan-2026-10-14.json`. It validates
+  21 FTE reporting targets and 109 named Solver rows against the supplied files.
+  The Solver PDF says 118, so its nine-row difference remains a source-data
+  decision, not permission to invent or create people. One listed phone is absent.
+- Named manager targets combine confirmed role holders and chart edges; team
+  branches remain reference proposals subject to individual exceptions. The
+  Executive's lateral link is not converted to a manager edge; no unnamed Board
+  employee is created. Acting-assignment metadata and original reference titles
+  remain intact unless a specific HR title override is supplied.
+- New `backend/scripts/verify_workforce_reporting.py` reads local PDFs, HR
+  confirmations and an already approved JSON snapshot containing employees and
+  solvers arrays. It has no database/network/migration connection and no write
+  API. Output must be a new file within ignored integrity-reports; existing
+  reports and source/input files cannot be overwritten. Names and current
+  manager name/department/role are intentionally confined to that private report.
+- The pure checker supports canonical/storage/Extended JSON identity aliases,
+  ambiguous IDs/matches, missing/invalid managers, cycles, exited members,
+  classification/department/title/contact-email mismatches and extra records.
+  It identifies a proposed manager record label only when uniquely resolved.
+  Current records have not been supplied, so no actual current assignments,
+  missing/extra members or correction completion are claimed.
+
+Example future authorized offline check:
+
+```powershell
+python backend/scripts/verify_workforce_reporting.py --snapshot integrity-reports/approved-staging-workforce.json --output integrity-reports/reporting-verification.json
+```
+
+### Security findings fixed locally
+
+Previously Solver detail lookup allowed any authenticated user to retrieve a
+whole document by ID without ownership/tenant checks. List/update/rating and
+onboarding paths also had inconsistent or missing scope checks; formatted phone
+duplicates bypassed create/import/update safeguards.
+
+- `backend/utils/solver_access.py` now centralizes M02 role/scope enforcement,
+  qualified Solvers Manager checks through the saved canonical employee link,
+  tenant-aware canonical/legacy Solver lookup and unambiguous self-account
+  resolution. A storage alias cannot bypass a duplicated canonical ID. Ordinary
+  Solver scopes cannot be widened to company-wide read/write by a matrix override.
+- Self accounts resolve from a trusted explicit solver_id or unique saved email.
+  Blank/recycled phone, name, department or supplied request IDs are not account
+  identity. Ambiguous/missing links fail closed. Explicit account links are checked
+  for competing owners, including native Mongo storage-ID aliases.
+- HR retains private record functionality. Operational manager and self views
+  whitelist necessary fields, excluding banking, statutory identifiers, medical,
+  disciplinary/free-text HR notes and credential material. Executives get counts
+  only, not individual records. Existing rating-audit/void IT exception stays
+  tenant-scoped. Sensitive HR record reads require a metadata-only audit event;
+  private field values are never copied into the audit log.
+- Create/update/activation, rating submission/void and imports now authorize
+  server-side. Ratings cannot forge another target/tenant or use NaN/infinite
+  scores; legacy/canonical rating links remain compatible. Stored UUIDs remain
+  unchanged, while legacy UI storage-ID URLs still work through explicit aliases.
+- Phone/email identity writes and import inserts use the existing persistent
+  integrity-write lock. Legacy/international-format comparisons detect duplicate
+  phone variants, numeric Excel values and Unicode decimal digits. New intentional
+  phone writes normalize; unchanged saves preserve old values. No backfill/index
+  was run. Legacy email-linked accounts cannot be orphaned by a contact-email
+  change without an explicitly confirmed account link.
+- Solver onboarding GET checks subject/tenant before reading or lazily initializing
+  induction. Read-only self requests do not create missing tasks. Qualified HR/
+  manager initialization is serialized and canonical. Own assigned self induction
+  steps can be completed; manager/other-subject steps cannot. Generic task,
+  notification and form paths use the same Solver ownership checks.
+- Employee onboarding reuses its already-authorized employee rather than an
+  unscoped second lookup; task retrieval/creation/update/summary respects tenant
+  and legacy identities. Existing FTE tests continue passing.
+- Solvers UI management controls use server-returned can_manage; denials clear
+  stale lists/controls and show a safe error. Role names in the browser do not
+  confer write permission.
+
+### Additional modified files (relative to 7afbe1f)
+
+```text
+backend/routes/data_import.py
+backend/routes/employees.py
+backend/routes/onboarding.py
+backend/routes/solvers.py
+backend/scripts/verify_workforce_reporting.py
+backend/tests/test_reporting_verification.py
+backend/tests/test_solver_security.py
+backend/tests/test_employee_profile_display.py
+backend/tests/test_password_change_enforcement.py
+backend/utils/employee_integrity.py
+backend/utils/form_access.py
+backend/utils/reporting_verification.py
+backend/utils/solver_access.py
+backend/utils/security.py
+backend/utils/task_access.py
+docs/task03-directory-organogram-report.md
+frontend/src/pages/Solvers.js
+frontend/src/pages/Solvers.test.js
+```
+
+The private HR confirmation/reference-plan/report files remain ignored and local.
+No real employee/Solver records or production accounts were changed. No new
+service dependency was added; optional PDF parsing uses the existing local
+review environment. Task 04/new Solver OTP or wider HR workflow features were
+not started.
+
+Employee detail, profile, list and update responses also now distinguish HR/self
+private views from manager team metadata. Team views exclude pay, banking,
+statutory identifiers, medical information and unapproved personal contacts.
+Managers cannot change a report's job title to grant Solver-management authority,
+pay or statutory identifiers. Cross-tenant employee updates and ambiguous storage
+aliases fail closed. Existing privileged functionality is preserved.
+
+A regression run exposed an existing same-second legacy logout cutoff edge.
+Tokens issued exactly at the invalidation cutoff are now rejected; a fixed-clock
+test covers both access and refresh tokens. First-login enforcement and normal
+login regression tests remain included. No passwords or accounts were reset.
+
+### Remaining staging/data gates
+
+1. Supply an approved local/staging workforce snapshot and hosting ownership.
+   Repository configuration has no actual database address or local .env/snapshot;
+   GitHub deployment/workflow metadata is empty. The checker therefore cannot
+   truthfully claim current stored links are verified or corrected.
+2. HR resolves the Solver summary/list discrepancy, missing phone and individual
+   reporting exceptions, Board/Executive representation and Sales Team membership.
+   The confirmed reference manager roles are no longer pending; actual record IDs
+   still are. Ordinary directory/photo/contact visibility policy remains interim.
+3. Validate actual legacy Solver account anchors. Accounts relying only on phone
+   or missing/conflicting email/solver_id now fail closed until approved linkage
+   is confirmed. The separate Solver OTP/provisioning workflow is not introduced.
+4. Shared integrity-lock recovery now must account for Solver identity/import/
+   rating/initialization writes as well as employee/account writes. Existing
+   fail-closed operator procedure still applies: no TTL or automatic stale-lock
+   removal. Unique database phone/email/identity constraints remain future
+   prerequisites for direct/external writers; application checks do not claim
+   those indexes exist. No migration is needed for this code, but any actual
+   reconciliation/backfill/index installation requires separate approval.
+5. Audit metadata persistence is required for HR-sensitive reads and new Solver
+   mutations. If audit storage fails after a record write was acknowledged, the
+   endpoint returns 503 and directs operator inspection before retrying; it does
+   not roll back or delete records. No transactional outbox was introduced.
+6. Complete staging UAT for HR, qualified/unqualified managers, own/other Solvers,
+   aggregate executives, IT rating audit and denied ordinary staff; verify private
+   redaction, account compatibility, phone conflicts, forms/tasks/onboarding and
+   new directory/reporting behavior. Obtain HR sign-off before Task 03 closure.
+
+All final local tests/builds pass. The identified Solver authorization findings
+are fixed in local code. Actual stored-record alignment and staging acceptance
+remain pending; this is not a claim that production has been updated or that
+all HR modules are release-ready. No new commit/push/deployment was performed.

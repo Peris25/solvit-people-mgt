@@ -395,6 +395,8 @@ async def start_form_submission(form_id: str, request: Request):
     body = await request.json()
     db = get_db()
     employee = await form_subject(db, user, body, matrix)
+    if form_id == "form-15":
+        raise HTTPException(409, "Submit leave through Leave Management (/leave) for policy checks and two-stage approval")
     # Starting a workflow is not permission to impersonate its later signers.
     if user["role"] not in sequence and user["role"] != "hr_admin" and not ("employee" in sequence and employee and employee_key(employee) == user.get("employee_id")):
         raise HTTPException(403, "No permission to start this form")
@@ -437,6 +439,8 @@ async def sign_form_step(submission_id: str, request: Request):
 
     expected_role = sub.get("next_required_role")
     await authorize_signature(db, user, expected_role, sub.get("subject_employee_id"), sub.get("started_by"))
+    if sub.get("form_id") == "form-15":
+        raise HTTPException(409, "Review leave through Leave Management (/leave); historical form records are preserved")
     if body.get("employee_id") and body["employee_id"] != sub.get("subject_employee_id"):
         raise HTTPException(403, "Form subject cannot be changed")
     if body.get("data"):
@@ -537,6 +541,8 @@ async def submit_form(form_id: str, request: Request):
     from routes.forms_workflow import FORM_WORKFLOW_MATRIX
     matrix = FORM_WORKFLOW_MATRIX.get(form_id, {})
     employee = await form_subject(db, user, body, matrix)
+    if form_id == "form-15":
+        raise HTTPException(409, "Submit leave through Leave Management (/leave) for policy checks and two-stage approval")
     sequence = matrix.get("completing_users_sequence", [])
     if user["role"] not in sequence and user["role"] != "hr_admin" and not ("employee" in sequence and employee and employee_key(employee) == user.get("employee_id")):
         raise HTTPException(403, "No permission to submit this form")

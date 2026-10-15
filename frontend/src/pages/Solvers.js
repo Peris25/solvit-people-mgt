@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import StatusBadge from '../components/StatusBadge';
 import * as api from '../services/api';
-import { useAuth } from '../context/AuthContext';
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
 
 export default function Solvers() {
-  const { user } = useAuth();
   const [solvers, setSolvers] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -16,19 +14,25 @@ export default function Solvers() {
   const [form, setForm] = useState({ full_name: '', phone_number: '', payment_method: 'MPesa', vehicle_categories: [], zones_covered: [] });
   const [saving, setSaving] = useState(false);
   const [viewSolver, setViewSolver] = useState(null);
+  const [error, setError] = useState('');
 
-  const canEdit = ['hr_admin', 'hr_manager', 'line_manager'].includes(user?.role);
+  const canEdit = stats?.can_manage === true;
 
 
   const loadSolvers = useCallback(async () => {
-    setLoading(true);
+    setLoading(true); setError('');
     try {
       const [sRes, statsRes] = await Promise.all([
         api.getSolvers({ search, lifecycle_state: filterState || undefined }),
         api.getSolverStats()
       ]);
+      if (!Array.isArray(sRes.data) || !statsRes.data) throw new Error(sRes.error || statsRes.error || 'Solver information could not be loaded.');
       setSolvers(sRes.data);
       setStats(statsRes.data);
+    } catch (e) {
+      setSolvers([]); setStats(null);
+      const detail = e.response?.data?.detail;
+      setError(typeof detail === 'string' ? detail : detail?.message || e.message);
     } finally { setLoading(false); }
   }, [search, filterState]);
 
@@ -78,6 +82,7 @@ export default function Solvers() {
         </div>
       )}
 
+      {error && <p role="alert" style={{ color: '#991B1B' }}>Could not load Solver information: {error}</p>}
       {/* Filters */}
       <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
         <input data-testid="search-solvers" placeholder="Search name or phone..." value={search} onChange={e => setSearch(e.target.value)}

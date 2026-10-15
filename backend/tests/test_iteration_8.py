@@ -4,6 +4,7 @@ _DEMO_PWD = os.environ.get("DEMO_SEED_PASSWORD", "Solvit@2026")
 Skills Matrix endpoints, Performance review GET, regression."""
 import os
 import requests
+from datetime import date, timedelta
 import pytest
 
 BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or "https://solvit-people-mgmt.preview.emergentagent.com").rstrip("/")
@@ -127,8 +128,10 @@ class TestLeaveCreateWithLM:
         body = {
             "employee_id": emp_id,
             "leave_type": "Annual",
-            "start_date": "2026-06-01",
-            "end_date": "2026-06-02",
+            "start_date": (date.today() + timedelta(days=14)).isoformat(),
+            "end_date": (date.today() + timedelta(days=15)).isoformat(),
+            "notes": "Synthetic handover: cover open tasks and deadlines",
+            "handover_contact_id": lm_id,
             "reason": "TEST_iter8 holiday",
             "line_manager_id": lm_id,
         }

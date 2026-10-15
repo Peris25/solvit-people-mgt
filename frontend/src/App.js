@@ -37,11 +37,14 @@ import SolverRequisitions from './pages/SolverRequisitions';
 import IneligibleApplicants from './pages/IneligibleApplicants';
 import EligibleSolvers from './pages/EligibleSolvers';
 import PublicSolverApply from './pages/PublicSolverApply';
+import Notifications from './pages/Notifications';
+import { NotificationProvider } from './context/NotificationContext';
 
 export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
+        <NotificationProvider>
         <BrowserRouter>
           <ErrorToast />
         <Routes>
@@ -50,6 +53,7 @@ export default function App() {
           <Route path="/" element={<Layout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
+            <Route path="notifications" element={<Notifications />} />
             <Route path="employees" element={<Employees />} />
             <Route path="organogram" element={<Organogram />} />
             <Route path="staff-directory" element={<StaffDirectory />} />
@@ -83,6 +87,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
         </BrowserRouter>
+        </NotificationProvider>
       </AuthProvider>
     </ThemeProvider>
   );

@@ -12,7 +12,7 @@ import {
   ListChecks, Settings as SettingsIcon, Cog, ChevronLeft, ChevronDown, ChevronRight, Menu,
   UploadCloud, Sun, Moon, KeyRound, FileCheck, FileX
 } from 'lucide-react';
-import * as api from '../services/api';
+import { useNotifications } from '../context/NotificationContext';
 
 const ICON_SIZE = 15;
 
@@ -88,38 +88,13 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
   const location = useLocation();
   const { theme, toggle: toggleTheme } = useTheme();
   const tk = themeTokens(theme);
-  const [notifications, setNotifications] = useState([]);
+  const { items: notifications, unreadCount: unread, loading: notificationsLoading, error: notificationError, refresh: refreshNotifications, markRead: saveRead, markAllRead } = useNotifications();
+  const [readError, setReadError] = useState('');
   const [showNotif, setShowNotif] = useState(false);
 
-  React.useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const r = await api.getNotifications();
-        if (!cancelled) setNotifications(r.data || []);
-      } catch { /* ignore */ }
-    };
-    if (user) {
-      load();
-      const t = setInterval(load, 60000);
-      return () => { cancelled = true; clearInterval(t); };
-    }
-    return undefined;
-  }, [user]);
-
-  const unread = notifications.filter(n => !n.is_read).length;
-
   const markRead = async (id) => {
-    try { await api.markNotificationRead(id); } catch { /* ignore */ }
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
-  };
-
-  const markAllRead = async () => {
-    const unreadIds = notifications.filter(n => !n.is_read).map(n => n.id);
-    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-    for (const id of unreadIds) {
-      try { await api.markNotificationRead(id); } catch { /* ignore */ }
-    }
+    setReadError('');
+    try { await saveRead(id); } catch { setReadError('Could not mark the notification as read. Please retry.'); }
   };
 
   const handleLogout = async () => {
@@ -231,7 +206,7 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
               {ROLE_LABELS[user?.role] || user?.role}
             </div>
           </div>
-          <button data-testid="notif-bell" onClick={() => setShowNotif(s => !s)} style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: '6px', color: tk.sidebarMuted }}>
+          <button data-testid="notif-bell" aria-label="Notifications" onClick={() => { setShowNotif(s => !s); refreshNotifications(); }} style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: '6px', color: tk.sidebarMuted }}>
             <Bell size={16} />
             {unread > 0 && (
               <span data-testid="notif-badge" style={{ position: 'absolute', top: '-2px', right: '-2px', backgroundColor: '#FF353F', color: '#fff', fontSize: '9px', fontWeight: 900, padding: '1px 5px', minWidth: '14px', textAlign: 'center', lineHeight: 1.2 }}>{unread > 99 ? '99+' : unread}</span>
@@ -242,10 +217,12 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
           <div data-testid="notif-dropdown" style={{ position: 'absolute', top: '60px', right: '8px', width: '320px', backgroundColor: '#fff', color: '#191919', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 200, maxHeight: '420px', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <strong style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Notifications {unread > 0 && <span style={{ color: '#FF353F' }}>· {unread}</span>}</strong>
-              {unread > 0 && <button data-testid="mark-all-read" onClick={markAllRead} style={{ background: 'none', border: 'none', color: '#FF353F', cursor: 'pointer', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Mark all read</button>}
+              {unread > 0 && <button data-testid="mark-all-read" onClick={markAllRead} style={{ background: 'none', border: 'none', color: '#FF353F', cursor: 'pointer', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Mark shown read</button>}
             </div>
             <div style={{ overflowY: 'auto', flex: 1 }}>
-              {notifications.length === 0 ? (
+              {(notificationError || readError) && <div role="alert" style={{ padding: '16px' }}>{notificationError || readError}</div>}
+              <button onClick={() => { navigate('/notifications'); setShowNotif(false); }} style={{ width: '100%', minHeight: '44px', background: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer' }}>Open Notification Centre</button>
+              {notificationsLoading ? <div role="status" style={{ padding: '24px' }}>Loading notifications…</div> : !notificationError && notifications.length === 0 ? (
                 <div style={{ padding: '32px', textAlign: 'center', color: '#9CA3AF', fontSize: '12px' }}>No notifications</div>
               ) : notifications.slice(0, 20).map(n => (
                 <div key={n.id} data-testid={`notif-${n.id}`} onClick={() => markRead(n.id)} style={{ padding: '12px 16px', borderBottom: '1px solid rgba(25,25,25,0.05)', cursor: 'pointer', backgroundColor: n.is_read ? '#fff' : '#FEF2F2' }}>

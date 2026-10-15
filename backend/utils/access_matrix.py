@@ -201,7 +201,8 @@ ACCESS_MATRIX = {
         "finance":      _level("Manage", "own_team"),
         "employee":     _level("Manage", "own_record"),
         "solver":       None,
-        "executive":    _level("Manage", "own_record"),
+        "executive":    _level("Manage", "own_team"),  # Actual direct-report leave only; checked dual approval.
+        "board":        _level("Manage", "own_team"),  # Only stored direct reports (e.g. a Board Chair's MD).
     },
     "M19": {  # Statutory Compliance Register
         "hr_admin":     _level("Read"),

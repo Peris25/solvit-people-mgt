@@ -21,6 +21,7 @@ const RATING_LABEL = (rating) => {
   if (typeof rating === 'string') return rating;
   return rating;
 };
+const scoreLabel = value => value != null && Number.isFinite(Number(value)) ? Number(value).toFixed(1) : '—';
 
 export default function EmployeeDashboard() {
   const { user } = useAuth();
@@ -31,23 +32,26 @@ export default function EmployeeDashboard() {
   const [leaveBalance, setLeaveBalance] = useState(null);
   const [recognitions, setRecognitions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [home, setHome] = useState(null);
+  const [error, setError] = useState('');
+  const homeData = home?.accountId === user?.id ? home.data : null;
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       setLoading(true);
+      setError(''); setHome(null);
+      setTasks([]); setReviews([]); setRecognitions([]); setLeaveBalance(null);
       try {
-        const [t, r, lb, rg] = await Promise.allSettled([
-          api.getMyFormTasks(),
-          api.getReviews(),
-          api.getLeaveBalances(user?.employee_id || user?.id),
-          api.getRecognitions({ nominee_id: user?.employee_id || user?.id }),
-        ]);
+        const response = await api.getStaffHome();
         if (cancelled) return;
-        if (t.status === 'fulfilled') setTasks(t.value.data || []);
-        if (r.status === 'fulfilled') setReviews(r.value.data || []);
-        if (lb.status === 'fulfilled') setLeaveBalance(lb.value.data);
-        if (rg.status === 'fulfilled') setRecognitions(rg.value.data || []);
+        if (!response.data?.employee) throw new Error('Home unavailable');
+        const data = response.data;
+        setHome({ accountId: user.id, data });
+        setTasks(data.tasks || []); setReviews(data.reviews || []);
+        setLeaveBalance(data.leave_balance); setRecognitions(data.recognitions || []);
+      } catch (_) {
+        if (!cancelled) setError('Your Staff Home is unavailable. Please retry or ask HR to check your account link.');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -57,12 +61,13 @@ export default function EmployeeDashboard() {
   }, [user]);
 
   const greeting = (() => {
-    const h = new Date().getHours();
+    const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Nairobi', hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
     if (h < 12) return 'Good morning';
     if (h < 17) return 'Good afternoon';
     return 'Good evening';
   })();
-  const firstName = (user?.full_name || user?.email || '').split(' ')[0];
+  const firstName = homeData?.employee?.full_name || user?.full_name || 'Welcome';
+  const links = homeData?.quick_links || [];
 
   const latestReview = reviews?.[0];
   const overdueTasks = tasks.filter(t => t.due_date && new Date(t.due_date) < new Date());
@@ -81,14 +86,17 @@ export default function EmployeeDashboard() {
             {greeting}, {firstName}
           </h1>
           <p style={{ color: '#525252', fontSize: '12px', margin: '4px 0 0' }}>
-            {new Date().toLocaleDateString('en-KE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })} · EAT
+            {new Date().toLocaleDateString('en-KE', { timeZone: 'Africa/Nairobi', weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })} · EAT
           </p>
+          {homeData && <p data-testid="staff-role-department" style={{ color: '#525252', fontSize: '13px', marginTop: '8px' }}>
+            {homeData.employee.role_title || 'Role not recorded'} · {homeData.employee.department || 'Department not recorded'}
+          </p>}
         </div>
       </div>
 
       {/* Top tab bar */}
-      <div data-testid="emp-tabs" style={{ display: 'flex', gap: '0', borderBottom: '1px solid rgba(25,25,25,0.08)', marginBottom: '24px' }}>
-        {TABS.map(t => (
+      <div data-testid="emp-tabs" style={{ display: 'flex', flexWrap: 'wrap', gap: '0', borderBottom: '1px solid rgba(25,25,25,0.08)', marginBottom: '24px' }}>
+        {TABS.filter(t => t.key === 'dashboard' || (t.key === 'reviews' && homeData?.reviews != null) || (t.key === 'recog' && homeData?.recognitions != null) || (t.key === 'leave' && homeData?.pending_leave != null) || (t.key === 'dev' && links.some(l => l.path === '/lnd'))).map(t => (
           <button
             key={t.key}
             data-testid={`emp-tab-${t.key}`}
@@ -107,10 +115,29 @@ export default function EmployeeDashboard() {
         ))}
       </div>
 
-      {loading ? (
+      {error ? <div role="alert" style={{ padding: '24px', backgroundColor: '#FEE2E2', color: '#7F1D1D' }}>{error}<button onClick={() => window.location.reload()} style={{ marginLeft: '12px', minHeight: '44px' }}>Retry</button></div> : loading || !homeData ? (
         <div style={{ textAlign: 'center', padding: '48px', color: '#525252' }}>Loading...</div>
       ) : tab === 'dashboard' ? (
         <>
+          <nav aria-label="Staff quick links" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
+            {links.map(link => <button key={link.path} onClick={() => navigate(link.path)} style={{ minHeight: '44px', padding: '10px 16px', background: '#191919', color: '#fff', border: 'none', cursor: 'pointer' }}>{link.label}</button>)}
+          </nav>
+          <div data-testid="staff-pending-leave" style={{ background: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '20px', marginBottom: '20px' }}>
+            <h2 style={{ fontSize: '14px', marginTop: 0 }}>Pending leave requests</h2>
+            {homeData.pending_leave == null ? <p>Leave information is unavailable for this account.</p> : homeData.pending_leave.length === 0 ? <p>No pending leave requests.</p> : <>
+              <p>{homeData.pending_leave.length} awaiting approval</p>
+              {homeData.pending_leave.slice(0, 5).map(item => <div key={item.id} style={{ padding: '8px 0' }}>{item.leave_type || 'Leave'} · {item.start_date || 'Date not recorded'} — {item.end_date || 'Date not recorded'} · {(item.status || '').replace(/_/g, ' ')}</div>)}
+            </>}
+          </div>
+          <div data-testid="staff-notifications" style={{ background: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '20px', marginBottom: '20px' }}>
+            <h2 style={{ fontSize: '14px', marginTop: 0 }}>Recent notifications <span style={{ color: '#FF353F' }}>({homeData.unread_notifications || 0} unread)</span></h2>
+            <button onClick={() => navigate('/notifications')} style={{ minHeight: '44px', padding: '10px 16px', marginBottom: '12px', border: '1px solid #D9D9D9', background: '#fff', cursor: 'pointer' }}>Open Notification Centre</button>
+            {(homeData.notifications || []).length === 0 ? <p>No notifications yet.</p> : homeData.notifications.map(item => <article key={item.id} style={{ padding: '10px 0', borderBottom: '1px solid #eee' }}>
+              <strong>{item.title || 'Notification'}</strong>{!item.is_read && <span> · Unread</span>}
+              <p style={{ margin: '6px 0', overflowWrap: 'anywhere' }}>{item.message || item.body || 'No additional message.'}</p>
+              {item.created_at && <small>{new Date(item.created_at).toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })} EAT</small>}
+            </article>)}
+          </div>
           {/* Zone 1 — My Tasks */}
           <div data-testid="my-tasks-zone" style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', marginBottom: '20px' }}>
             <div style={{ padding: '14px 20px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -126,19 +153,19 @@ export default function EmployeeDashboard() {
                 {sortedTasks.slice(0, 8).map(t => {
                   const overdue = t.due_date && new Date(t.due_date) < new Date();
                   return (
-                    <div key={t.id} data-testid={`emp-task-${t.id}`} style={{ padding: '12px 20px', borderBottom: '1px solid rgba(25,25,25,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
+                    <div key={`${t.kind}-${t.id}`} data-testid={`emp-task-${t.id}`} style={{ padding: '12px 20px', borderBottom: '1px solid rgba(25,25,25,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: '13px', fontWeight: 600, color: '#191919' }}>{t.form_title || t.title || 'Form Task'}</div>
                         <div style={{ fontSize: '11px', color: overdue ? '#FF353F' : '#525252', marginTop: '3px' }}>
                           {t.form_id || t.module || ''} {t.due_date && `· Due ${new Date(t.due_date).toLocaleDateString('en-GB')}`}
                         </div>
                       </div>
-                      <button
+                      {t.kind === 'form' && <button
                         onClick={() => navigate('/my-tasks')}
                         style={{ padding: '6px 14px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}
                       >
-                        Complete
-                      </button>
+                        Open
+                      </button>}
                     </div>
                   );
                 })}
@@ -146,14 +173,14 @@ export default function EmployeeDashboard() {
             )}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '20px' }}>
             {/* Zone 2 — My Performance */}
             <div data-testid="my-performance-zone" style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '20px 24px' }}>
               <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#525252', marginBottom: '12px' }}>My Performance</div>
-              {latestReview && latestReview.overall_score ? (
+              {latestReview && latestReview.overall_score != null ? (
                 <>
                   <div style={{ fontSize: '48px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', lineHeight: 1 }}>
-                    {latestReview.overall_score?.toFixed(1)}
+                    {scoreLabel(latestReview.overall_score)}
                   </div>
                   <div style={{ fontSize: '14px', fontWeight: 700, color: '#FF353F', marginTop: '4px' }}>
                     {RATING_LABEL(latestReview.rating)}
@@ -166,7 +193,7 @@ export default function EmployeeDashboard() {
                     ].map(s => (
                       <div key={s.l} style={{ padding: '8px', backgroundColor: '#F9FAFB' }}>
                         <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#525252' }}>{s.l}</div>
-                        <div style={{ fontSize: '16px', fontWeight: 900, color: '#191919' }}>{s.v?.toFixed(1) || '—'}</div>
+                        <div style={{ fontSize: '16px', fontWeight: 900, color: '#191919' }}>{scoreLabel(s.v)}</div>
                       </div>
                     ))}
                   </div>
@@ -187,7 +214,7 @@ export default function EmployeeDashboard() {
                 <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#525252', marginBottom: '8px' }}>My Leave</div>
                 <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-end' }}>
                   <div>
-                    <div style={{ fontSize: '32px', fontWeight: 900, color: '#191919' }}>{leaveBalance?.annual_days_remaining ?? '—'}</div>
+                    <div style={{ fontSize: '32px', fontWeight: 900, color: '#191919' }}>{leaveBalance && Object.prototype.hasOwnProperty.call(leaveBalance, 'annual_available_to_request') ? leaveBalance.annual_available_to_request ?? 'Needs HR review' : leaveBalance?.annual_days_remaining ?? '—'}</div>
                     <div style={{ fontSize: '10px', color: '#525252', textTransform: 'uppercase', letterSpacing: '0.15em' }}>Annual</div>
                   </div>
                   <div>
@@ -195,11 +222,12 @@ export default function EmployeeDashboard() {
                     <div style={{ fontSize: '10px', color: '#525252', textTransform: 'uppercase', letterSpacing: '0.15em' }}>Sick</div>
                   </div>
                 </div>
-                <button
+                {!leaveBalance && <p style={{ color: '#525252', fontSize: '12px' }}>Leave balance not available. Ask HR to check your leave information.</p>}
+                {links.some(link => link.path === '/leave') && <button
                   data-testid="emp-request-leave-btn"
                   onClick={() => navigate('/leave')}
                   style={{ marginTop: '12px', padding: '8px 16px', backgroundColor: '#191919', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}
-                >Request Leave</button>
+                >Request Leave</button>}
               </div>
 
               <div data-testid="my-recog-zone" style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '20px 24px' }}>
@@ -230,7 +258,7 @@ export default function EmployeeDashboard() {
                 <div style={{ fontSize: '11px', color: '#525252' }}>{r.status}</div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontWeight: 900, fontSize: '20px' }}>{r.overall_score?.toFixed(1) || '—'}</div>
+                <div style={{ fontWeight: 900, fontSize: '20px' }}>{scoreLabel(r.overall_score)}</div>
                 <div style={{ fontSize: '10px', color: '#525252' }}>{r.rating || ''}</div>
               </div>
             </div>

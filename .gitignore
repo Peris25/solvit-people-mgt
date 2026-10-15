@@ -127,3 +127,4 @@ node-test.exe
 
 # Confidential source documents stay local; this repository is public.
 /docs/reference/
+backend/private_uploads/

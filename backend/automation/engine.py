@@ -3,6 +3,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import datetime, timezone, timedelta
 import logging
 import uuid
+import hashlib
+from bson import ObjectId
+from pymongo.errors import DuplicateKeyError
 
 logger = logging.getLogger(__name__)
 
@@ -320,6 +323,8 @@ class AutomationEngine:
             await self.db.tasks.insert_one(task)
 
     async def _send_notification_action(self, rule: dict, data: dict, payload: dict):
+        if data.get("notifications_already_created") is True and rule.get("rule_id") in {"AR-LV-01", "AR-LV-03"}:
+            return  # Checked leave lifecycle has already persisted these notices.
         message = payload.get("message", rule.get("description", "Automated notification"))
         recipients = rule.get("notification_recipients_json", [])
         # Rules whose email duplicates an explicit send from a route handler.
@@ -342,7 +347,29 @@ class AutomationEngine:
                 "is_read": False,
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
-            await self.db.notifications.insert_one(notif)
+            # Preserve the existing generator; bind employee/manager events to
+            # saved relationships instead of broadcasting private events.
+            if recipient_role in ("employee", "line_manager") and data.get("employee_id"):
+                from utils.employee_integrity import find_employee, employee_key
+                employee = await find_employee(self.db, data["employee_id"])
+                if not employee:
+                    continue
+                recipient = employee if recipient_role == "employee" else await find_employee(self.db, employee.get("line_manager_id"))
+                if not recipient:
+                    continue
+                notif.update(recipient_id=employee_key(recipient), recipient_type="employee")
+            # Leave submission has a stable source event, so repeated/concurrent
+            # dispatch must not create a second notification for that request.
+            if rule.get("rule_id") == "AR-LV-01" and data.get("leave_request_id"):
+                fingerprint = f"solvit:AR-LV-01:{data['leave_request_id']}:{notif.get('recipient_id') or recipient_role}"
+                notif["_id"] = ObjectId(hashlib.sha256(fingerprint.encode()).hexdigest()[:24])
+            try:
+                await self.db.notifications.insert_one(notif)
+            except DuplicateKeyError:
+                existing = await self.db.notifications.find_one({"_id": notif.get("_id")})
+                if not existing or existing.get("rule_id") != notif.get("rule_id") or (existing.get("data") or {}).get("leave_request_id") != data.get("leave_request_id") or existing.get("recipient_id") != notif.get("recipient_id"):
+                    raise
+                continue
             if not send_email_too:
                 continue
             # Best-effort email — does nothing if email provider not configured

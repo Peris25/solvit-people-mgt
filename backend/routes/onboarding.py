@@ -2,10 +2,11 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timezone
-from bson import ObjectId
 from database import get_db
 from utils.employee_access import authorize_employee, reference_ids, find_linked_record
 from utils.auth import get_current_user
+from utils.employee_integrity import tenant_of, tenant_query, integrity_write, employee_key
+from utils.solver_access import authorize_solver, solver_aliases, solver_key, solver_access
 import uuid
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
@@ -61,15 +62,11 @@ async def get_employee_onboarding(employee_id: str, request: Request):
     user = await get_current_user(request)
     db = get_db()
     employee = await authorize_employee(db, user, employee_id, "M04")
-    tasks = await db.onboarding_tasks.find({"tenant_id": "solvit", "entity_id": {"$in": reference_ids(employee)}, "entity_type": "employee"}).to_list(50)
+    tasks = await db.onboarding_tasks.find({"$and": [tenant_query(tenant_of(user)), {"entity_id": {"$in": reference_ids(employee)}, "entity_type": "employee"}]}).to_list(50)
     if not tasks:
         # Check if we should create them
-        try:
-            emp = await db.employees.find_one({"_id": ObjectId(employee_id)})
-        except Exception:
-            emp = await db.employees.find_one({"id": employee_id})
-        if emp and emp.get("lifecycle_state") in ["Onboarding", "Probation"]:
-            tasks = await _create_onboarding_tasks(db, employee_id, "employee", emp)
+        if employee.get("lifecycle_state") in ["Onboarding", "Probation"]:
+            tasks = await _create_onboarding_tasks(db, employee_key(employee), "employee", employee)
     return [fmt(t) for t in tasks]
 
 
@@ -77,14 +74,16 @@ async def get_employee_onboarding(employee_id: str, request: Request):
 async def get_solver_onboarding(solver_id: str, request: Request):
     user = await get_current_user(request)
     db = get_db()
-    tasks = await db.onboarding_tasks.find({"entity_id": solver_id, "entity_type": "solver"}).to_list(20)
-    if not tasks:
-        try:
-            s = await db.solvers.find_one({"_id": ObjectId(solver_id)})
-        except Exception:
-            s = await db.solvers.find_one({"id": solver_id})
-        if s:
-            tasks = await _create_solver_induction(db, solver_id, s)
+    record = await authorize_solver(db, user, solver_id)
+    query = {"$and": [tenant_query(tenant_of(user)), {"entity_id": {"$in": solver_aliases(record)}, "entity_type": "solver"}]}
+    tasks = await db.onboarding_tasks.find(query).to_list(20)
+    entry = await solver_access(db, user)
+    if not tasks and entry.get("level") in ("Full", "Manage") and entry.get("scope") != "own_record":
+        async with integrity_write(db):
+            await authorize_solver(db, user, solver_id, write=True)
+            tasks = await db.onboarding_tasks.find(query).to_list(20)
+            if not tasks:
+                tasks = await _create_solver_induction(db, solver_key(record), record)
     return [fmt(t) for t in tasks]
 
 
@@ -97,7 +96,7 @@ async def _create_onboarding_tasks(db, employee_id: str, entity_type: str, entit
         due_date = (start_date + timezone.utc.fromutc(start_date).replace(tzinfo=timezone.utc) if False else start_date).isoformat()[:10]
         task = {
             "id": str(uuid.uuid4()),
-            "tenant_id": "solvit",
+            "tenant_id": tenant_of(entity),
             "entity_id": employee_id,
             "entity_type": entity_type,
             "task_key": template["task_key"],
@@ -112,7 +111,7 @@ async def _create_onboarding_tasks(db, employee_id: str, entity_type: str, entit
         tasks.append(task)
     if tasks:
         await db.onboarding_tasks.insert_many(tasks)
-    return await db.onboarding_tasks.find({"entity_id": employee_id, "entity_type": entity_type}).to_list(50)
+    return await db.onboarding_tasks.find({"$and": [tenant_query(tenant_of(entity)), {"entity_id": employee_id, "entity_type": entity_type}]}).to_list(50)
 
 
 async def _create_solver_induction(db, solver_id: str, solver: dict):
@@ -120,7 +119,7 @@ async def _create_solver_induction(db, solver_id: str, solver: dict):
     for template in SOLVER_INDUCTION_TASKS:
         task = {
             "id": str(uuid.uuid4()),
-            "tenant_id": "solvit",
+            "tenant_id": tenant_of(solver),
             "entity_id": solver_id,
             "entity_type": "solver",
             "task_key": template["task_key"],
@@ -135,7 +134,7 @@ async def _create_solver_induction(db, solver_id: str, solver: dict):
         tasks.append(task)
     if tasks:
         await db.onboarding_tasks.insert_many(tasks)
-    return await db.onboarding_tasks.find({"entity_id": solver_id, "entity_type": "solver"}).to_list(20)
+    return await db.onboarding_tasks.find({"$and": [tenant_query(tenant_of(solver)), {"entity_id": solver_id, "entity_type": "solver"}]}).to_list(20)
 
 
 @router.put("/tasks/{task_id}")
@@ -143,7 +142,12 @@ async def update_task(task_id: str, upd: TaskUpdate, request: Request):
     user = await get_current_user(request)
     db = get_db()
     current = await find_linked_record(db.onboarding_tasks, task_id, user)
-    if current.get("entity_type") != "employee":
+    if current.get("entity_type") == "solver":
+        await authorize_solver(db, user, current.get("entity_id"))
+        if user.get("role") not in ("hr_admin", "hr_manager"):
+            if current.get("assigned_role") != user.get("role"):
+                raise HTTPException(403, "This induction task belongs to another role")
+    elif current.get("entity_type") != "employee":
         if user["role"] not in ("hr_admin", "hr_manager"):
             raise HTTPException(403, "No permission for this induction task")
     else:
@@ -157,7 +161,7 @@ async def update_task(task_id: str, upd: TaskUpdate, request: Request):
     if upd.notes:
         update_data["notes"] = upd.notes
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    result = await db.onboarding_tasks.find_one_and_update({"_id": current["_id"]}, {"$set": update_data}, return_document=True)
+    result = await db.onboarding_tasks.find_one_and_update({"$and": [tenant_query(tenant_of(user)), {"_id": current["_id"]}]}, {"$set": update_data}, return_document=True)
     if not result:
         raise HTTPException(status_code=404, detail="Task not found")
     return fmt(result)
@@ -171,13 +175,13 @@ async def get_all_onboarding(request: Request):
     db = get_db()
     # Get employees in onboarding/probation
     employees = await db.employees.find(
-        {"tenant_id": "solvit", "lifecycle_state": {"$in": ["Onboarding", "Probation"]}}
+        {"$and": [tenant_query(tenant_of(user)), {"lifecycle_state": {"$in": ["Onboarding", "Probation"]}}]}
     ).to_list(100)
     # Get solvers in registering state
-    solvers = await db.solvers.find({"tenant_id": "solvit", "lifecycle_state": "Registering"}).to_list(100)
+    solvers = await db.solvers.find({"$and": [tenant_query(tenant_of(user)), {"lifecycle_state": "Registering"}]}).to_list(100)
     result = []
     for emp in employees:
-        tasks = await db.onboarding_tasks.find({"entity_id": str(emp.get("id", str(emp["_id"]))), "entity_type": "employee"}).to_list(50)
+        tasks = await db.onboarding_tasks.find({"$and": [tenant_query(tenant_of(user)), {"entity_id": {"$in": reference_ids(emp)}, "entity_type": "employee"}]}).to_list(50)
         total = len(tasks)
         completed = sum(1 for t in tasks if t.get("status") == "Completed")
         overdue = sum(1 for t in tasks if t.get("status") == "Pending" and t.get("due_date") and t["due_date"] < datetime.now(timezone.utc).isoformat()[:10])

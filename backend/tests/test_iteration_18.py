@@ -13,7 +13,7 @@ Validates:
 import os
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 
 import pytest
 import requests
@@ -334,8 +334,9 @@ class TestLeaveRegression:
         r = sessions["employee"].post(f"{BASE_URL}/api/leave", json={
             "employee_id": emp_rec["id"],
             "leave_type": "Annual",
-            "start_date": "2026-04-01",
-            "end_date": "2026-04-02",
+            "start_date": (date.today() + timedelta(days=14)).isoformat(),
+            "end_date": (date.today() + timedelta(days=15)).isoformat(),
+            "handover_contact_id": emp_rec["line_manager_id"],
             "notes": "TEST iter18 regression",
         })
         assert r.status_code in (200, 201), r.text

@@ -1,6 +1,7 @@
 """Role-scoped dashboard endpoints.
 
 Currently implemented:
+- GET /api/dashboard/staff-home — authenticated employee's personal snapshot.
 - GET /api/dashboard/line-manager — direct reports + pending leave approvals,
   flight-risk distribution and open performance review tasks for the caller's
   team. Line Manager (and HR Admin / IT Admin for support) only.
@@ -13,6 +14,16 @@ from utils.auth import get_current_user
 from bson import ObjectId
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+
+
+@router.get("/staff-home")
+async def staff_home(request: Request):
+    from routes.leave import get_leave_balances
+    from utils.staff_home import staff_home_data
+    user = await get_current_user(request)
+    async def balance_loader(employee_id):
+        return await get_leave_balances(employee_id, request)
+    return await staff_home_data(get_db(), user, balance_loader)
 
 
 async def _resolve_emp_id(db, user) -> str | None:

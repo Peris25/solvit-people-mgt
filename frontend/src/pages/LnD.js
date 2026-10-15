@@ -3,13 +3,18 @@ import StatusBadge from '../components/StatusBadge';
 import EmployeePicker from '../components/EmployeePicker';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useSearchParams } from 'react-router-dom';
+import { relatedRecordRows } from '../utils/relatedRecordFilter';
 
 const fmtKES = (n) => n != null ? `KES ${Number(n).toLocaleString('en-KE')}` : '—';
 
 export default function LnD() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedTraining = searchParams.get('training');
   const [tab, setTab] = useState('training');
   const [requests, setRequests] = useState([]);
+  const selectedRequests = relatedRecordRows(requests, linkedTraining);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
@@ -68,6 +73,10 @@ export default function LnD() {
 
       {tab === 'training' && (
         <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
+          {linkedTraining && <div style={{ padding: '12px' }}>
+            {!loading && selectedRequests.length === 0 ? 'The requested training record is unavailable or not authorized.' : 'Viewing a linked training request.'}
+            <button onClick={() => setSearchParams({})} style={{ marginLeft: '12px', minHeight: '44px' }}>Show all requests</button>
+          </div>}
           {loading ? <div style={{ padding: '48px', textAlign: 'center' }}>Loading...</div> : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
               <thead>
@@ -78,7 +87,7 @@ export default function LnD() {
                 </tr>
               </thead>
               <tbody>
-                {requests.map((r, i) => (
+                {selectedRequests.map((r, i) => (
                   <tr key={r.id} data-testid={`training-row-${r.id}`} style={{ borderBottom: '1px solid rgba(25,25,25,0.05)', backgroundColor: i % 2 === 0 ? '#fff' : '#FAFAFA' }}>
                     <td style={{ padding: '10px 14px', fontWeight: 700 }}>{r.training_name}</td>
                     <td style={{ padding: '10px 14px', color: '#525252' }}>{r.provider}</td>
