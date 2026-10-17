@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import StatusBadge from '../components/StatusBadge';
 import EmployeePicker from '../components/EmployeePicker';
+import { TrainingCatalogue, TrainingCompletion } from '../components/LearningWorkflows';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useSearchParams } from 'react-router-dom';
@@ -14,26 +15,30 @@ export default function LnD() {
   const linkedTraining = searchParams.get('training');
   const [tab, setTab] = useState('training');
   const [requests, setRequests] = useState([]);
-  const selectedRequests = relatedRecordRows(requests, linkedTraining);
+  const [learningFilter, setLearningFilter] = useState('all');
+  const [error, setError] = useState('');
+  const [reasons, setReasons] = useState({});
+  const learning = requests.filter(row => ['Approved','Completion_Submitted','Completed'].includes(row.status));
+  const viewRows = tab === 'learning' ? learning.filter(row => learningFilter === 'all' || (learningFilter === 'completed' ? row.status === 'Completed' : row.proposed_start_date && row.proposed_start_date >= new Date(Date.now() + 10800000).toISOString().slice(0,10))) : requests;
+  const selectedRequests = relatedRecordRows(viewRows, linkedTraining);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
-    employee_id: user?.employee_id || user?.id || '',
+    employee_id: user?.employee_id || '',
     training_name: '', provider: '', delivery_method: 'External',
     cost_kes: '', duration_days: 1, business_justification: '',
     proposed_start_date: '', proposed_end_date: ''
   });
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { load(); }, []);
-
-  const load = async () => {
-    setLoading(true);
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
     try {
       const r = await api.getTrainingRequests();
       setRequests(r.data);
-    } finally { setLoading(false); }
-  };
+    } catch { setError('Unable to load learning records. Please retry.'); } finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -47,12 +52,12 @@ export default function LnD() {
       setShowForm(false);
       setForm({ ...form, training_name: '', provider: '', cost_kes: '', business_justification: '' });
       load();
-    } finally { setSaving(false); }
+    } catch (e) { setError(typeof e.response?.data?.detail === 'string' ? e.response.data.detail : 'Unable to save the training request.'); } finally { setSaving(false); }
   };
 
   const decide = async (id, decision) => {
-    await api.trainingDecision(id, { decision });
-    load();
+    try { setError(''); await api.trainingDecision(id, { decision, ...(decision === 'Reject' ? { reason:reasons[id] } : {}) }); await load(); }
+    catch (e) { setError(typeof e.response?.data?.detail === 'string' ? e.response.data.detail : 'Unable to save the decision.'); }
   };
 
   return (
@@ -65,14 +70,18 @@ export default function LnD() {
         <button data-testid="add-training-btn" onClick={() => setShowForm(true)} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>+ Request Training</button>
       </div>
 
-      <div style={{ display: 'flex', borderBottom: '2px solid rgba(25,25,25,0.1)', marginBottom: '20px' }}>
-        {[{ k: 'training', l: 'Training Requests' }, { k: 'idp', l: 'IDP Plans' }, { k: 'skills', l: 'Skills Matrix' }].map(t => (
+      <div style={{ display: 'flex', flexWrap:'wrap', borderBottom: '2px solid rgba(25,25,25,0.1)', marginBottom: '20px' }}>
+        {[{ k:'learning', l:'Assigned learning & history' }, { k:'catalogue', l:'Courses & sessions' }, { k: 'training', l: 'Training Requests' }, { k: 'idp', l: 'IDP Plans' }, { k: 'skills', l: 'Skills Matrix' }].map(t => (
           <button key={t.k} onClick={() => setTab(t.k)} style={{ padding: '10px 20px', backgroundColor: 'transparent', border: 'none', borderBottom: tab === t.k ? '2px solid #FF353F' : '2px solid transparent', marginBottom: '-2px', cursor: 'pointer', fontSize: '12px', fontWeight: tab === t.k ? 700 : 400, color: tab === t.k ? '#FF353F' : '#525252', fontFamily: 'Arial', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{t.l}</button>
         ))}
       </div>
 
-      {tab === 'training' && (
-        <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
+      {error && <p role="alert">{error} <button onClick={load}>Retry</button></p>}
+      <p>{requests.length} learning records / {requests.filter(row => row.status === 'Completed').length} completed (including history)</p>
+      {tab === 'catalogue' && <TrainingCatalogue user={user} onUpdated={load} />}
+      {['training','learning'].includes(tab) && (
+        <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', overflowX:'auto' }}>
+          {tab === 'learning' && <label>Learning view <select value={learningFilter} onChange={e => setLearningFilter(e.target.value)}><option value="all">All assigned learning</option><option value="upcoming">Upcoming sessions</option><option value="completed">Completion history</option></select></label>}
           {linkedTraining && <div style={{ padding: '12px' }}>
             {!loading && selectedRequests.length === 0 ? 'The requested training record is unavailable or not authorized.' : 'Viewing a linked training request.'}
             <button onClick={() => setSearchParams({})} style={{ marginLeft: '12px', minHeight: '44px' }}>Show all requests</button>
@@ -89,22 +98,23 @@ export default function LnD() {
               <tbody>
                 {selectedRequests.map((r, i) => (
                   <tr key={r.id} data-testid={`training-row-${r.id}`} style={{ borderBottom: '1px solid rgba(25,25,25,0.05)', backgroundColor: i % 2 === 0 ? '#fff' : '#FAFAFA' }}>
-                    <td style={{ padding: '10px 14px', fontWeight: 700 }}>{r.training_name}</td>
+                    <td style={{ padding: '10px 14px', fontWeight: 700 }}>{r.training_name}<div style={{ fontSize:11, fontWeight:400 }}>{r.employee_name}</div><TrainingCompletion training={r} onUpdated={load} /></td>
                     <td style={{ padding: '10px 14px', color: '#525252' }}>{r.provider}</td>
                     <td style={{ padding: '10px 14px', color: '#191919', fontWeight: 700 }}>{fmtKES(r.cost_kes)}</td>
                     <td style={{ padding: '10px 14px', color: '#525252' }}>{r.duration_days}</td>
                     <td style={{ padding: '10px 14px' }}><StatusBadge status={r.status?.replace('Pending_', '').replace('_', ' ')} small /></td>
                     <td style={{ padding: '10px 14px' }}>
-                      {['hr_admin', 'hr_manager', 'line_manager'].includes(user?.role) && r.status?.startsWith('Pending') && (
+                      {r.can_decide && (
                         <div style={{ display: 'flex', gap: '6px' }}>
                           <button onClick={() => decide(r.id, 'Approve')} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #22C55E', color: '#22C55E', background: 'transparent', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>Approve</button>
-                          <button onClick={() => decide(r.id, 'Reject')} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #FF353F', color: '#FF353F', background: 'transparent', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>Reject</button>
+                          <input aria-label="Rejection reason" placeholder="Reason for rejection" value={reasons[r.id] || ''} onChange={e => setReasons(previous => ({ ...previous, [r.id]:e.target.value }))} />
+                          <button disabled={!reasons[r.id]?.trim()} onClick={() => decide(r.id, 'Reject')} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #FF353F', color: '#FF353F', background: 'transparent', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>Reject</button>
                         </div>
                       )}
                     </td>
                   </tr>
                 ))}
-                {requests.length === 0 && <tr><td colSpan={6} style={{ padding: '32px', textAlign: 'center', color: '#9CA3AF' }}>No training requests</td></tr>}
+                {selectedRequests.length === 0 && <tr><td colSpan={6} style={{ padding: '32px', textAlign: 'center', color: '#9CA3AF' }}>No learning records in this view</td></tr>}
               </tbody>
             </table>
           )}
@@ -122,12 +132,14 @@ export default function LnD() {
 
       {showForm && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ backgroundColor: '#fff', width: '560px', maxHeight: '85vh', overflowY: 'auto', border: '1px solid rgba(25,25,25,0.15)' }}>
+          <div style={{ backgroundColor: '#fff', width: 'min(560px, 95vw)', maxHeight: '85vh', overflowY: 'auto', border: '1px solid rgba(25,25,25,0.15)' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between' }}>
               <h3 style={{ margin: 0, fontWeight: 900 }}>Request Training</h3>
               <button onClick={() => setShowForm(false)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}>×</button>
             </div>
-            <form onSubmit={submit} style={{ padding: '24px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+            <form onSubmit={submit} style={{ padding: '24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
+              {error && <p role="alert" style={{ gridColumn:'1 / -1' }}>{error}</p>}
+              {['hr_admin','hr_manager','line_manager'].includes(user?.role) && <div style={{ gridColumn:'1 / -1' }}><label>Nominate employee</label><EmployeePicker value={form.employee_id} onChange={value => setForm(previous => ({ ...previous, employee_id:value.id }))} /></div>}
               {[
                 { k: 'training_name', l: 'Training Name', type: 'text', span: true },
                 { k: 'provider', l: 'Provider', type: 'text' },
@@ -153,7 +165,7 @@ export default function LnD() {
               ))}
               <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
                 <button type="button" onClick={() => setShowForm(false)} style={{ padding: '10px 20px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '12px', fontFamily: 'Arial' }}>Cancel</button>
-                <button data-testid="submit-training-btn" type="submit" disabled={saving} style={{ padding: '10px 24px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Arial' }}>{saving ? 'Submitting...' : 'Submit Request'}</button>
+                <button data-testid="submit-training-btn" type="submit" disabled={saving || !form.employee_id} style={{ padding: '10px 24px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Arial' }}>{saving ? 'Submitting...' : 'Submit Request'}</button>
               </div>
             </form>
           </div>

@@ -24,8 +24,16 @@ from routes import ai_actions
 import os
 import uuid
 import re
+from utils.legacy_security import module_access
+from utils.employee_integrity import tenant_of
 
 router = APIRouter(prefix="/ai-agent", tags=["ai_agent"])
+
+
+def authorize_context(user, modules):
+    module_access(user, "M16")
+    if tenant_of(user) != "solvit": raise HTTPException(403, "Legacy AI context is unavailable in this company")
+    for module in modules: module_access(user, module)
 
 
 class ChatMessage(BaseModel):
@@ -366,6 +374,10 @@ SYSTEM_PROMPT = (
 @router.post("/chat")
 async def chat_with_agent(msg: ChatMessage, request: Request):
     user = await get_current_user(request)
+    intent_modules = {"leave":"M18","performance":"M05","recruitment":"M03","solver":"M02","training":"M08","recognition":"M11","discipline":"M14","budget":"M12","onboarding":"M04","compliance":"M19","policy":"M13"}
+    required = ["M01"] + [intent_modules[x] for x in classify_intents(msg.message)]
+    if has_entity_question(msg.message): required += ["M18", "M05", "M08", "M14"]
+    authorize_context(user, required)
     if user["role"] not in ["hr_admin", "hr_manager"]:
         raise HTTPException(status_code=403, detail="Only HR Admin/Manager can use the AI Assistant")
     db = get_db()
@@ -455,6 +467,7 @@ async def run_compliance_check(request: Request):
     user = await get_current_user(request)
     if user["role"] not in ["hr_admin", "hr_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    authorize_context(user, ["M01", "M19"])
     db = get_db()
     issues = await compliance_status(db)
     return {"status": "\n".join(issues), "issues": issues, "checked_at": datetime.now(timezone.utc).isoformat()}
@@ -466,6 +479,7 @@ async def daily_brief(request: Request):
     user = await get_current_user(request)
     if user["role"] not in ["hr_admin", "hr_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    authorize_context(user, ["M01", "M02", "M03", "M04", "M05", "M08", "M11", "M12", "M14", "M18", "M19"])
     db = get_db()
     return {
         "headcount": await snapshot_headcount(db),
@@ -489,16 +503,26 @@ async def employee_status(request: Request, query: str):
     if user["role"] not in ["hr_admin", "hr_manager", "line_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
+    module_access(user, "M16")
+    if tenant_of(user) != "solvit": raise HTTPException(403, "Legacy AI context is unavailable in this company")
     info = await lookup_employee_status(db, query)
     if not info:
         raise HTTPException(status_code=404, detail="No employee matched that query")
     await authorize_employee(db, user, info.get("employee_id") or info.get("id"), "M01")
+    if user.get("role") == "line_manager":
+        info.pop("open_disciplinary", None)
+        for leave in info.get("recent_leave", []): leave.pop("type", None)
+        from utils.access_matrix import get_module_access
+        if not get_module_access("M05", user.get("role")): info.pop("recent_reviews", None)
+        if not get_module_access("M08", user.get("role")): info.pop("recent_trainings", None)
     return info
 
 
 @router.get("/conversations")
 async def get_conversations(request: Request, limit: int = 20):
     user = await get_current_user(request)
+    authorize_context(user, [])
+    if not 1 <= limit <= 100: raise HTTPException(422, "Conversation limit must be 1 to 100")
     db = get_db()
     messages = await db.ai_conversations.find(
         {"tenant_id": "solvit", "user_id": user["id"]}
@@ -513,6 +537,7 @@ async def get_conversations(request: Request, limit: int = 20):
 @router.post("/actions/{action_id}/execute")
 async def execute_action(action_id: str, request: Request):
     user = await get_current_user(request)
+    authorize_context(user, [])
     db = get_db()
     pending = await db.ai_pending_actions.find_one({"id": action_id, "status": "pending"})
     if not pending:
@@ -571,6 +596,7 @@ async def execute_action(action_id: str, request: Request):
 @router.post("/actions/{action_id}/cancel")
 async def cancel_action(action_id: str, request: Request):
     user = await get_current_user(request)
+    authorize_context(user, [])
     db = get_db()
     pending = await db.ai_pending_actions.find_one({"id": action_id, "status": "pending"})
     if not pending:
@@ -594,8 +620,8 @@ async def actions_audit(request: Request, limit: int = 50):
     user = await get_current_user(request)
     if user["role"] not in ("hr_admin", "hr_manager", "it_admin"):
         raise HTTPException(status_code=403, detail="HR / IT Admin only")
-    db = get_db()
-    rows = await db.ai_actions_audit.find({"tenant_id": "solvit"}).sort("timestamp", -1).to_list(min(limit, 200))
-    for r in rows:
-        r.pop("_id", None)
-    return rows
+    from utils import administrative_reporting as reporting
+    db=get_db()
+    result=await reporting.audit_feed(db,user,limit=limit,sources=['ai_actions_audit'])
+    await reporting.access_audit(db,user,'report.audit.viewed',source='ai_actions_audit')
+    return [{**row,'kind':row['event'],'summary':'Action details redacted'} for row in result['items']]

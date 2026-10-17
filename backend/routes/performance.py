@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 from bson import ObjectId
 from database import get_db
 from utils.employee_access import authorize_employee, scoped_employee_query, reference_ids, find_linked_record, reject_identity_changes
-from utils.employee_integrity import user_employee_aliases, find_employee, tenant_of
+from utils.employee_integrity import user_employee_aliases, find_employee, tenant_of, tenant_query, integrity_write
+from utils import performance_workflows as workflow
 from utils.auth import get_current_user
 import uuid
 
@@ -94,6 +95,47 @@ def calculate_overall_score(a: float, b: float, c: float) -> float:
     return round(a * 0.5 + b * 0.3 + c * 0.2, 1)
 
 
+@router.get("/cycles")
+async def list_cycles(request: Request):
+    from utils.employee_access import personal_grant
+    user = await get_current_user(request)
+    personal_grant(user, "M05")
+    rows = await get_db().performance_cycles.find(tenant_query(tenant_of(user))).sort("starts_on", -1).to_list(None)
+    fields = {"id", "cycle_type", "cycle_year", "starts_on", "ends_on", "self_due_on", "manager_due_on", "status"}
+    if user.get("role") in workflow.HR: fields.add("scoring_policy")
+    return [{key: row.get(key) for key in fields} for row in rows]
+
+
+@router.post("/cycles")
+async def configure_cycle(request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    if not isinstance(body, dict): raise HTTPException(422, "An object body is required")
+    db = get_db()
+    async with integrity_write(db):
+        return await workflow.create_cycle(db, user, body)
+
+
+@router.put("/{review_id}/goals")
+async def update_goals(review_id: str, request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    if not isinstance(body, dict): raise HTTPException(422, "An object body is required")
+    db = get_db()
+    async with integrity_write(db):
+        return await workflow.goals(db, user, review_id, body)
+
+
+@router.post("/{review_id}/assessments/{stage}")
+async def submit_assessment(review_id: str, stage: str, request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    if not isinstance(body, dict): raise HTTPException(422, "An object body is required")
+    db = get_db()
+    async with integrity_write(db):
+        return await workflow.assess(db, user, review_id, stage, body)
+
+
 @router.get("")
 async def list_reviews(request: Request, employee_id: Optional[str] = None, cycle_year: Optional[int] = None, status: Optional[str] = None):
     user = await get_current_user(request)
@@ -104,77 +146,37 @@ async def list_reviews(request: Request, employee_id: Optional[str] = None, cycl
     if status:
         query = {"$and": [query, {"status": status}]}
     reviews = await db.performance_reviews.find(query).sort("created_at", -1).to_list(200)
-    # Enrich with employee name + round scores (D02, D03)
-    emp_ids = list({r.get("employee_id") for r in reviews if r.get("employee_id")})
-    emp_map = {}
-    if emp_ids:
-        async for e in db.employees.find({"id": {"$in": emp_ids}}, {"id": 1, "full_name": 1, "role_title": 1, "department": 1}):
-            emp_map[e.get("id")] = e
     out = []
-    for r in reviews:
-        rec = fmt(r)
-        emp = emp_map.get(rec.get("employee_id"))
-        if emp:
-            rec["employee_name"] = emp.get("full_name")
-            rec["role_title"] = emp.get("role_title")
-            rec["department"] = emp.get("department")
-        for k in ("overall_score", "section_a_score", "section_b_score", "section_c_score"):
-            if rec.get(k) is not None:
-                try:
-                    rec[k] = round(float(rec[k]), 1)
-                except Exception:
-                    pass
-        out.append(rec)
+    for row in reviews:
+        try:
+            employee = await workflow.employee_access(db, user, row.get("employee_id"))
+        except HTTPException as error:
+            if error.status_code in (403, 404): continue
+            raise
+        out.append(workflow.projection(row, user, employee))
     return out
 
 
 @router.post("")
 async def create_review(review: ReviewCreate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
-    employee = await authorize_employee(db, user, review.employee_id, "M05", write=True)
-    review = review.model_copy(update={"employee_id": employee.get("id") or str(employee["_id"])})
-    existing = await db.performance_reviews.find_one({
-        "employee_id": review.employee_id,
-        "cycle_type": review.cycle_type,
-        "cycle_year": review.cycle_year
-    })
-    if existing:
-        raise HTTPException(status_code=400, detail="Review already exists for this cycle")
-    doc = {
-        "id": str(uuid.uuid4()),
-        "tenant_id": "solvit",
-        **review.model_dump(),
-        "section_a_score": None,
-        "section_b_score": None,
-        "section_c_score": None,
-        "overall_score": None,
-        "rating": None,
-        "nine_box_placement": None,
-        "talent_density_pct": None,
-        "consequence_workflow": None,
-        "form_data_json": {},
-        "employee_signature_at": None,
-        "manager_signature_at": None,
-        "hr_signature_at": None,
-        "status": "Draft",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat()
-    }
-    result = await db.performance_reviews.insert_one(doc)
-    doc["_id"] = str(result.inserted_id)
-    return doc
+    async with integrity_write(db):
+        return await workflow.create_review(db, user, review.model_dump())
 
 
 @router.get("/active-cycle")
 async def get_active_cycle(request: Request):
     user = await get_current_user(request)
-    db = get_db()
-    now = datetime.now(timezone.utc)
-    cycle_type = "Mid_Year" if now.month <= 6 else "Year_End"
-    return {"cycle_type": cycle_type, "cycle_year": now.year, "is_active": True}
+    from utils.employee_access import personal_grant
+    personal_grant(user, "M05")
+    today = datetime.now(timezone.utc).date().isoformat()
+    rows = await get_db().performance_cycles.find(tenant_query(tenant_of(user))).to_list(None)
+    active = [row for row in rows if row.get("starts_on", "z") <= today <= row.get("ends_on", "")]
+    if len(active) > 1:
+        raise HTTPException(409, "Overlapping active cycles require HR review")
+    if not active: return {"is_active": False, "cycle_type": None, "cycle_year": None}
+    return {"is_active": True, **{key: active[0].get(key) for key in ("id", "cycle_type", "cycle_year", "starts_on", "ends_on")}}
 
 
 @router.get("/review-panel/{employee_id}")
@@ -231,12 +233,12 @@ async def get_review_panel(employee_id: str, request: Request):
     panel = []
     for slot in panel_roles:
         if slot == "md":
-            md_user = await db.users.find_one({"role": "executive", "tenant_id": "solvit"})
+            md_user = await db.users.find_one({"role": "executive", "tenant_id": tenant_of(user)})
             panel.append({"role": "md", "user_id": str(md_user["_id"]) if md_user else None,
                           "name": md_user.get("full_name") if md_user else "Managing Director",
                           "email": md_user.get("email") if md_user else None})
         elif slot == "hr_admin":
-            hr_user = await db.users.find_one({"role": "hr_admin", "tenant_id": "solvit"})
+            hr_user = await db.users.find_one({"role": "hr_admin", "tenant_id": tenant_of(user)})
             panel.append({"role": "hr_admin", "user_id": str(hr_user["_id"]) if hr_user else None,
                           "name": hr_user.get("full_name") if hr_user else "HR Admin",
                           "email": hr_user.get("email") if hr_user else None})
@@ -269,11 +271,14 @@ async def get_talent_density_kpi(request: Request, cycle_year: Optional[int] = N
     user = await get_current_user(request)
     if user["role"] not in ["hr_admin", "hr_manager", "executive"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    from utils.access_matrix import get_module_access
+    if not get_module_access("M05", user.get("role")):
+        raise HTTPException(403, "No performance aggregate permission")
     db = get_db()
     year = cycle_year or datetime.now(timezone.utc).year
 
-    active_count = await db.employees.count_documents({"tenant_id": "solvit", "lifecycle_state": "Active"})
-    reviews = await db.performance_reviews.find({"tenant_id": "solvit", "cycle_year": year}).to_list(500)
+    active_count = await db.employees.count_documents({"tenant_id": tenant_of(user), "lifecycle_state": "Active"})
+    reviews = await db.performance_reviews.find({"tenant_id": tenant_of(user), "cycle_year": year}).to_list(500)
     in_target = sum(1 for r in reviews if r.get("nine_box_placement") in ["Stars", "Core_Contributor"])
     primary_pct = (in_target / max(active_count, 1)) * 100 if active_count else 0
 
@@ -281,8 +286,8 @@ async def get_talent_density_kpi(request: Request, cycle_year: Optional[int] = N
     sec_b_avg = sum(section_b_scores) / len(section_b_scores) if section_b_scores else 0
     section_b_pct = max(0, min(100, (3 - sec_b_avg) / 2 * 100)) if sec_b_avg else 0
 
-    survey_pct = 70
-    latest_survey = await db.survey_responses.find({"tenant_id": "solvit"}).sort("created_at", -1).limit(50).to_list(50)
+    survey_pct = None
+    latest_survey = await db.survey_responses.find({"tenant_id": tenant_of(user)}).sort("created_at", -1).limit(50).to_list(50)
     if latest_survey:
         scores = []
         for s in latest_survey:
@@ -290,17 +295,17 @@ async def get_talent_density_kpi(request: Request, cycle_year: Optional[int] = N
         if scores:
             survey_pct = sum(scores) / len(scores) * 20
 
-    composite = round(primary_pct * 0.6 + section_b_pct * 0.25 + survey_pct * 0.15, 1)
+    composite = round(primary_pct * 0.6 + section_b_pct * 0.25 + survey_pct * 0.15, 1) if survey_pct is not None and section_b_scores else None
     from routes.masters_settings import get_setting
     target = int(await get_setting("performance", "talent_density_target_pct", 85) or 85)
     return {
         "score_pct": composite,
         "target_pct": target,
-        "status": "Healthy" if composite >= target else "Below Target" if composite >= max(target - 15, 50) else "Critical",
+        "status": "Insufficient data" if composite is None else "Healthy" if composite >= target else "Below Target" if composite >= max(target - 15, 50) else "Critical",
         "components": {
             "primary_stars_core_pct": round(primary_pct, 1),
             "secondary_values_avg_pct": round(section_b_pct, 1),
-            "tertiary_alignment_pct": round(survey_pct, 1),
+            "tertiary_alignment_pct": round(survey_pct, 1) if survey_pct is not None else None,
         },
         "active_employees": active_count,
         "in_target_quadrant": in_target,
@@ -321,88 +326,15 @@ async def get_md_kpis(request: Request):
 @router.get("/{review_id}")
 async def get_review(review_id: str, request: Request):
     user = await get_current_user(request)
-    db = get_db()
-    r = await find_linked_record(db.performance_reviews, review_id, user)
-    await authorize_employee(db, user, r.get("employee_id"), "M05")
-    rec = fmt(r)
-    # Enrich + round (D02 / D03)
-    emp = await db.employees.find_one({"id": rec.get("employee_id")})
-    if emp:
-        rec["employee_name"] = emp.get("full_name")
-        rec["role_title"] = emp.get("role_title")
-        rec["department"] = emp.get("department")
-    for k in ("overall_score", "section_a_score", "section_b_score", "section_c_score"):
-        if rec.get(k) is not None:
-            try:
-                rec[k] = round(float(rec[k]), 1)
-            except Exception:
-                pass
-    return rec
+    row, employee = await workflow.record(get_db(), user, review_id)
+    return workflow.projection(row, user, employee)
 
 
 @router.put("/{review_id}")
 async def update_review(review_id: str, upd: ReviewUpdate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "line_manager"]:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-    db = get_db()
-    current = await find_linked_record(db.performance_reviews, review_id, user)
-    await authorize_employee(db, user, current.get("employee_id"), "M05", write=True)
-    update_data = {k: v for k, v in upd.model_dump().items() if v is not None}
-    if upd.employee_signature:
-        update_data["employee_signature_at"] = datetime.now(timezone.utc).isoformat()
-    if upd.manager_signature:
-        update_data["manager_signature_at"] = datetime.now(timezone.utc).isoformat()
-    if upd.hr_signature:
-        update_data["hr_signature_at"] = datetime.now(timezone.utc).isoformat()
-
-    # Auto-calculate overall score
-    a = upd.section_a_score or current.get("section_a_score")
-    b = upd.section_b_score or current.get("section_b_score")
-    c = upd.section_c_score or current.get("section_c_score")
-    if a and b and c:
-        overall = calculate_overall_score(a, b, c)
-        update_data["overall_score"] = overall
-        update_data["rating"] = get_rating(overall)
-
-    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    result = await db.performance_reviews.find_one_and_update(
-        {"_id": current["_id"], "tenant_id": current.get("tenant_id", "solvit")},
-        {"$set": update_data}, return_document=True)
-
-
-    # Fire consequence workflows
-    if update_data.get("overall_score"):
-        from automation.engine import automation_engine
-        await automation_engine.fire_event("performance_score_calculated", {
-            "employee_id": result.get("employee_id"),
-            "score": update_data["overall_score"],
-            "rating": update_data.get("rating")
-        })
-
-    # Email triggers — pick the template by transition
-    try:
-        from utils.email_triggers import fire_and_forget
-        emp_id = result.get("employee_id")
-        new_status = update_data.get("status")
-        if new_status == "Completed":
-            await fire_and_forget(db, "performance.review_complete", employee_id=emp_id, extra={
-                "score": update_data.get("overall_score"),
-                "rating": update_data.get("rating"),
-                "cycle_year": result.get("cycle_year"),
-                "cycle_type": result.get("cycle_type"),
-            })
-        # PIP transitions stored in status or consequence_workflow
-        if update_data.get("consequence_workflow") == "PIP_Initiated":
-            await fire_and_forget(db, "performance.pip_initiated", employee_id=emp_id)
-        elif update_data.get("consequence_workflow") == "PIP_Successful":
-            await fire_and_forget(db, "performance.pip_success", employee_id=emp_id)
-        elif update_data.get("consequence_workflow") == "PIP_Escalated":
-            await fire_and_forget(db, "performance.pip_escalate", employee_id=emp_id)
-    except Exception:
-        pass
-
-    return fmt(result)
+    await workflow.record(get_db(), user, review_id)
+    raise HTTPException(409, "Use the staged assessment workflow. Historical scores require approved reconciliation.")
 
 
 @router.get("/employee/{employee_id}/history")
@@ -410,55 +342,44 @@ async def get_review_history(employee_id: str, request: Request):
     user = await get_current_user(request)
     db = get_db()
     employee = await authorize_employee(db, user, employee_id, "M05")
-    reviews = await db.performance_reviews.find({"employee_id": {"$in": reference_ids(employee)}, "tenant_id": "solvit"}).sort("created_at", -1).to_list(20)
-    return [fmt(r) for r in reviews]
+    reviews = await db.performance_reviews.find({"$and": [tenant_query(tenant_of(user)), {"employee_id": {"$in": reference_ids(employee) + [employee["_id"]]}}]}).sort("created_at", -1).to_list(200)
+    await workflow.employee_access(db, user, employee_id)
+    return [workflow.projection(row, user, employee) for row in reviews]
 
 
 @router.put("/nine-box/{employee_id}/placement")
 async def update_nine_box_placement(employee_id: str, request: Request):
     """Update an employee's most-recent review nine_box_placement (drag-and-drop)."""
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "executive"]:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    workflow.require_hr(user)
     body = await request.json()
-    new_placement = body.get("placement")
-    if new_placement not in NINE_BOX:
-        raise HTTPException(status_code=400, detail=f"Invalid placement. Must be one of: {NINE_BOX}")
+    if not isinstance(body, dict) or body.get("placement") not in NINE_BOX:
+        raise HTTPException(422, "Choose a valid placement")
     db = get_db()
-    cycle_year = body.get("cycle_year") or datetime.now(timezone.utc).year
-    # Find latest review for this cycle
-    review = await db.performance_reviews.find_one(
-        {"employee_id": employee_id, "cycle_year": cycle_year, "tenant_id": "solvit"},
-        sort=[("created_at", -1)]
-    )
-    if not review:
-        raise HTTPException(status_code=404, detail=f"No performance review found for employee {employee_id} in cycle {cycle_year}. Create one first.")
-    await db.performance_reviews.update_one(
-        {"_id": review["_id"]},
-        {"$set": {"nine_box_placement": new_placement, "updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
-    # Audit
-    await db.audit_logs.insert_one({
-        "id": str(uuid.uuid4()),
-        "tenant_id": "solvit",
-        "action": "nine_box.placement.update",
-        "entity": f"performance_review:{review['id']}",
-        "performed_by": user["id"],
-        "metadata": {"old": review.get("nine_box_placement"), "new": new_placement, "employee_id": employee_id},
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    })
-    return {"status": "success", "employee_id": employee_id, "placement": new_placement}
+    async with integrity_write(db):
+        employee = await workflow.employee_access(db, user, employee_id, write=True)
+        if employee.get("id") == user.get("employee_id"):
+            raise HTTPException(403, "Employees cannot classify their own performance")
+        reviews = await db.performance_reviews.find({"$and": [tenant_query(tenant_of(user)), {
+            "employee_id": {"$in": reference_ids(employee) + [employee["_id"]]},
+            "cycle_year": body.get("cycle_year") or datetime.now(timezone.utc).year}]}).sort("created_at", -1).to_list(1)
+        if not reviews: raise HTTPException(404, "No review found for this period")
+        if reviews[0].get("workflow_version") == 1 and reviews[0].get("status") not in {"HR_Reviewed", "Completed"}:
+            raise HTTPException(409, "HR assessment must be completed before classification")
+        await workflow.save(db, user, reviews[0], {"nine_box_placement": body["placement"]}, "performance.placement.changed")
+    return {"status": "success", "employee_id": employee_id, "placement": body["placement"]}
 
 
 @router.get("/nine-box/matrix")
 async def get_nine_box_matrix(request: Request, cycle_year: Optional[int] = None):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "executive"]:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    if user.get("role") not in workflow.HR: raise HTTPException(403, "Named performance matrix is HR-only")
+    from utils.employee_access import personal_grant
+    personal_grant(user, "M05")
     db = get_db()
     year = cycle_year or datetime.now(timezone.utc).year
     reviews = await db.performance_reviews.find({
-        "tenant_id": "solvit",
+        "tenant_id": tenant_of(user),
         "cycle_year": year,
         "nine_box_placement": {"$exists": True, "$ne": None}
     }).to_list(200)
@@ -468,14 +389,21 @@ async def get_nine_box_matrix(request: Request, cycle_year: Optional[int] = None
     for r in reviews:
         placement = r.get("nine_box_placement")
         if placement in matrix:
-            emp = await db.employees.find_one({"id": r["employee_id"]})
+            try:
+                emp = await workflow.employee_access(db, user, r["employee_id"])
+            except HTTPException as error:
+                if error.status_code in (403, 404): continue
+                raise
             if emp:
+                visible = workflow.projection(r, user, emp)
+                if visible.get("nine_box_placement") != placement:
+                    continue
                 matrix[placement].append({
-                    "employee_id": r["employee_id"],
+                    "employee_id": emp.get("id") or str(emp["_id"]),
                     "name": emp.get("full_name"),
                     "role": emp.get("role_title"),
                     "department": emp.get("department"),
-                    "score": r.get("overall_score"),
-                    "rating": r.get("rating")
+                    "score": visible.get("overall_score"),
+                    "rating": visible.get("rating")
                 })
     return matrix

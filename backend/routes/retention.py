@@ -4,7 +4,17 @@ from typing import Optional, List, Dict
 from datetime import datetime, timezone
 from bson import ObjectId
 from database import get_db
-from utils.auth import get_current_user
+from utils.auth import get_current_user as authenticate
+from utils.legacy_security import module_access, audit
+from utils.employee_integrity import tenant_of, integrity_write, find_employee, employee_key
+from utils.employee_access import find_linked_record
+
+async def get_current_user(request):
+    user = await authenticate(request)
+    module_access(user, "M07", write=request.method != "GET")
+    if tenant_of(user) != "solvit":
+        raise HTTPException(403, "Legacy retention data is available only in its original company")
+    return user
 import uuid
 
 router = APIRouter(prefix="/retention", tags=["retention"])
@@ -92,10 +102,7 @@ async def calculate_risk(employee_id: str, request: Request):
     if user["role"] not in ["hr_admin", "hr_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
-    try:
-        emp = await db.employees.find_one({"_id": ObjectId(employee_id)})
-    except Exception:
-        emp = await db.employees.find_one({"id": employee_id})
+    emp = await find_employee(db, employee_id, tenant_of(user))
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
 
@@ -149,6 +156,15 @@ async def create_stay_interview(request: Request):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     body = await request.json()
     db = get_db()
+    allowed = {"employee_id", "employee_name", "scheduled_date", "trigger_reason", "location", "notes", "status"}
+    if not isinstance(body, dict) or set(body) - allowed:
+        raise HTTPException(422, "Invalid stay interview fields")
+    target = await find_employee(db, body.get("employee_id"), tenant_of(user))
+    if not target: raise HTTPException(404, "Employee not found")
+    body["employee_id"] = employee_key(target)
+    body["employee_name"] = target.get("full_name", "")
+    if body.get("status", "Scheduled") != "Scheduled":
+        raise HTTPException(422, "New interviews start as Scheduled")
     doc = {
         "id": str(uuid.uuid4()),
         "tenant_id": "solvit",
@@ -158,7 +174,11 @@ async def create_stay_interview(request: Request):
         "conducted_by_name": user.get("full_name") or user.get("email"),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    result = await db.stay_interviews.insert_one(doc)
+    async with integrity_write(db):
+        if await db.stay_interviews.find_one({"tenant_id": tenant_of(user), "employee_id": body["employee_id"], "scheduled_date": body.get("scheduled_date")}):
+            raise HTTPException(409, "Interview already recorded")
+        await audit(db, user, "retention.interview.created", doc["id"])
+        result = await db.stay_interviews.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
     # Email the employee — stay interview meeting request
     try:
@@ -187,16 +207,14 @@ async def update_stay_interview(interview_id: str, request: Request):
     update = {k: v for k, v in body.items() if k in allowed}
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
     db = get_db()
-    try:
-        result = await db.stay_interviews.find_one_and_update(
-            {"_id": ObjectId(interview_id)}, {"$set": update}, return_document=True
-        )
-    except Exception:
-        result = await db.stay_interviews.find_one_and_update(
-            {"id": interview_id}, {"$set": update}, return_document=True
-        )
-    if not result:
-        raise HTTPException(status_code=404, detail="Stay interview not found")
+    current = await find_linked_record(db.stay_interviews, interview_id, user)
+    if current.get("status") == "Completed":
+        raise HTTPException(409, "Completed interview history is immutable")
+    if update.get("status") and update["status"] not in {"Scheduled", "Completed", "Cancelled"}:
+        raise HTTPException(422, "Invalid interview status")
+    async with integrity_write(db):
+        await audit(db, user, "retention.interview.updated", current["_id"])
+        result = await db.stay_interviews.find_one_and_update({"_id": current["_id"]}, {"$set": update}, return_document=True)
     return fmt(result)
 
 

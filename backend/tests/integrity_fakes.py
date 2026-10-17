@@ -138,11 +138,16 @@ class Database:
         self.users = Collection(users)
         self.candidates = Collection(candidates)
         self.integrity_locks = Collection()
+        self.auth_mfa = Collection()
+        self.auth_login_limits = Collection()
         self.audit_logs = Collection()
         self.audit_log = Collection()
         self.revoked_refresh_tokens = Collection()
         self.user_session_invalidations = Collection()
         self.system_settings = Collection()
+        self.permission_overrides = Collection()
+        self.custom_roles = Collection()
+        self.document_audit = Collection()
 
 
 def employee(key="staff", email="staff@example.com", **kwargs):

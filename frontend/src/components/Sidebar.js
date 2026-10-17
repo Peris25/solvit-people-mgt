@@ -19,6 +19,9 @@ const ICON_SIZE = 15;
 const MENU_ITEMS = [
   { section: 'Core', items: [
     { path: '/dashboard',   label: 'Dashboard',    Icon: LayoutDashboard, roles: ['hr_admin','hr_manager','executive','line_manager','finance','employee','solver','board','it_admin'] },
+    { path: '/account-security', label: 'Account security', Icon: KeyRound, roles: ['hr_admin','hr_manager','executive','line_manager','finance','employee','board','it_admin','solver'] },
+    { path: '/my-profile', label: 'My Profile', Icon: Users, roles: ['hr_admin','hr_manager','executive','line_manager','finance','employee','board','it_admin'] },
+    { path: '/documents', label: 'Documents', Icon: FileText, roles: ['hr_admin','hr_manager','executive','line_manager','finance','employee','board','it_admin'] },
     { path: '/employees',   label: 'Employees',    Icon: Users,           roles: ['hr_admin','hr_manager','line_manager','finance','executive'] },
     { path: '/staff-directory', label: 'Staff Directory', Icon: Users, roles: ['employee','line_manager','hr_admin','hr_manager','finance','executive','it_admin','board'] },
     { path: '/organogram',  label: 'Organogram',   Icon: Network,         roles: ['hr_admin','hr_manager','line_manager','finance','executive','employee','it_admin','board'] },
@@ -30,7 +33,8 @@ const MENU_ITEMS = [
       ]
     },
     { path: '/recruitment', label: 'Recruitment',  Icon: Target,          roles: ['hr_admin','hr_manager','line_manager','executive'] },
-    { path: '/onboarding',  label: 'Onboarding',   Icon: Rocket,          roles: ['hr_admin','hr_manager','line_manager','employee','solver'] },
+    { path: '/solver-assessments', label: 'Solver Assessments', Icon: FileCheck, roles: ['hr_admin','hr_manager','line_manager','solver'] },
+    { path: '/onboarding',  label: 'Onboarding / Exit',   Icon: Rocket,          roles: ['hr_admin','hr_manager','line_manager','employee','solver','finance','it_admin'] },
   ]},
   // Line Manager team views — visible to anyone with the manager layer
   // (`line_manager` OR `finance` since Finance & Admin includes the LM layer).
@@ -42,6 +46,7 @@ const MENU_ITEMS = [
     { path: '/projects',    label: 'Projects',     Icon: Briefcase,       roles: ['hr_admin','hr_manager','line_manager','finance','employee'] },
   ]},
   { section: 'HR Operations', items: [
+    { path: '/benefits', label: 'Benefits & Payroll Info', Icon: FileText, roles: ['hr_admin','hr_manager','line_manager','finance','employee'] },
     { path: '/leave',        label: 'Leave',        Icon: Palmtree,       roles: ['hr_admin','hr_manager','line_manager','finance','employee'] },
     { path: '/compensation', label: 'Compensation', Icon: Wallet,         roles: ['hr_admin','hr_manager','finance','executive'] },
     { path: '/recognition',  label: 'Recognition',  Icon: Award,          roles: ['hr_admin','hr_manager','line_manager','finance','employee','solver'] },
@@ -62,6 +67,7 @@ const MENU_ITEMS = [
     { path: '/compensation', label: 'Compensation', Icon: Wallet,        roles: ['finance'] },
   ]},
   { section: 'Tools', items: [
+    { path: '/reporting', label: 'Reports & Audit', Icon: FileText, roles: ['hr_admin','hr_manager','line_manager','finance','executive','it_admin'] },
     { path: '/forms',      label: 'Forms',          Icon: FileEdit,      roles: ['hr_admin','hr_manager','line_manager','finance','employee','solver'] },
     { path: '/my-tasks',   label: 'My Tasks',       Icon: ListChecks,    roles: ['hr_admin','hr_manager','line_manager','employee','solver','finance','executive','it_admin'] },
     { path: '/data-import', label: 'Data Import',    Icon: UploadCloud,   roles: ['hr_admin','hr_manager','it_admin'] },
@@ -109,6 +115,10 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
         items: [
           { path: '/my-tasks',    label: 'My Tasks',     Icon: ListChecks },
           { path: '/dashboard',   label: 'My Dashboard', Icon: LayoutDashboard },
+          { path: '/my-profile', label: 'My Profile', Icon: Users },
+          ...(['operations', 'accountmanagement'].includes(String(user?.department || '').toLowerCase().replace(/[^a-z]/g, '')) ? [{ path: '/solvers', label: 'Solver Directory', Icon: Zap }] : []),
+          { path: '/documents', label: 'Documents', Icon: FileText },
+          { path: '/benefits', label: 'Benefits & Payroll Info', Icon: FileText },
           { path: '/leave',       label: 'Leave',        Icon: Palmtree },
           { path: '/performance', label: 'My Reviews',   Icon: BarChart3 },
           { path: '/surveys',     label: 'My Surveys',   Icon: ClipboardList },

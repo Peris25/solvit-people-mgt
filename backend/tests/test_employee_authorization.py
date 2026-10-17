@@ -144,7 +144,7 @@ def test_unauthorized_decision_and_self_approval_have_no_writes(module, name, op
 @pytest.mark.parametrize("role", ["line_manager", "hr_admin", "hr_manager"])
 def test_authorized_training_decision_preserves_hr_approval_gate(role):
     db = fixture()
-    db.training_requests.docs = [{"_id": ObjectId(), "id": "record", "tenant_id": "solvit", "employee_id": "staff", "cost_kes": 6000, "duration_days": 1, "requires_hr_approval": True}]
+    db.training_requests.docs = [{"_id": ObjectId(), "id": "record", "tenant_id": "solvit", "employee_id": "staff", "cost_kes": 6000, "duration_days": 1, "requires_hr_approval": True, "line_manager_id":"boss", "status":"Pending_Manager_Approval" if role == "line_manager" else "Pending_HR_Approval", "manager_decision":None if role == "line_manager" else "Approve"}]
     with as_user(lnd, db, actor(role, "boss")):
         result = run(lnd.training_decision("record", request({"decision": "Approve", "requires_hr_approval": False})))
     assert result["status"] == ("Pending_HR_Approval" if role == "line_manager" else "Approved")

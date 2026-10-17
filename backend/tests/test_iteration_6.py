@@ -186,6 +186,8 @@ class TestUpdateAndIntegration:
     def test_allocation_threshold_integration(self, it_admin, hr_admin, finance):
         funded = finance.post(f"{API}/budget/gp-record", json={"period": "2026", "actual_gp_kes": 100_000_000}, timeout=15)
         assert funded.status_code in (200, 201), funded.text
+        confirmed = finance.post(f"{API}/budget/form-28", json={"period": "2026", "active_tier": "Tier_1"}, timeout=15)
+        assert confirmed.status_code == 200, confirmed.text
         # Set threshold to 100000
         cur = it_admin.get(f"{API}/settings/masters/budget_compensation", timeout=15).json()["values"]
         cur["allocation_finance_approval_threshold_kes"] = 100000
@@ -244,6 +246,8 @@ class TestBudgetVarianceFix:
     def test_variance_returns_to_pool_on_spent(self, finance, hr_admin):
         funded = finance.post(f"{API}/budget/gp-record", json={"period": "2026", "actual_gp_kes": 100_000_000}, timeout=15)
         assert funded.status_code in (200, 201), funded.text
+        confirmed = finance.post(f"{API}/budget/form-28", json={"period": "2026", "active_tier": "Tier_1"}, timeout=15)
+        assert confirmed.status_code == 200, confirmed.text
         # Baseline summary
         s0 = finance.get(f"{API}/budget/allocations/summary", timeout=15)
         assert s0.status_code == 200, s0.text

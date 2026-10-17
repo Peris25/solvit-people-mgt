@@ -6,6 +6,28 @@ from bson import ObjectId
 from database import get_db
 from utils.auth import get_current_user
 import uuid
+from utils.legacy_security import module_access, audit, HR
+from utils.employee_access import find_linked_record
+from utils.employee_integrity import tenant_of, tenant_query, integrity_write, find_employee, employee_key
+from utils.solver_access import own_solver, solver_key
+from pymongo.errors import DuplicateKeyError
+
+TYPES = {"alignment_fte", "alignment_solver", "engagement_fte", "satisfaction_solver"}
+
+async def eligible(db, user, window):
+    module_access(user, "M06")
+    if user.get("role") == "solver":
+        subject = await own_solver(db, user)
+        kind, key = "Solver", solver_key(subject)
+    else:
+        subject = await find_employee(db, user.get("employee_id"), tenant_of(user))
+        kind, key = "FTE", employee_key(subject) if subject else None
+    if not subject or subject.get("lifecycle_state") not in {"Active", "Probation", "Onboarding", "On Leave", "On_Leave"}:
+        raise HTTPException(403, "An eligible workforce link is required")
+    if window.get("survey_type") not in TYPES or window["survey_type"].endswith("solver") != (kind == "Solver"):
+        raise HTTPException(403, "Survey is not assigned to this workforce")
+    return kind, key
+
 
 router = APIRouter(prefix="/surveys", tags=["surveys"])
 
@@ -73,8 +95,15 @@ def calc_pillar_score(responses: dict, questions: list, pillar: int) -> float:
 async def list_survey_windows(request: Request):
     user = await get_current_user(request)
     db = get_db()
-    windows = await db.survey_windows.find({"tenant_id": "solvit"}).sort("open_date", -1).to_list(50)
-    return [fmt(w) for w in windows]
+    module_access(user, "M06")
+    windows = await db.survey_windows.find(tenant_query(tenant_of(user))).sort("open_date", -1).to_list(50)
+    visible = []
+    for row in windows:
+        if user["role"] not in HR:
+            try: await eligible(db, user, row)
+            except HTTPException: continue
+        visible.append(fmt(row))
+    return visible
 
 
 @router.post("/windows")
@@ -83,16 +112,27 @@ async def create_survey_window(sw: SurveyWindowCreate, request: Request):
     if user["role"] not in ["hr_admin", "hr_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
+    module_access(user, "M06", write=True)
+    if sw.survey_type not in TYPES:
+        raise HTTPException(422, "Unknown survey type")
+    try:
+        start = datetime.fromisoformat(sw.open_date).date()
+        end = datetime.fromisoformat(sw.close_date).date()
+        if start > end: raise ValueError()
+    except ValueError:
+        raise HTTPException(422, "Valid ordered survey dates are required")
     doc = {
         "id": str(uuid.uuid4()),
-        "tenant_id": "solvit",
+        "tenant_id": tenant_of(user),
         **sw.model_dump(),
         "status": "Open",
         "response_count": 0,
         "created_by": user["id"],
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    result = await db.survey_windows.insert_one(doc)
+    async with integrity_write(db):
+        await audit(db, user, "survey.window.created", doc["id"])
+        result = await db.survey_windows.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
     return doc
 
@@ -106,7 +146,10 @@ async def launch_quick_survey(request: Request):
     if user["role"] not in ["hr_admin", "hr_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     body = await request.json()
+    module_access(user, "M06", write=True)
     survey_type = body.get("survey_type", "alignment_fte")
+    if survey_type not in TYPES:
+        raise HTTPException(422, "Unknown survey type")
     period = body.get("period_label") or f"Q{((datetime.now(timezone.utc).month - 1) // 3) + 1} {datetime.now(timezone.utc).year}"
 
     db = get_db()
@@ -117,7 +160,7 @@ async def launch_quick_survey(request: Request):
     close = today + timedelta(days=14)
     window_doc = {
         "id": str(uuid.uuid4()),
-        "tenant_id": "solvit",
+        "tenant_id": tenant_of(user),
         "survey_type": survey_type,
         "title": f"{period} {'Solver' if is_solver else 'FTE'} Alignment Survey",
         "open_date": today.isoformat(),
@@ -128,15 +171,17 @@ async def launch_quick_survey(request: Request):
         "created_by": user["id"],
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.survey_windows.insert_one(window_doc)
+    async with integrity_write(db):
+        await audit(db, user, "survey.window.launched", window_doc["id"])
+        await db.survey_windows.insert_one(window_doc)
 
     # Determine recipients
     if is_solver:
-        recipients = await db.solvers.find({"tenant_id": "solvit", "lifecycle_state": "Active"}, {"_id": 0, "id": 1, "full_name": 1, "phone_number": 1}).to_list(500)
+        recipients = await db.solvers.find({"tenant_id": tenant_of(user), "lifecycle_state": "Active"}, {"_id": 0, "id": 1, "full_name": 1, "phone_number": 1}).to_list(500)
         recipient_emails = []
     else:
         active_states = ["Active", "Probation", "Onboarding", "On_Leave"]
-        recipients = await db.employees.find({"tenant_id": "solvit", "lifecycle_state": {"$in": active_states}}, {"_id": 0, "id": 1, "full_name": 1, "work_email": 1}).to_list(500)
+        recipients = await db.employees.find({"tenant_id": tenant_of(user), "lifecycle_state": {"$in": active_states}}, {"_id": 0, "id": 1, "full_name": 1, "work_email": 1}).to_list(500)
         recipient_emails = [r.get("work_email") for r in recipients if r.get("work_email")]
 
     # Fire in-app notifications
@@ -144,7 +189,7 @@ async def launch_quick_survey(request: Request):
     for r in recipients:
         notif_docs.append({
             "id": str(uuid.uuid4()),
-            "tenant_id": "solvit",
+            "tenant_id": tenant_of(user),
             "recipient_id": r.get("id"),
             "recipient_role": "employee" if not is_solver else "solver",
             "category": "Survey",
@@ -197,6 +242,10 @@ async def launch_quick_survey(request: Request):
 @router.get("/questions/{survey_type}")
 async def get_survey_questions(survey_type: str, request: Request):
     user = await get_current_user(request)
+    module_access(user, "M06")
+    survey_type = {"FTE": "alignment_fte", "Solver": "alignment_solver"}.get(survey_type, survey_type)
+    if survey_type not in TYPES:
+        raise HTTPException(422, "Unknown survey type")
     if survey_type in ["alignment_solver", "satisfaction_solver"]:
         return {"questions": SOLVER_ALIGNMENT_QUESTIONS, "survey_type": survey_type}
     return {"questions": FTE_ALIGNMENT_QUESTIONS, "survey_type": survey_type}
@@ -206,33 +255,42 @@ async def get_survey_questions(survey_type: str, request: Request):
 async def submit_response(resp: SurveyResponse, request: Request):
     user = await get_current_user(request)
     db = get_db()
-    window = await db.survey_windows.find_one({"id": resp.survey_window_id})
-    if not window:
-        raise HTTPException(status_code=404, detail="Survey window not found")
-
-    questions = SOLVER_ALIGNMENT_QUESTIONS if resp.respondent_type == "Solver" else FTE_ALIGNMENT_QUESTIONS
-
-    p1 = calc_pillar_score(resp.responses, questions, 1)
-    p2 = calc_pillar_score(resp.responses, questions, 2)
-    p3 = calc_pillar_score(resp.responses, questions, 3)
+    window = await find_linked_record(db.survey_windows, resp.survey_window_id, user)
+    kind, subject = await eligible(db, user, window)
+    if resp.respondent_type != kind:
+        raise HTTPException(403, "Respondent identity is server-owned")
+    try:
+        today = datetime.now(timezone(timedelta(hours=3))).date()
+        opened = datetime.fromisoformat(window["open_date"]).date()
+        closed = datetime.fromisoformat(window["close_date"]).date()
+        if window.get("status") != "Open" or not opened <= today <= closed: raise ValueError()
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(409, "Survey is not open for responses")
+    questions = SOLVER_ALIGNMENT_QUESTIONS if kind == "Solver" else FTE_ALIGNMENT_QUESTIONS
+    if set(resp.responses) != {q["id"] for q in questions} or any(type(v) is not int or not 1 <= v <= 5 for v in resp.responses.values()):
+        raise HTTPException(422, "Provide one score from 1 to 5 for every question")
+    canonical = str(window.get("id") or window["_id"])
+    aliases = [canonical, str(window["_id"])]
+    p1, p2, p3 = [calc_pillar_score(resp.responses, questions, pillar) for pillar in (1, 2, 3)]
     overall = round((p1 + p2 + p3) / 3, 1)
-
-    doc = {
-        "id": str(uuid.uuid4()),
-        "tenant_id": "solvit",
-        "survey_window_id": resp.survey_window_id,
-        "respondent_type": resp.respondent_type,
-        "respondent_id": user["id"],
-        "responses_json": resp.responses,
-        "pillar_1_score": p1,
-        "pillar_2_score": p2,
-        "pillar_3_score": p3,
-        "overall_alignment_score": overall,
-        "submitted_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db.survey_responses.insert_one(doc)
-    await db.survey_windows.update_one({"id": resp.survey_window_id}, {"$inc": {"response_count": 1}})
-    doc["_id"] = str(doc.get("_id", ""))
+    import hashlib
+    key = hashlib.sha256(f"{tenant_of(user)}:{window['_id']}:{kind}:{subject}".encode()).hexdigest()
+    doc = {"_id": "survey:" + key, "id": str(uuid.uuid4()), "tenant_id": tenant_of(user),
+        "survey_window_id": canonical, "respondent_type": kind, "respondent_id": user["id"],
+        "subject_id": subject, "line_manager_id": (await find_employee(db, subject, tenant_of(user)) or {}).get("line_manager_id") if kind == "FTE" else None,
+        "responses_json": resp.responses, "pillar_1_score": p1, "pillar_2_score": p2, "pillar_3_score": p3,
+        "overall_alignment_score": overall, "submitted_at": datetime.now(timezone.utc).isoformat()}
+    async with integrity_write(db):
+        duplicate = {"$and": [tenant_query(tenant_of(user)), {"survey_window_id": {"$in": aliases}},
+            {"$or": [{"respondent_id": user["id"]}, {"subject_id": subject}]}]}
+        if await db.survey_responses.find_one(duplicate):
+            raise HTTPException(409, "Survey response already recorded")
+        await audit(db, user, "survey.response.submitted", doc["id"])
+        try: await db.survey_responses.insert_one(doc)
+        except DuplicateKeyError: raise HTTPException(409, "Survey response already recorded")
+        # Count is a cache; aggregate reporting derives from actual response rows.
+        count = await db.survey_responses.count_documents({"$and": [tenant_query(tenant_of(user)), {"survey_window_id": {"$in": aliases}}]})
+        await db.survey_windows.update_one({"_id": window["_id"]}, {"$set": {"response_count": count}})
     return {"message": "Response submitted", "overall_score": overall}
 
 
@@ -242,7 +300,9 @@ async def get_survey_results(window_id: str, request: Request):
     if user["role"] not in ["hr_admin", "hr_manager", "executive"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
-    responses = await db.survey_responses.find({"survey_window_id": window_id}).to_list(500)
+    module_access(user, "M06")
+    window = await find_linked_record(db.survey_windows, window_id, user)
+    responses = await db.survey_responses.find({"$and": [tenant_query(tenant_of(user)), {"survey_window_id": {"$in": [str(window.get("id") or window["_id"]), str(window["_id"])]}}]}).to_list(500)
     if not responses:
         return {"window_id": window_id, "response_count": 0, "overall": 0, "pillar_1": 0, "pillar_2": 0, "pillar_3": 0}
 

@@ -204,8 +204,8 @@ def test_ai_cannot_skip_checked_approval_and_cannot_reject_foreign_or_own_reques
 
 def test_uploaded_evidence_is_private_and_cannot_be_downloaded_by_manager(tmp_path, monkeypatch):
     db, actors = fixture(); monkeypatch.setenv("LEAVE_EVIDENCE_ROOT", str(tmp_path))
-    upload = UploadFile(file=BytesIO(b"%PDF-1.7\nSynthetic test document"), filename="unsafe-name.pdf")
-    with patch.object(leave, "get_db", return_value=db), patch.object(leave, "get_current_user", AsyncMock(return_value=actors["staff"])):
+    upload = UploadFile(file=BytesIO(b"%PDF-1.7\nSynthetic test document\n%%EOF"), filename="unsafe-name.pdf")
+    with patch.object(leave, "get_db", return_value=db), patch.object(leave, "get_current_user", AsyncMock(return_value=actors["staff"])), patch.object(leave.document_uploads, "scan_content", AsyncMock()):
         doc = run(leave.upload_leave_evidence(None, upload, "medical_certificate", None))
         assert run(leave.download_leave_evidence(doc["id"], None)).headers["cache-control"] == "no-store"
     with patch.object(leave, "get_db", return_value=db), patch.object(leave, "get_current_user", AsyncMock(return_value=actors["boss"])):

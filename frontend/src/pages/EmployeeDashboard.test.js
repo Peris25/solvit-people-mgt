@@ -19,7 +19,7 @@ const home = () => ({
   employee: { id: 'staff', full_name: 'Synthetic Ada', role_title: 'IT Lead', department: 'IT Support' },
   leave_balance: { annual_days_remaining: 0, sick_days_remaining: 12 }, pending_leave: [],
   tasks: [], notifications: [], unread_notifications: 0, reviews: [], recognitions: [],
-  quick_links: [{ label: 'My Profile', path: '/employees/staff' }, { label: 'Leave', path: '/leave' }, { label: 'Documents & policies', path: '/policies' }],
+  quick_links: [{ label: 'My Profile', path: '/my-profile' }, { label: 'Leave', path: '/leave' }, { label: 'Documents', path: '/documents' }, { label: 'Policy Library', path: '/policies' }],
 });
 beforeEach(() => {
   container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container);
@@ -37,8 +37,9 @@ test('personalized employee welcome, real zero balance and authorized quick link
   expect(container.textContent).toContain('Synthetic Ada');
   expect(container.textContent).toContain('IT Lead · IT Support');
   expect(container.querySelector('[data-testid="my-leave-zone"]').textContent).toContain('0');
-  await click('My Profile'); expect(mockNavigate).toHaveBeenCalledWith('/employees/staff');
-  await click('Documents & policies'); expect(mockNavigate).toHaveBeenCalledWith('/policies');
+  await click('My Profile'); expect(mockNavigate).toHaveBeenCalledWith('/my-profile');
+  await click('Documents'); expect(mockNavigate).toHaveBeenCalledWith('/documents');
+  await click('Policy Library'); expect(mockNavigate).toHaveBeenCalledWith('/policies');
   await click('Open Notification Centre'); expect(mockNavigate).toHaveBeenCalledWith('/notifications');
   expect(api.getStaffHome).toHaveBeenCalledWith();
   expect(api.getRecognitions).not.toHaveBeenCalled();
@@ -76,7 +77,7 @@ test('server denial or swallowed server error shows an error, never false all-ca
 test('revoked module links and tabs are absent', async () => {
   const data = home(); data.quick_links = []; data.pending_leave = null; data.reviews = null; data.recognitions = null;
   api.getStaffHome.mockResolvedValue({ data }); await render();
-  expect(container.textContent).not.toContain('Documents & policies');
+  expect([...container.querySelectorAll('button')].map(button => button.textContent)).not.toContain('Documents');
   expect(container.querySelector('[data-testid="emp-request-leave-btn"]')).toBeNull();
   expect(container.querySelector('[data-testid="emp-tab-reviews"]')).toBeNull();
 });

@@ -13,7 +13,7 @@ from utils.access_matrix import get_module_access
 from utils.employee_integrity import (
     employee_key, find_employee, resolve_user_employee, normalize_email,
     ensure_unique_employee, validate_manager, integrity_write, insert_employee, email_matches, is_direct_report, user_employee_aliases,
-    validate_manager_departure, change_employee_state, tenant_of,
+    validate_manager_departure, change_employee_state, tenant_of, tenant_query,
 )
 
 router = APIRouter(prefix="/employees", tags=["employees"])
@@ -198,6 +198,82 @@ async def get_my_employee(request: Request):
     return formatted
 
 
+@router.get("/me/profile")
+async def get_my_profile(request: Request):
+    from utils.profile_self_service import self_employee, safe_employee
+    user = await get_current_user(request)
+    employee = await self_employee(get_db(), user)
+    result = await get_employee_profile(employee_key(employee), request)
+    result["employee"] = safe_employee({**employee, "line_manager_name": result["employee"].get("line_manager_name")})
+    result.pop("disciplinary_cases", None)
+    result.pop("notifications", None)  # The recipient-checked Notification Centre owns this data.
+    if result.get("idp"):
+        fields = {"id", "employee_id", "career_aspiration", "next_role_target", "long_term_goal", "skills_to_develop",
+                  "training_required", "mentor_request", "stretch_assignments", "status"}
+        result["idp"] = {k: v for k, v in result["idp"].items() if k in fields}
+    return result
+
+
+@router.get("/me/profile-changes")
+async def my_profile_changes(request: Request):
+    from utils.profile_self_service import list_changes
+    return await list_changes(get_db(), await get_current_user(request))
+
+
+@router.get("/profile-change-inbox")
+async def profile_change_inbox(request: Request):
+    from utils.profile_self_service import HR, public_change, reviewer
+    from utils.employee_access import personal_grant
+    user = await get_current_user(request)
+    if user.get("role") in HR:
+        personal_grant(user, "M01", write=True)
+        status = "Pending_HR"
+    elif user.get("role") == "finance" and get_module_access("M10", "finance"):
+        status = "Pending_Finance"
+    else:
+        raise HTTPException(403, "No profile review inbox permission")
+    db = get_db()
+    rows = await db.employee_profile_changes.find({"$and": [tenant_query(tenant_of(user)), {"status": status}]}).sort("created_at", 1).to_list(200)
+    result = []
+    for row in rows:
+        if row.get("employee_id") == user.get("employee_id") or row.get("submitted_by") == user["id"]:
+            continue
+        try:
+            employee = await reviewer(db, user, row.get("employee_id"))
+        except HTTPException as error:
+            if error.status_code in (403, 404): continue
+            raise
+        if employee:
+            result.append({**public_change(row, user), "employee_name": employee.get("full_name") if isinstance(employee.get("full_name"), str) else None})
+    return result
+
+
+@router.post("/me/profile-changes")
+async def request_profile_change(request: Request):
+    from utils.profile_self_service import submit
+    user = await get_current_user(request)
+    body = await request.json()
+    if not isinstance(body, dict) or set(body) != {"changes"}:
+        raise HTTPException(422, "Supply only the requested profile changes")
+    return await submit(get_db(), user, body["changes"])
+
+
+@router.get("/{employee_id}/profile-changes")
+async def employee_profile_changes(employee_id: str, request: Request):
+    from utils.profile_self_service import list_changes
+    return await list_changes(get_db(), await get_current_user(request), employee_id)
+
+
+@router.put("/profile-changes/{change_id}/decision")
+async def review_profile_change(change_id: str, request: Request):
+    from utils.profile_self_service import decide
+    user = await get_current_user(request)
+    body = await request.json()
+    if not isinstance(body, dict) or set(body) - {"decision", "reason"}:
+        raise HTTPException(422, "Supply a decision and optional review reason")
+    return await decide(get_db(), user, change_id, body.get("decision"), body.get("reason", ""))
+
+
 @router.get("/directory")
 async def employee_directory(request: Request):
     """Public-safe, non-exited staff metadata with shared Board-only visibility."""
@@ -330,14 +406,30 @@ async def get_employee_profile(employee_id: str, request: Request):
 
     emp["line_manager_name"] = await _line_manager_name(db, emp.get("line_manager_id"), tenant_of(user))
 
-    # Parallel-ish gathers
-    reviews = await db.performance_reviews.find({"employee_id": emp_id}).sort("created_at", -1).to_list(20)
-    leave = await db.leave_requests.find({"employee_id": emp_id}).sort("created_at", -1).to_list(50)
-    recogs_received = await db.recognitions.find({"nominee_id": emp_id}).sort("created_at", -1).to_list(50)
+    # Include canonical and legacy foreign keys, always within the tenant.
+    from utils.employee_access import reference_ids
+    aliases = [*reference_ids(emp), emp["_id"]]
+    def related(field="employee_id"):
+        return {"$and": [tenant_query(tenant_of(user)), {field: {"$in": aliases}}]}
+    reviews = await db.performance_reviews.find(related()).sort("created_at", -1).to_list(20)
+    from utils.performance_workflows import projection as review_projection
+    reviews = [review_projection(row, user, emp) for row in reviews]
+    leave = await db.leave_requests.find(related()).sort("created_at", -1).to_list(50)
+    recogs_received = await db.recognitions.find(related("nominee_id")).sort("created_at", -1).to_list(50)
     recogs_given = await db.recognitions.find({"nominator_id": user.get("id")}).sort("created_at", -1).to_list(50) if user.get("id") == emp_id else []
-    trainings = await db.training_requests.find({"employee_id": emp_id}).sort("created_at", -1).to_list(50)
-    idp = await db.idps.find_one({"employee_id": emp_id})
-    cases = await db.disciplinary_cases.find({"employee_id": emp_id}).sort("created_at", -1).to_list(20) if user["role"] in ["hr_admin", "hr_manager"] else []
+    trainings = await db.training_requests.find(related()).sort("created_at", -1).to_list(50)
+    from utils import learning_workflows
+    learning_allowed=True
+    try:
+        await learning_workflows.employee_access(db,user,employee_key(emp))
+    except HTTPException as error:
+        if error.status_code == 403:
+            trainings=[]
+            learning_allowed=False
+        else: raise
+    trainings=[await learning_workflows.projection(db,user,row,emp) for row in trainings]
+    idp = await db.idps.find_one(related()) if learning_allowed else None
+    cases = await db.disciplinary_cases.find(related()).sort("created_at", -1).to_list(20) if user["role"] in ["hr_admin", "hr_manager"] else []
     notifications = await db.notifications.find({"recipient_id": emp_id}).sort("created_at", -1).to_list(20) if user["role"] in ["hr_admin", "hr_manager"] or employee_key(emp) == user.get("employee_id") else []
 
     # Build timeline
@@ -361,10 +453,10 @@ async def get_employee_profile(employee_id: str, request: Request):
     return {
         "employee": employee_view(emp, user),
         "timeline": timeline,
-        "performance_history": [{"id": str(r.get("_id")), "cycle": f"{r.get('cycle_type','').replace('_',' ')} {r.get('cycle_year','')}", "score": r.get("overall_score"), "rating": r.get("rating"), "placement": r.get("nine_box_placement"), "status": r.get("status")} for r in reviews],
+        "performance_history": [{"id": str(r.get("id") or r.get("_id")), "cycle": f"{r.get('cycle_type','').replace('_',' ')} {r.get('cycle_year','')}", "score": r.get("overall_score"), "rating": r.get("rating"), "placement": r.get("nine_box_placement"), "status": r.get("status")} for r in reviews],
         "leave_history": [{"id": str(l.get("_id")), "type": l.get("leave_type"), "start": l.get("start_date"), "end": l.get("end_date"), "days": l.get("working_days"), "status": l.get("status")} for l in leave],
         "recognitions": [{"id": str(r.get("_id")), "type": r.get("recognition_type"), "from": r.get("nominator_name"), "values": r.get("values_demonstrated"), "behaviour": r.get("specific_behaviour"), "status": r.get("status"), "created_at": r.get("created_at")} for r in recogs_received],
-        "trainings": [{"id": str(t.get("_id")), "name": t.get("training_name"), "provider": t.get("provider"), "cost_kes": t.get("cost_kes"), "status": t.get("status")} for t in trainings],
+        "trainings": [{"id": str(t.get("id") or t.get("_id")), "name": t.get("training_name"), "provider": t.get("provider"), "cost_kes": t.get("cost_kes"), "status": t.get("status")} for t in trainings],
         "idp": ({k: v for k, v in idp.items() if k not in ["_id"]} if idp else None),
         "disciplinary_cases": [{"id": str(c.get("_id")), "case_ref": c.get("case_ref"), "type": c.get("case_type"), "status": c.get("status")} for c in cases],
         "notifications": [{"id": str(n.get("_id")), "title": n.get("title"), "message": n.get("message"), "is_read": n.get("is_read", False), "created_at": n.get("created_at")} for n in notifications],
@@ -505,13 +597,15 @@ async def update_employee(employee_id: str, upd: EmployeeUpdate, request: Reques
         current = await find_employee(db, employee_id, tenant_of(user))
         if not current:
             raise HTTPException(404, "Employee not found")
+        await authorize_employee(db, user, employee_id, "M01", write=True)
         if user["role"] == "line_manager":
             my_id = await _my_employee_id(db, user)
             if not my_id or not is_direct_report(current, user):
                 raise HTTPException(403, "Access denied")
             if upd.model_fields_set & {"line_manager_id", "work_email", "is_md", "reports_to_md", "reports_to_finance_ops"}:
                 raise HTTPException(403, "HR must change identity or reporting relationships.")
-            protected = {"role_title", "current_salary_kes", "national_id_number", "kra_pin", "nssf_number", "sha_number"}
+            protected = {"role_title", "role_level", "department", "employment_type", "lifecycle_state", "profile_photo_url",
+                         "current_salary_kes", "national_id_number", "kra_pin", "nssf_number", "sha_number"}
             proposed = upd.model_dump(exclude_unset=True, exclude_none=True)
             if any(field in proposed and proposed[field] != current.get(field) for field in protected):
                 raise HTTPException(403, "HR must change role titles or restricted identity/pay fields.")
@@ -539,6 +633,8 @@ async def update_employee(employee_id: str, upd: EmployeeUpdate, request: Reques
             else:
                 update_data.pop("line_manager_id", None)
         if "lifecycle_state" in update_data:
+            if current.get("offboarding_started_at") and update_data["lifecycle_state"] != current.get("lifecycle_state"):
+                raise HTTPException(409, "Use the authorized offboarding workflow to change this lifecycle state.")
             if update_data["lifecycle_state"] != current.get("lifecycle_state"):
                 from utils.access_matrix import enforce_destructive
                 enforce_destructive("employee.lifecycle.manual_change", user["role"])

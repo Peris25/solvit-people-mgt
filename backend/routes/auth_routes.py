@@ -18,7 +18,8 @@ from utils.security import (
 )
 import jwt
 import os
-from utils.employee_integrity import email_matches, resolve_user_employee, employee_key
+from utils import mfa
+from utils.employee_integrity import email_matches, resolve_user_employee, employee_key, integrity_write
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -66,7 +67,10 @@ async def login(req: LoginRequest, request: Request, response: Response):
 
     matches = await email_matches(db.users, "email", email)
     user = matches[0] if len(matches) == 1 else None
+    if user: await mfa.password_lockout(db, user)
     if not user or user.get("is_active") is False or not verify_password(req.password, user.get("password_hash", "")):
+        if user:
+            async with integrity_write(db): await mfa.password_failure(db, user)
         remaining = record_login_failure(email, ip)
         await record_audit(db, actor_id=str(user["_id"]) if user else None,
                             actor_email=email, event="auth.login.failure",
@@ -78,14 +82,19 @@ async def login(req: LoginRequest, request: Request, response: Response):
     must_change = password_change_required(user)
     # An account can change its own credential even if its employee link needs
     # review. It still cannot use protected functionality with an invalid link.
-    employee = await resolve_user_employee(db, user) if not must_change else None
+    mfa_state = await mfa.state(db, user)
+    mfa_status = mfa.session_status(user, mfa_state, {})
+    employee = await resolve_user_employee(db, user) if not must_change and not mfa_status["mfa_required"] else None
 
     # Successful credential check.
     clear_login_attempts(email, ip)
+    async with integrity_write(db):
+        await mfa.password_lockout(db, user)
+        await mfa.clear_password_failures(db, user)
 
     user_id = str(user["_id"])
-    refresh_token, refresh_jti = create_refresh_token(user_id, user.get("password_changed_at"))
-    access_token = create_access_token(user_id, email, user["role"], user.get("password_changed_at"), refresh_jti)
+    refresh_token, refresh_jti = create_refresh_token(user_id, user.get("password_changed_at"), mfa_generation=(mfa_state or {}).get("generation"), role=user["role"], session_cutoff=user.get("sessions_invalidated_at"))
+    access_token = create_access_token(user_id, email, user["role"], user.get("password_changed_at"), refresh_jti, mfa_generation=(mfa_state or {}).get("generation"), session_cutoff=user.get("sessions_invalidated_at"))
 
     response.set_cookie("access_token", access_token,
                         max_age=ACCESS_TOKEN_MINUTES * 60, **_COOKIE_KW)
@@ -101,8 +110,11 @@ async def login(req: LoginRequest, request: Request, response: Response):
         "full_name": user.get("full_name", ""),
         "role": user["role"],
         "must_change_password": must_change,
+        **{key: value for key, value in mfa_status.items() if not key.startswith("_")},
     }
     if must_change:
+        return {key:identity[key] for key in ("id", "email", "full_name", "role", "must_change_password")}
+    if mfa_status["mfa_required"]:
         return identity
     return {
         **identity,
@@ -131,9 +143,9 @@ async def logout(request: Request, response: Response):
                 continue
             user_id = payload.get("sub")
             await revoke_refresh_jti(db, payload.get("jti", ""), user_id, reason="logout" if token_type == "refresh" else "logout_access")
+            if payload.get("sid"):
+                await revoke_refresh_jti(db, payload["sid"], user_id, reason="logout")
             if token_type == "access":
-                if payload.get("sid"):
-                    await revoke_refresh_jti(db, payload["sid"], user_id, reason="logout")
                 if not payload.get("jti"):
                     # Old access JWTs have no per-token identifier. The existing
                     # per-user cutoff is the safe backwards-compatible fallback.
@@ -152,8 +164,11 @@ async def logout(request: Request, response: Response):
 async def get_me(request: Request):
     user = await get_authenticated_user(request)
     if user["must_change_password"]:
-        return {key: user.get(key) for key in ("id", "email", "full_name", "role", "must_change_password")}
-    return await resolve_authenticated_employee(user, get_db())
+        return {key:user.get(key) for key in ("id", "email", "full_name", "role", "must_change_password")}
+    if user.get("mfa_required") and not user.get("mfa_verified"):
+        return {key: user.get(key) for key in ("id", "email", "full_name", "role", "must_change_password", "mfa_required", "mfa_enrolled", "mfa_verified", "mfa_action")}
+    user = await resolve_authenticated_employee(user, get_db())
+    return {key: user.get(key) for key in ("id", "email", "full_name", "role", "department", "employee_id", "employee_reference_ids", "solver_id", "must_change_password", "mfa_required", "mfa_enrolled", "mfa_verified", "mfa_action")}
 
 
 @router.post("/refresh")
@@ -178,16 +193,28 @@ async def refresh_token(request: Request, response: Response):
             raise HTTPException(status_code=401, detail="User not found")
         if await token_invalidated(db, user, payload):
             raise HTTPException(status_code=401, detail="Session invalidated, please sign in again.")
-        # Burn the old JTI immediately (rotation).
-        await revoke_refresh_jti(db, jti, str(user["_id"]), reason="rotated")
-        # Issue a fresh pair.
-        new_refresh, _new_jti = create_refresh_token(str(user["_id"]), user.get("password_changed_at"))
-        access = create_access_token(str(user["_id"]), user["email"], user["role"], user.get("password_changed_at"), _new_jti)
+        # Serialize rotation across workers. A read followed by an upsert alone
+        # permits concurrent reuse of the same refresh token.
+        async with integrity_write(db):
+            current = await db.users.find_one({"_id": user["_id"]})
+            if not current or current.get("is_active") is False or await token_invalidated(db, current, payload):
+                raise HTTPException(401, "Session invalidated, please sign in again.")
+            user = current
+            if await is_jti_revoked(db, jti):
+                raise HTTPException(401, "Refresh token already used.")
+            await revoke_refresh_jti(db, jti, str(user["_id"]), reason="rotated")
+            started = payload.get("sst", payload["iat"])
+            family = payload.get("sid") or jti
+            mfa_state = await mfa.state(db, user)
+            status = mfa.session_status(user, mfa_state, payload)
+            generation = (mfa_state or {}).get("generation")
+            new_refresh, _new_jti = create_refresh_token(str(user["_id"]), user.get("password_changed_at"), started, family, status["mfa_verified"], generation, payload.get("mat"), role=user["role"], session_cutoff=user.get("sessions_invalidated_at"))
+            access = create_access_token(str(user["_id"]), user["email"], user["role"], user.get("password_changed_at"), family, started, status["mfa_verified"], generation, payload.get("mat"), session_cutoff=user.get("sessions_invalidated_at"))
         response.set_cookie("access_token", access,
                             max_age=ACCESS_TOKEN_MINUTES * 60, **_COOKIE_KW)
         response.set_cookie("refresh_token", new_refresh,
                             max_age=REFRESH_TOKEN_HOURS * 3600, **_COOKIE_KW)
-        return {"message": "Token refreshed", "must_change_password": password_change_required(user)}
+        return {"message": "Token refreshed", "must_change_password": password_change_required(user), **{key: value for key, value in status.items() if not key.startswith("_")}}
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
@@ -198,6 +225,8 @@ async def change_password(req: PasswordChangeRequest, request: Request, response
     screen, no reuse of last 5). On success: invalidates all outstanding sessions
     so the user must re-authenticate on every device."""
     user = await get_authenticated_user(request)
+    if not user["must_change_password"] and user.get("mfa_required") and not user.get("mfa_verified"):
+        raise HTTPException(403, detail={"code": "mfa_required", "message": "Verify MFA before changing your password"})
     db = get_db()
     db_user = await db.users.find_one({"_id": ObjectId(user["id"])})
     if not db_user or not verify_password(req.current_password,

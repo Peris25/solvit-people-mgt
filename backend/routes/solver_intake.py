@@ -28,6 +28,7 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
 
 from database import get_db
+from utils.employee_integrity import tenant_of
 from utils.auth import get_current_user
 
 router = APIRouter(prefix="/solver-intake", tags=["solver-intake"])
@@ -199,15 +200,17 @@ def _next_req_code(seq: int) -> str:
     return f"SOLV-REQ-{seq:04d}"
 
 
-def _hr_or_solvers(user):
-    return user.get("role") in ("hr_admin", "hr_manager", "executive", "it_admin",
-                                  "solvers_manager")
+async def _hr_or_solvers(user):
+    from utils.solver_access import solver_access
+    from utils.access_matrix import get_module_access
+    entry = await solver_access(get_db(), user)
+    return entry.get('scope') in (None, 'solvers_manager') and bool(get_module_access('M03', user.get('role')))
 
 
 def _serialise(doc: dict) -> dict:
     if not doc:
         return doc
-    doc.pop("_id", None)
+    doc = {key: value for key, value in doc.items() if key not in {"_id", "cv_path", "stored_path", "password_hash", "otp_code", "access_token"}}
     return doc
 
 
@@ -223,20 +226,20 @@ async def counties():
 @router.get("/requisitions")
 async def list_requisitions(request: Request):
     user = await get_current_user(request)
-    if not _hr_or_solvers(user):
+    if not await _hr_or_solvers(user):
         raise HTTPException(status_code=403, detail="HR Admin / Solvers Manager only")
     db = get_db()
     items = []
-    async for r in db.solver_requisitions.find({"tenant_id": "solvit"}).sort("created_at", -1):
+    async for r in db.solver_requisitions.find({"tenant_id": tenant_of(user)}).sort("created_at", -1):
         items.append(_serialise(r))
     return {"requisitions": items, "count": len(items),
-            "can_edit": user.get("role") in ("hr_admin", "hr_manager", "it_admin")}
+            "can_edit": user.get("role") in ("hr_admin", "hr_manager")}
 
 
 @router.post("/requisitions")
 async def create_requisition(body: RequisitionCreate, request: Request):
     user = await get_current_user(request)
-    if user.get("role") not in ("hr_admin", "hr_manager", "it_admin"):
+    if user.get("role") not in ("hr_admin", "hr_manager") or not await _hr_or_solvers(user):
         raise HTTPException(status_code=403, detail="HR Admin only")
     db = get_db()
     # Validate counties
@@ -245,14 +248,14 @@ async def create_requisition(body: RequisitionCreate, request: Request):
         if bad:
             raise HTTPException(status_code=400, detail=f"Unknown counties: {bad}")
     # Generate code
-    seq = await db.solver_requisitions.count_documents({"tenant_id": "solvit"}) + 1
+    seq = await db.solver_requisitions.count_documents({"tenant_id": tenant_of(user)}) + 1
     now = datetime.now(timezone.utc).isoformat()
     rid = str(uuid.uuid4())
     status = body.status if body.status in ("Open", "Closed") else "Closed"
     doc = {
         "id": rid,
         "code": _next_req_code(seq),
-        "tenant_id": "solvit",
+        "tenant_id": tenant_of(user),
         "title": body.title,
         "working_areas": body.working_areas or ["All counties"],
         "target_hires": body.target_hires,
@@ -270,10 +273,10 @@ async def create_requisition(body: RequisitionCreate, request: Request):
 @router.put("/requisitions/{rid}")
 async def update_requisition(rid: str, body: RequisitionUpdate, request: Request):
     user = await get_current_user(request)
-    if user.get("role") not in ("hr_admin", "hr_manager", "it_admin"):
+    if user.get("role") not in ("hr_admin", "hr_manager") or not await _hr_or_solvers(user):
         raise HTTPException(status_code=403, detail="HR Admin only")
     db = get_db()
-    existing = await db.solver_requisitions.find_one({"id": rid, "tenant_id": "solvit"})
+    existing = await db.solver_requisitions.find_one({"id": rid, "tenant_id": tenant_of(user)})
     if not existing:
         raise HTTPException(status_code=404, detail="Requisition not found")
     patch = {k: v for k, v in body.model_dump(exclude_none=True).items()}
@@ -289,18 +292,18 @@ async def update_requisition(rid: str, body: RequisitionUpdate, request: Request
             patch["close_date"] = None
         elif body.status == "Closed":
             patch["close_date"] = now
-    await db.solver_requisitions.update_one({"id": rid}, {"$set": patch})
-    updated = await db.solver_requisitions.find_one({"id": rid})
+    await db.solver_requisitions.update_one({"_id": existing["_id"], "tenant_id": tenant_of(user)}, {"$set": patch})
+    updated = await db.solver_requisitions.find_one({"_id": existing["_id"], "tenant_id": tenant_of(user)})
     return _serialise(updated)
 
 
 @router.get("/requisitions/{rid}")
 async def get_requisition_admin(rid: str, request: Request):
     user = await get_current_user(request)
-    if not _hr_or_solvers(user):
+    if not await _hr_or_solvers(user):
         raise HTTPException(status_code=403, detail="HR Admin / Solvers Manager only")
     db = get_db()
-    doc = await db.solver_requisitions.find_one({"id": rid, "tenant_id": "solvit"})
+    doc = await db.solver_requisitions.find_one({"id": rid, "tenant_id": tenant_of(user)})
     if not doc:
         raise HTTPException(status_code=404, detail="Requisition not found")
     return _serialise(doc)
@@ -609,10 +612,10 @@ async def list_ineligible(request: Request,
                           channel: Optional[str] = None,
                           requisition_id: Optional[str] = None):
     user = await get_current_user(request)
-    if not _hr_or_solvers(user):
+    if not await _hr_or_solvers(user):
         raise HTTPException(status_code=403, detail="HR / Solvers Manager only")
     db = get_db()
-    q = {"tenant_id": "solvit"}
+    q = {"tenant_id": tenant_of(user)}
     if failed_criterion:
         q["failed_criteria"] = failed_criterion
     if county:
@@ -627,6 +630,14 @@ async def list_ineligible(request: Request,
     return {"rows": rows, "count": len(rows)}
 
 
+async def _authorize_applicant_export(db,user):
+    from utils.solver_access import solver_access
+    from utils.access_matrix import get_module_access
+    entry=await solver_access(db,user)
+    if entry.get('scope') not in (None,'solvers_manager') or not get_module_access('M03',user.get('role')):
+        raise HTTPException(403,'Applicant detail export requires authorized HR or Solvers Manager access')
+
+
 @router.get("/ineligible/export.csv")
 async def export_ineligible(request: Request,
                             failed_criterion: Optional[str] = None,
@@ -635,19 +646,21 @@ async def export_ineligible(request: Request,
                             requisition_id: Optional[str] = None):
     from fastapi.responses import Response
     user = await get_current_user(request)
-    if not _hr_or_solvers(user):
-        raise HTTPException(status_code=403, detail="HR / Solvers Manager only")
     db = get_db()
-    q = {"tenant_id": "solvit"}
+    await _authorize_applicant_export(db,user)
+    from utils.employee_integrity import tenant_of
+    q = {"tenant_id":tenant_of(user)}
     if failed_criterion: q["failed_criteria"] = failed_criterion
     if county: q["county"] = county
     if channel: q["channel"] = channel
     if requisition_id: q["requisition_id"] = requisition_id
     rows = await db.ineligible_applicants.find(q) \
-                                          .sort("submitted_at", -1).to_list(5000)
+                                          .sort("submitted_at", -1).to_list(5001)
+    if len(rows)>5000:raise HTTPException(413,"Applicant export exceeds 5000 rows; narrow the filters")
     import csv, io
     buf = io.StringIO()
-    w = csv.writer(buf)
+    from utils.administrative_reporting import SafeCSVWriter
+    w = SafeCSVWriter(buf)
     w.writerow(["Submitted", "Requisition", "Name", "Phone", "Email", "County",
                 "Town/Area", "Channel", "Failed Criteria", "Qualifications",
                 "Has Licence", "Has Smartphone", "Availability",
@@ -664,18 +677,20 @@ async def export_ineligible(request: Request,
             r.get("availability"),
             "Yes" if r.get("commission_acknowledged") else "No",
         ])
+    from utils.administrative_reporting import access_audit
+    await access_audit(db,user,"report.exported",report="export_ineligible",count=len(rows))
     return Response(content=buf.getvalue(), media_type="text/csv",
-                     headers={"Content-Disposition":
+                     headers={"Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Content-Disposition":
                               "attachment; filename=ineligible_solvers.csv"})
 
 
 @router.get("/ineligible/{aid}")
 async def get_ineligible_detail(aid: str, request: Request):
     user = await get_current_user(request)
-    if not _hr_or_solvers(user):
+    if not await _hr_or_solvers(user):
         raise HTTPException(status_code=403, detail="HR / Solvers Manager only")
     db = get_db()
-    doc = await db.ineligible_applicants.find_one({"id": aid, "tenant_id": "solvit"})
+    doc = await db.ineligible_applicants.find_one({"id": aid, "tenant_id": tenant_of(user)})
     if not doc:
         raise HTTPException(status_code=404, detail="Applicant not found")
     return _serialise(doc)
@@ -693,10 +708,10 @@ async def list_eligible(request: Request,
                         requisition_id: Optional[str] = None,
                         current_stage: Optional[str] = None):
     user = await get_current_user(request)
-    if not _hr_or_solvers(user):
+    if not await _hr_or_solvers(user):
         raise HTTPException(status_code=403, detail="HR / Solvers Manager only")
     db = get_db()
-    q = {"tenant_id": "solvit", "candidate_type": "Solver",
+    q = {"tenant_id": tenant_of(user), "candidate_type": "Solver",
          "requisition_id": {"$exists": True, "$ne": None}}
     if county: q["county"] = county
     if channel: q["source"] = channel
@@ -716,19 +731,21 @@ async def export_eligible(request: Request,
                           current_stage: Optional[str] = None):
     from fastapi.responses import Response
     user = await get_current_user(request)
-    if not _hr_or_solvers(user):
-        raise HTTPException(status_code=403, detail="HR / Solvers Manager only")
     db = get_db()
-    q = {"tenant_id": "solvit", "candidate_type": "Solver",
+    await _authorize_applicant_export(db,user)
+    from utils.employee_integrity import tenant_of
+    q = {"tenant_id":tenant_of(user), "candidate_type": "Solver",
          "requisition_id": {"$exists": True, "$ne": None}}
     if county: q["county"] = county
     if channel: q["source"] = channel
     if requisition_id: q["requisition_id"] = requisition_id
     if current_stage: q["current_stage"] = {"$regex": current_stage, "$options": "i"}
-    rows = await db.candidates.find(q).sort("created_at", -1).to_list(5000)
+    rows = await db.candidates.find(q).sort("created_at", -1).to_list(5001)
+    if len(rows)>5000:raise HTTPException(413,"Applicant export exceeds 5000 rows; narrow the filters")
     import csv, io
     buf = io.StringIO()
-    w = csv.writer(buf)
+    from utils.administrative_reporting import SafeCSVWriter
+    w = SafeCSVWriter(buf)
     w.writerow(["Submitted", "Requisition", "Name", "Phone", "Email", "County",
                 "Town/Area", "Channel", "Current Stage", "Stage Status",
                 "Qualifications", "Previous Inspector Company", "Availability"])
@@ -742,18 +759,20 @@ async def export_eligible(request: Request,
             r.get("previous_inspector_company") or "",
             r.get("availability") or "",
         ])
+    from utils.administrative_reporting import access_audit
+    await access_audit(db,user,"report.exported",report="export_eligible",count=len(rows))
     return Response(content=buf.getvalue(), media_type="text/csv",
-                     headers={"Content-Disposition":
+                     headers={"Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Content-Disposition":
                               "attachment; filename=eligible_solvers.csv"})
 
 
 @router.get("/eligible/{cid}")
 async def get_eligible_detail(cid: str, request: Request):
     user = await get_current_user(request)
-    if not _hr_or_solvers(user):
+    if not await _hr_or_solvers(user):
         raise HTTPException(status_code=403, detail="HR / Solvers Manager only")
     db = get_db()
-    doc = await db.candidates.find_one({"id": cid, "tenant_id": "solvit",
+    doc = await db.candidates.find_one({"id": cid, "tenant_id": tenant_of(user),
                                           "candidate_type": "Solver"})
     if not doc:
         raise HTTPException(status_code=404, detail="Candidate not found")
@@ -763,32 +782,32 @@ async def get_eligible_detail(cid: str, request: Request):
 @router.get("/eligible/{cid}/cv")
 async def download_eligible_cv(cid: str, request: Request):
     user = await get_current_user(request)
-    if not _hr_or_solvers(user):
+    if not await _hr_or_solvers(user):
         raise HTTPException(status_code=403, detail="HR / Solvers Manager only")
     db = get_db()
-    doc = await db.candidates.find_one({"id": cid, "tenant_id": "solvit",
+    doc = await db.candidates.find_one({"id": cid, "tenant_id": tenant_of(user),
                                           "candidate_type": "Solver"})
     if not doc or not doc.get("cv_path"):
         raise HTTPException(status_code=404, detail="No CV on file for this candidate.")
-    p = Path(doc["cv_path"])
-    if not p.exists() or CV_UPLOAD_ROOT not in p.parents:
+    p = Path(doc["cv_path"]).resolve()
+    if not p.is_file() or not p.is_relative_to(CV_UPLOAD_ROOT.resolve()):
         raise HTTPException(status_code=404, detail="CV file missing on disk.")
-    return FileResponse(p, filename=doc.get("cv_filename") or p.name)
+    return FileResponse(p, filename=Path(doc.get("cv_filename") or p.name).name, headers={"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"})
 
 
 @router.get("/ineligible/{aid}/cv")
 async def download_ineligible_cv(aid: str, request: Request):
     user = await get_current_user(request)
-    if not _hr_or_solvers(user):
+    if not await _hr_or_solvers(user):
         raise HTTPException(status_code=403, detail="HR / Solvers Manager only")
     db = get_db()
-    doc = await db.ineligible_applicants.find_one({"id": aid, "tenant_id": "solvit"})
+    doc = await db.ineligible_applicants.find_one({"id": aid, "tenant_id": tenant_of(user)})
     if not doc or not doc.get("cv_path"):
         raise HTTPException(status_code=404, detail="No CV on file for this applicant.")
-    p = Path(doc["cv_path"])
-    if not p.exists() or CV_UPLOAD_ROOT not in p.parents:
+    p = Path(doc["cv_path"]).resolve()
+    if not p.is_file() or not p.is_relative_to(CV_UPLOAD_ROOT.resolve()):
         raise HTTPException(status_code=404, detail="CV file missing on disk.")
-    return FileResponse(p, filename=doc.get("cv_filename") or p.name)
+    return FileResponse(p, filename=Path(doc.get("cv_filename") or p.name).name, headers={"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"})
 
 
 # ─────────────── Public-link QR helper ───────────────
@@ -798,10 +817,10 @@ async def requisition_qr(rid: str, request: Request, base_url: Optional[str] = N
     """Return a PNG QR code for the public application URL. HR can download
     and share on Facebook / WhatsApp / posters / referral programs."""
     user = await get_current_user(request)
-    if not _hr_or_solvers(user):
+    if not await _hr_or_solvers(user):
         raise HTTPException(status_code=403, detail="HR / Solvers Manager only")
     db = get_db()
-    req = await db.solver_requisitions.find_one({"id": rid, "tenant_id": "solvit"})
+    req = await db.solver_requisitions.find_one({"id": rid, "tenant_id": tenant_of(user)})
     if not req:
         raise HTTPException(status_code=404, detail="Requisition not found")
     # Resolve public URL from request origin or override

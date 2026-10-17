@@ -80,6 +80,40 @@ def test_first_login_has_only_recovery_access_and_secure_cookies(session):
 @pytest.mark.parametrize("method,path", [
     ("GET", "/api/employees/directory"), ("GET", "/api/employees/organogram"),
     ("GET", "/api/employees/staff"), ("GET", "/api/employees/staff/profile"),
+    ("GET", "/api/employees/me/profile"), ("GET", "/api/employees/me/profile-changes"),
+    ("GET", "/api/performance/cycles"), ("POST", "/api/performance/cycles"),
+    ("PUT", "/api/performance/forged/goals"),
+    ("POST", "/api/performance/forged/assessments/self"),
+    ("POST", "/api/performance/forged/assessments/release"),
+    ("GET", "/api/lifecycle/checklists"), ("POST", "/api/lifecycle/initiate"),
+    ("PUT", "/api/lifecycle/onboarding/tasks/forged"),
+    ("POST", "/api/lifecycle/offboarding/staff/complete"),
+    ("POST", "/api/lifecycle/offboarding/staff/authorize-deactivation"),
+    ("GET", "/api/documents/me"), ("GET", "/api/documents/forged/download"),
+    ("POST", "/api/documents/employee/staff/upload"), ("PUT", "/api/documents/forged"),
+    ("POST", "/api/employees/me/profile-changes"), ("GET", "/api/employees/profile-change-inbox"),
+    ("PUT", "/api/employees/profile-changes/forged/decision"),
+    ("GET", "/api/reporting/catalogue"), ("GET", "/api/reporting/audit"),
+    ("GET", "/api/reporting/reports/employees"), ("GET", "/api/reporting/reports/employees/export.csv"),
+    ("GET", "/api/reporting/reports/employees/export.xlsx"),
+    ("GET", "/api/benefits/me"), ("GET", "/api/benefits/schemes"), ("POST", "/api/benefits/schemes"),
+    ("PUT", "/api/benefits/schemes/forged"), ("POST", "/api/benefits/requests"), ("GET", "/api/benefits/requests"),
+    ("PUT", "/api/benefits/requests/forged/decision"), ("GET", "/api/benefits/premiums"), ("PUT", "/api/benefits/schemes/forged/premium"),
+    ("GET", "/api/lnd/programmes"), ("POST", "/api/lnd/programmes"),
+    ("PUT", "/api/lnd/programmes/forged"), ("POST", "/api/lnd/programmes/forged/assign"),
+    ("PUT", "/api/lnd/training/forged/completion"),
+    ("GET", "/api/solver-assessments/capabilities"), ("GET", "/api/solver-assessments/configurations"),
+    ("POST", "/api/solver-assessments/configurations"), ("POST", "/api/solver-assessments/configurations/forged/publish"),
+    ("GET", "/api/solver-assessments/administration-options"), ("GET", "/api/solver-assessments/attempts"),
+    ("POST", "/api/solver-assessments/attempts"), ("GET", "/api/solver-assessments/attempts/forged"),
+    ("POST", "/api/solver-assessments/attempts/forged/parts/A/submit"), ("POST", "/api/solver-assessments/attempts/forged/score"),
+    ("GET", "/api/solver-assessments/attempts/forged/documents/forged/download"),
+    ("GET", "/api/solver-assessments/solvers/forged/competencies"), ("POST", "/api/solver-assessments/solvers/forged/competencies"),
+    ("GET", "/api/solvers/me"), ("GET", "/api/solvers/directory-options"),
+    ("GET", "/api/solvers/forged/workflow"), ("POST", "/api/solvers/forged/induction"),
+    ("POST", "/api/solvers/forged/verification"), ("GET", "/api/solvers/forged/documents"),
+    ("POST", "/api/solvers/forged/documents"), ("GET", "/api/solvers/forged/documents/forged/download"),
+    ("POST", "/api/solvers/forged/assessments/forged/review"),
     ("GET", "/api/leave"), ("GET", "/api/lnd/training"),
     ("GET", "/api/lnd/idp/staff"), ("GET", "/api/lnd/skills-matrix/staff"),
     ("GET", "/api/exports/employees.csv"), ("GET", "/api/dashboard/line-manager"),
@@ -97,6 +131,31 @@ def test_alternate_and_direct_requests_cannot_bypass_gate(session, method, path)
         "X-Original-URL": "/api/auth/me", "X-Forwarded-Uri": "/api/auth/password/change",
     }, json={"must_change_password": False, "employee_id": "other", "role": "hr_admin"})
     assert_restricted(response)
+
+
+@pytest.mark.parametrize('state', ['Suspended', 'Inactive', 'Deactivated'])
+def test_existing_solver_token_cannot_bypass_lifecycle_gate(session, state):
+    from .test_solver_security import solver
+    client, db, user = session
+    user.update(role='solver', account_type='solver', employee_id=None, solver_id='one', must_change_password=False)
+    db.solvers = Collection([solver(lifecycle_state=state)])
+    headers = {'Authorization': 'Bearer ' + access_for(user)}
+    for path in ('/api/forms/form-03', '/api/automation/notifications/centre', '/api/policies'):
+        response = client.get(path, headers=headers)
+        assert response.status_code == 403
+        assert 'lifecycle state' in str(response.json())
+    assert client.get('/api/auth/me', headers=headers).status_code == 200
+
+
+@pytest.mark.parametrize('state', ['Active', 'Registering'])
+def test_eligible_solver_retains_protected_access_after_password_change(session, state):
+    from .test_solver_security import solver
+    client, db, user = session
+    user.update(role='solver', account_type='solver', employee_id=None, solver_id='one', must_change_password=False)
+    db.solvers = Collection([solver(lifecycle_state=state)])
+    response = client.get('/api/forms/form-03', headers={'Authorization': 'Bearer ' + access_for(user)})
+    assert response.status_code == 200
+    assert 'correct_answer' not in response.text
     assert db.users.writes == 0 and db.employees.writes == 0
 
 
@@ -122,7 +181,6 @@ def test_legacy_token_and_forged_requirement_claim_do_not_bypass(session):
     payload = jwt.decode(access_for(user), auth.get_jwt_secret(), algorithms=["HS256"])
     payload.pop("pwd")
     payload["must_change_password"] = False
-    payload["role"] = "hr_admin"
     set_cookie(client, "access_token", jwt.encode(payload, auth.get_jwt_secret(), algorithm="HS256"))
     assert_restricted(client.get("/api/employees"))
 
@@ -364,3 +422,11 @@ def test_only_minimal_auth_handlers_are_exempt_and_global_gate_covers_new_routes
         assert client.get("/api/solver-intake/counties").status_code == 200
     finally:
         app.router.routes[:] = [route for route in app.router.routes if route.endpoint is not unguarded_probe]
+
+
+def test_forged_token_role_is_rejected_before_protected_application_access(session):
+    client, _, user = session
+    payload = jwt.decode(access_for(user), auth.get_jwt_secret(), algorithms=["HS256"])
+    payload["role"] = "hr_admin"
+    set_cookie(client, "access_token", jwt.encode(payload, auth.get_jwt_secret(), algorithm="HS256"))
+    assert client.get("/api/employees").status_code == 401

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
-export default function RequiredPasswordChange() {
+export default function RequiredPasswordChange({ required = true }) {
   const { changePassword, logout } = useAuth();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -29,10 +29,10 @@ export default function RequiredPasswordChange() {
 
   const inputStyle = { display: 'block', width: '100%', padding: '10px', margin: '8px 0 16px', border: '1px solid #D4D4D4' };
   return (
-    <main style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F5F5F5', padding: '24px', fontFamily: 'Nunito Sans, sans-serif' }}>
+    <main style={{ minHeight: required ? '100vh' : undefined, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F5F5F5', padding: '24px', fontFamily: 'Nunito Sans, sans-serif' }}>
       <section style={{ width: '100%', maxWidth: '420px', padding: '32px', backgroundColor: '#fff' }}>
         <h1 style={{ fontSize: '22px', marginBottom: '16px' }}>Change your password</h1>
-        <p>Set a new password before accessing the People System. You will need to sign in again after saving.</p>
+        <p>{required ? 'Set a new password before accessing the People System.' : 'Use your current password to choose a new password.'} You will need to sign in again after saving.</p>
         <form onSubmit={submit}>
           <label htmlFor="required-current-password">Current password</label>
           <input id="required-current-password" type="password" autoComplete="current-password" required value={currentPassword} onChange={event => setCurrentPassword(event.target.value)} style={inputStyle} />

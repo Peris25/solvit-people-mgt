@@ -17,6 +17,9 @@ api.interceptors.response.use(
     if (typeof window !== 'undefined' && status === 403 && error?.response?.data?.detail?.code === 'password_change_required') {
       window.dispatchEvent(new CustomEvent('solvit:password-change-required'));
     }
+    if (typeof window !== 'undefined' && status === 403 && error?.response?.data?.detail?.code === 'mfa_required') {
+      window.dispatchEvent(new CustomEvent('solvit:mfa-required', { detail: error.response.data.detail }));
+    }
     if (status === 401) {
       // Session expired or not authenticated — clear hint, redirect to login.
       try {
@@ -110,6 +113,12 @@ export const resetMatrixCell = (module_id, role) => api.delete('/access/matrix/c
 export const createCustomRole = (payload) => api.post('/access/roles', payload);
 export const deleteCustomRole = (key) => api.delete(`/access/roles/${key}`);
 export const getEmployeeProfile = (id) => api.get(`/employees/${id}/profile`);
+export const getMyProfile = () => api.get('/employees/me/profile');
+export const getMyProfileChanges = () => api.get('/employees/me/profile-changes');
+export const getProfileChangeInbox = () => api.get('/employees/profile-change-inbox');
+export const requestProfileChange = (changes) => api.post('/employees/me/profile-changes', { changes });
+export const getProfileChanges = (id) => api.get(`/employees/${id}/profile-changes`);
+export const reviewProfileChange = (id, decision, reason) => api.put(`/employees/profile-changes/${id}/decision`, { decision, reason });
 export const createEmployee = (data) => api.post('/employees', data);
 export const updateEmployee = (id, data) => api.put(`/employees/${id}`, data);
 export const transitionEmployee = (id, lifecycle_state) => api.post(`/employees/${id}/transition`, { lifecycle_state });
@@ -292,7 +301,15 @@ export const csvExportUrl = (kind) => {
   const base = (process.env.REACT_APP_BACKEND_URL || '').replace(/\/$/, '');
   return `${base}/api/exports/${kind}.csv`;
 };
-export const downloadCSV = (kind) => { window.location.href = csvExportUrl(kind); };
+export const downloadCSV = async (kind) => {
+  try {
+    if (!['employees','pay-bands','budget-allocations'].includes(kind)) throw new Error('Invalid export');
+    const response = await api.get(`/exports/${kind}.csv`, { responseType: 'blob' });
+    const url = URL.createObjectURL(response.data);
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${kind}.csv`; anchor.click();
+    URL.revokeObjectURL(url);
+  } catch { window.alert('CSV export unavailable or not authorized. Please retry from Reports & Audit.'); }
+};
 
 // MD KPIs (Board-administered)
 export const getMDKpis = () => api.get('/performance/md-kpis');
@@ -308,6 +325,9 @@ export const markNotificationRead = (id) => api.put(`/automation/notifications/$
 
 // Documents
 export const getDocumentCategories = () => api.get('/documents/categories');
+export const getMyDocuments = () => api.get('/documents/me');
+export const downloadEmployeeDocument = id => api.get(`/documents/${id}/download`, { responseType: 'blob' });
+export const updateEmployeeDocument = (id, data) => api.put(`/documents/${id}`, data);
 export const getEmployeeDocuments = (empId) => api.get(`/documents/employee/${empId}`);
 export const uploadEmployeeDocument = (empId, formData) =>
   api.post(`/documents/employee/${empId}/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
@@ -366,3 +386,71 @@ export const getTourReport = () => api.get('/onboarding-tour/report');
 export default api;
 
 export const provisionEmployeeAccount = (data) => api.post('/access/users/employee-account', data);
+
+// Existing employee lifecycle checklists
+export const getLifecycleChecklists = () => api.get("/lifecycle/checklists");
+export const initiateLifecycle = data => api.post("/lifecycle/initiate", data);
+export const updateLifecycleTask = (kind, id, data) => api.put(`/lifecycle/${kind}/tasks/${id}`, data);
+export const completeOffboarding = id => api.post(`/lifecycle/offboarding/${id}/complete`);
+
+export const authorizeExitDeactivation = id => api.post(`/lifecycle/offboarding/${id}/authorize-deactivation`);
+
+// Performance workflow and approved cycles
+export const getReviewCycles = () => api.get("/performance/cycles");
+export const configureReviewCycle = data => api.post("/performance/cycles", data);
+export const updateReviewGoals = (id, data) => api.put(`/performance/${id}/goals`, data);
+export const submitReviewAssessment = (id, stage, data) => api.post(`/performance/${id}/assessments/${stage}`, data);
+
+// Learning catalogue and verified completion
+export const getTrainingProgrammes = () => api.get("/lnd/programmes");
+export const createTrainingProgramme = data => api.post("/lnd/programmes", data);
+export const updateTrainingProgramme = (id, data) => api.put(`/lnd/programmes/${id}`, data);
+export const assignTrainingProgramme = (id, data) => api.post(`/lnd/programmes/${id}/assign`, data);
+export const completeTraining = (id, data) => api.put(`/lnd/training/${id}/completion`, data);
+
+// Benefits membership and approved Finance records; no payroll execution.
+export const getMyBenefits = () => api.get('/benefits/me');
+export const getBenefitSchemes = () => api.get('/benefits/schemes');
+export const createBenefitScheme = data => api.post('/benefits/schemes',data);
+export const updateBenefitScheme = (id,data) => api.put(`/benefits/schemes/${id}`,data);
+export const requestBenefitMembership = data => api.post('/benefits/requests',data);
+export const getBenefitRequests = () => api.get('/benefits/requests');
+export const decideBenefitMembership = (id,data) => api.put(`/benefits/requests/${id}/decision`,data);
+export const getBenefitPremiums = () => api.get('/benefits/premiums');
+export const recordBenefitPremium = (id,data) => api.put(`/benefits/schemes/${id}/premium`,data);
+
+// Authorized, read-only reports and administrative audit metadata.
+export const getReportingCatalogue = () => api.get('/reporting/catalogue');
+export const getAdministrativeAudit = params => api.get('/reporting/audit',{params});
+export const getAdministrativeReport = (kind,params) => api.get(`/reporting/reports/${kind}`,{params});
+export const exportAdministrativeReport = (kind,format,params) => api.get(`/reporting/reports/${kind}/export.${format}`,{params,responseType:'blob'});
+
+
+// Solver directory, evidence-backed induction and private documents.
+export const getMySolver = () => api.get('/solvers/me');
+export const getSolverDirectoryOptions = () => api.get('/solvers/directory-options');
+export const getSolverWorkflow = id => api.get(`/solvers/${id}/workflow`);
+export const initiateSolverInduction = id => api.post(`/solvers/${id}/induction`);
+export const verifySolverInduction = (id, data) => api.post(`/solvers/${id}/verification`, data);
+export const getSolverDocuments = id => api.get(`/solvers/${id}/documents`);
+export const uploadSolverDocument = (id, data) => api.post(`/solvers/${id}/documents`, data);
+export const downloadSolverDocument = (id, docId) => api.get(`/solvers/${id}/documents/${docId}/download`, { responseType: 'blob' });
+
+export const reviewSolverAssessment = (id, assessmentId) => api.post(`/solvers/${id}/assessments/${assessmentId}/review`);
+
+
+// Versioned Solver assessments reuse FORM-02 history and the existing session.
+export const getSolverAssessmentCapabilities = () => api.get('/solver-assessments/capabilities');
+export const getSolverAssessmentOptions = () => api.get('/solver-assessments/administration-options');
+export const getSolverAssessmentConfigurations = () => api.get('/solver-assessments/configurations');
+export const saveSolverAssessmentConfiguration = (data, previous) => api.post(previous ? `/solver-assessments/configurations/${previous}/versions` : '/solver-assessments/configurations', data);
+export const publishSolverAssessmentConfiguration = id => api.post(`/solver-assessments/configurations/${id}/publish`);
+export const getSolverAssessmentAttempts = () => api.get('/solver-assessments/attempts');
+export const getSolverAssessmentAttempt = id => api.get(`/solver-assessments/attempts/${id}`);
+export const assignSolverAssessment = data => api.post('/solver-assessments/attempts', data);
+export const progressSolverAssessment = (id, part, action, data) => api.post(`/solver-assessments/attempts/${id}/parts/${part}/${action}`, data);
+export const decideSolverAssessment = (id, action, data) => api.post(`/solver-assessments/attempts/${id}/${action}`, data);
+export const getSolverCompetencies = id => api.get(`/solver-assessments/solvers/${id}/competencies`);
+export const recordSolverCompetency = (id, data) => api.post(`/solver-assessments/solvers/${id}/competencies`, data);
+
+export const downloadSolverAssessmentEvidence = (id, documentId) => api.get(`/solver-assessments/attempts/${id}/documents/${documentId}/download`, { responseType: 'blob' });

@@ -7,7 +7,7 @@ export const useNotifications = () => useContext(NotificationContext);
 
 export function NotificationProvider({ children }) {
   const { user } = useAuth();
-  const key = user && !user.must_change_password ? `${user.id}:${user.role}` : null;
+  const key = user && !user.must_change_password && !(user.mfa_required && !user.mfa_verified) ? `${user.id}:${user.role}` : null;
   const activeKey = useRef(key); activeKey.current = key;
   const sequence = useRef(0);
   const [state, setState] = useState({ key: null, items: [], unreadCount: null, loading: false, error: '' });

@@ -74,6 +74,13 @@ async def update_task(task_id: str, request: Request):
     user = await get_current_user(request)
     db = get_db()
     current = await find_linked_record(db.tasks, task_id, user)
+    if current.get("task_type") == "exit_workflow":
+        from utils.lifecycle_workflows import update_checklist
+        from utils.employee_integrity import integrity_write
+        body = await request.json()
+        reject_identity_changes(body, current, ("id", "_id", "tenant_id", "employee_id", "entity_id", "assigned_to", "assigned_role", "task_type", "task_key"))
+        async with integrity_write(db):
+            return await update_checklist(db, user, db.tasks, current, body.get("status"))
     await authorize_task(db, user, current, write=True)
     body = await request.json()
     reject_identity_changes(body, current, ("id", "_id", "tenant_id", "employee_id", "entity_id", "assigned_to", "assigned_role"))

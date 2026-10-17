@@ -1,29 +1,40 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import StatusBadge from '../components/StatusBadge';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import ProfileChanges from '../components/ProfileChanges';
+import RequiredPasswordChange from '../components/RequiredPasswordChange';
+import EmployeeDocuments from '../components/EmployeeDocuments';
 
 const fmtKES = (n) => n != null ? `KES ${Number(n).toLocaleString('en-KE')}` : '—';
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
 
-export default function EmployeeProfile() {
+export default function EmployeeProfile({ selfService = false }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('overview');
+  const key = `${user?.id}:${user?.role}:${id}:${selfService}`;
+  const active = useRef(key); active.current = key;
+  const [loadedFor, setLoadedFor] = useState(null);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    api.getEmployeeProfile(id)
-      .then(r => setProfile(r.data))
-      .catch(() => setProfile(null))
-      .finally(() => setLoading(false));
-  }, [id]);
+  const load = useCallback(async () => {
+    setLoading(true); setProfile(null); setError('');
+    try {
+      const response = await (selfService ? api.getMyProfile() : api.getEmployeeProfile(id));
+      if (!response.data?.employee) throw new Error('Unavailable');
+      if (active.current === key) setProfile(response.data);
+    } catch { if (active.current === key) setError(selfService ? 'Your profile is unavailable. HR may need to verify your employee account link.' : 'Employee profile unavailable or not authorized.'); }
+    finally { if (active.current === key) { setLoading(false); setLoadedFor(key); } }
+  }, [selfService, id, key]);
+  useEffect(() => { active.current = key; setTab('overview'); load(); return () => { active.current = null; }; }, [load, key]);
 
-  if (loading) return <div style={{ padding: '48px', textAlign: 'center' }}>Loading profile...</div>;
-  if (!profile) return <div style={{ padding: '48px', textAlign: 'center' }}>Employee not found</div>;
+  if (loading || loadedFor !== key) return <div style={{ padding: '48px', textAlign: 'center' }}>Loading profile...</div>;
+  if (!profile) return <div style={{ padding: '24px' }}><p role="alert">{error}</p><button onClick={load}>Retry</button>{selfService && <RequiredPasswordChange required={false} />}</div>;
 
   const e = profile.employee;
   const initials = (e.full_name || '?').split(' ').map(s => s[0]).slice(0, 2).join('');
@@ -39,17 +50,19 @@ export default function EmployeeProfile() {
   ];
 
   // Documents tab — HR Admin/HR Manager full, Line Manager view-only for direct reports
-  const canSeeDocs = ['hr_admin', 'hr_manager'].includes(user?.role)
+  const canSeeDocs = selfService || ['hr_admin', 'hr_manager'].includes(user?.role)
     || (user?.role === 'line_manager' && e.line_manager_id && [...(user?.employee_reference_ids || []), user?.employee_id].includes(e.line_manager_id));
   if (canSeeDocs) {
     TABS.push({ k: 'documents', l: 'Documents' });
   }
+  if (selfService || ['hr_admin', 'hr_manager', 'finance'].includes(user?.role)) TABS.push({ k: 'changes', l: 'Profile changes' });
+  if (selfService) TABS.push({ k: 'account', l: 'Account security' });
 
   return (
     <div data-testid="employee-profile-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
       {/* Header card */}
       <div style={{ backgroundColor: '#191919', color: '#fff', padding: '28px', marginBottom: '20px' }}>
-        <button data-testid="back-to-employees" onClick={() => navigate('/employees')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: '11px', fontFamily: 'Arial', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '14px', padding: 0 }}>← Back to Employees</button>
+        <button data-testid="back-to-employees" onClick={() => navigate(selfService ? '/dashboard' : '/employees')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: '11px', fontFamily: 'Arial', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '14px', padding: 0 }}>{selfService ? '← Staff Home · My Profile' : '← Back to Employees'}</button>
         <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
           <div style={{ width: '72px', height: '72px', borderRadius: '50%', backgroundColor: '#FF353F', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <span style={{ color: '#fff', fontWeight: 900, fontSize: '24px' }}>{initials}</span>
@@ -78,14 +91,18 @@ export default function EmployeeProfile() {
         ))}
       </div>
 
+      {selfService && <button onClick={() => navigate('/benefits')} style={{ padding: '10px 16px', marginBottom: '12px' }}>Benefits & payroll information</button>}
+      {selfService && <button onClick={() => navigate('/onboarding')} style={{ padding: '10px 16px', marginBottom: '12px' }}>Onboarding & Offboarding</button>}
       {tab === 'overview' && <Overview profile={profile} user={user} />}
       {tab === 'timeline' && <Timeline events={profile.timeline} />}
       {tab === 'performance' && <PerformanceList items={profile.performance_history} />}
       {tab === 'leave' && <LeaveList items={profile.leave_history} />}
       {tab === 'recognitions' && <RecognitionsList items={profile.recognitions} />}
       {tab === 'training' && <TrainingList items={profile.trainings} />}
-      {tab === 'idp' && <IDPView idp={profile.idp} employeeId={id} onSaved={() => api.getEmployeeProfile(id).then(r => setProfile(r.data))} />}
-      {tab === 'documents' && <DocumentsTab employeeId={id} user={user} />}
+      {tab === 'idp' && <IDPView idp={profile.idp} employeeId={e.id} onSaved={load} />}
+      {tab === 'documents' && <><button onClick={() => navigate('/documents')} style={{ padding: '10px 16px', marginBottom: '12px' }}>Open Document Centre</button><EmployeeDocuments employeeId={e.id} user={user} /></>}
+      {tab === 'changes' && <ProfileChanges employee={e} user={user} selfService={selfService} onApplied={load} />}
+      {tab === 'account' && selfService && <RequiredPasswordChange required={false} />}
     </div>
   );
 }
@@ -102,7 +119,7 @@ function Stat({ label, value }) {
 function Overview({ profile, user }) {
   const e = profile.employee;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '12px' }}>
       <Card title="Personal & Statutory">
         <Row k="National ID" v={e.national_id_number || '—'} />
         <Row k="KRA PIN" v={e.kra_pin || '—'} />
@@ -112,11 +129,16 @@ function Overview({ profile, user }) {
         <Row k="Gender" v={e.gender || '—'} />
       </Card>
       <Card title="Employment">
+        <Row k="Staff ID" v={e.staff_id || e.employee_number || 'Not recorded'} />
         <Row k="Type" v={e.employment_type || 'Full Time'} />
         <Row k="Start Date" v={fmtDate(e.start_date)} />
         <Row k="Probation Ends" v={fmtDate(e.probation_end_date)} />
         <Row k="Lifecycle" v={<StatusBadge status={e.lifecycle_state} small />} />
         <Row k="Project Eligible" v={e.project_ownership_eligible ? 'Yes' : 'No'} />
+      </Card>
+      <Card title="Contacts & personal information">
+        {['personal_email', 'phone_number', 'next_of_kin', 'emergency_contact', 'education', 'bank_name', 'bank_branch', 'bank_account_number', 'mpesa_number'].map(field =>
+          <Row key={field} k={field.replaceAll('_', ' ')} v={e[field] ? typeof e[field] === 'object' ? JSON.stringify(e[field]) : String(e[field]) : 'Not recorded'} />)}
       </Card>
       <Card title="Recent Performance">
         {profile.performance_history?.length ? (
@@ -341,148 +363,6 @@ function IDPView({ idp, employeeId, onSaved }) {
           <button data-testid="save-idp-btn" type="submit" disabled={saving} style={{ padding: '10px 24px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>{saving ? 'Saving...' : 'Save IDP'}</button>
         </div>
       </form>
-    </div>
-  );
-}
-
-
-// ----- Documents Tab -----
-function DocumentsTab({ employeeId, user }) {
-  const [docs, setDocs] = useState([]);
-  const [cats, setCats] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showUpload, setShowUpload] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [file, setFile] = useState(null);
-  const [category, setCategory] = useState('');
-  const [categoryLabel, setCategoryLabel] = useState('');
-  const [confirmDelete, setConfirmDelete] = useState(null);
-  const canWrite = ['hr_admin', 'hr_manager'].includes(user?.role);
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      const [d, c] = await Promise.all([api.getEmployeeDocuments(employeeId), api.getDocumentCategories()]);
-      setDocs(d.data || []);
-      setCats(c.data?.categories || []);
-      if (!category && c.data?.categories?.length) setCategory(c.data.categories[0]);
-    } finally { setLoading(false); }
-  };
-  useEffect(() => { load(); }, [employeeId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const submitUpload = async (ev) => {
-    ev.preventDefault();
-    if (!file || !category) return;
-    if (file.size > 10 * 1024 * 1024) { alert('File exceeds 10MB limit'); return; }
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('category', category);
-    if (category === 'Other' && categoryLabel) fd.append('category_label', categoryLabel);
-    setUploading(true);
-    try {
-      await api.uploadEmployeeDocument(employeeId, fd);
-      setShowUpload(false);
-      setFile(null); setCategoryLabel('');
-      load();
-    } catch (err) {
-      alert('Upload failed: ' + (err?.response?.data?.detail || err.message));
-    } finally { setUploading(false); }
-  };
-
-  const doDelete = async () => {
-    const id = confirmDelete?.id;
-    if (!id) return;
-    await api.deleteEmployeeDocument(id);
-    setConfirmDelete(null);
-    load();
-  };
-
-  return (
-    <div data-testid="documents-tab" style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
-      <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h3 style={{ margin: 0, fontFamily: 'Barlow', fontWeight: 900, letterSpacing: '-0.02em', fontSize: '16px' }}>Personal Documents</h3>
-          <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#525252' }}>PDF, JPEG, PNG, DOCX up to 10MB · Categories editable in Masters Settings</p>
-        </div>
-        {canWrite && (
-          <button data-testid="upload-doc-btn" onClick={() => setShowUpload(true)} style={{ padding: '8px 16px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Barlow' }}>+ Upload</button>
-        )}
-      </div>
-
-      {loading ? <div style={{ padding: '32px', textAlign: 'center', color: '#525252' }}>Loading…</div> : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-          <thead><tr style={{ backgroundColor: '#F5F5F5' }}>
-            {['Category', 'File Name', 'Uploaded', 'Uploaded By', 'Actions'].map(h =>
-              <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', fontWeight: 700, fontFamily: 'Barlow' }}>{h}</th>
-            )}
-          </tr></thead>
-          <tbody>
-            {docs.map((d, i) => (
-              <tr key={d.id} data-testid={`doc-row-${d.id}`} style={{ borderBottom: '1px solid rgba(25,25,25,0.05)', backgroundColor: i % 2 === 0 ? '#fff' : '#FAFAFA' }}>
-                <td style={{ padding: '10px 14px', fontWeight: 700 }}>{d.category}{d.category === 'Other' && d.category_label ? ` · ${d.category_label}` : ''}</td>
-                <td style={{ padding: '10px 14px', color: '#525252' }}>{d.file_name}</td>
-                <td style={{ padding: '10px 14px', color: '#525252' }}>{d.uploaded_at ? new Date(d.uploaded_at).toLocaleDateString('en-GB') : '—'}</td>
-                <td style={{ padding: '10px 14px', color: '#525252' }}>{d.uploaded_by_name || '—'}</td>
-                <td style={{ padding: '10px 14px' }}>
-                  <a data-testid={`view-doc-${d.id}`} href={api.documentDownloadUrl(d.id)} target="_blank" rel="noreferrer" style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid rgba(25,25,25,0.2)', color: '#191919', textDecoration: 'none', fontFamily: 'Barlow', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>View</a>
-                  {canWrite && <button data-testid={`delete-doc-${d.id}`} onClick={() => setConfirmDelete(d)} style={{ marginLeft: '6px', padding: '4px 10px', fontSize: '10px', border: '1px solid #FF353F', color: '#FF353F', background: 'transparent', cursor: 'pointer', fontFamily: 'Barlow', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Delete</button>}
-                </td>
-              </tr>
-            ))}
-            {docs.length === 0 && <tr><td colSpan={5} style={{ padding: '32px', textAlign: 'center', color: '#9CA3AF' }}>No documents uploaded yet.</td></tr>}
-          </tbody>
-        </table>
-      )}
-
-      {showUpload && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <form onSubmit={submitUpload} style={{ backgroundColor: '#fff', width: '480px', border: '1px solid rgba(25,25,25,0.15)' }}>
-            <div style={{ padding: '16px 22px', borderBottom: '1px solid rgba(25,25,25,0.08)' }}>
-              <h3 style={{ margin: 0, fontFamily: 'Barlow', fontWeight: 900 }}>Upload Document</h3>
-            </div>
-            <div style={{ padding: '20px 22px', display: 'grid', gap: '14px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px', fontFamily: 'Barlow' }}>Category</label>
-                <select data-testid="upload-category" required value={category} onChange={e => setCategory(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px' }}>
-                  {cats.map(c => <option key={c}>{c}</option>)}
-                </select>
-              </div>
-              {category === 'Other' && (
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px', fontFamily: 'Barlow' }}>Free-text label</label>
-                  <input data-testid="upload-category-label" value={categoryLabel} onChange={e => setCategoryLabel(e.target.value)} placeholder="Describe the document type" style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
-                </div>
-              )}
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px', fontFamily: 'Barlow' }}>File (PDF, JPEG, PNG, DOCX · max 10MB)</label>
-                <input data-testid="upload-file-input" type="file" accept=".pdf,.jpg,.jpeg,.png,.docx,application/pdf,image/jpeg,image/png,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required onChange={e => setFile(e.target.files[0])} style={{ width: '100%', padding: '8px 0', fontSize: '13px' }} />
-                {file && <div style={{ marginTop: '4px', fontSize: '11px', color: '#525252' }}>{file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB</div>}
-              </div>
-            </div>
-            <div style={{ padding: '14px 22px', borderTop: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button type="button" onClick={() => { setShowUpload(false); setFile(null); }} style={{ padding: '10px 20px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '12px' }}>Cancel</button>
-              <button data-testid="upload-submit-btn" type="submit" disabled={uploading || !file} style={{ padding: '10px 22px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Barlow', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{uploading ? 'Uploading…' : 'Upload'}</button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {confirmDelete && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div data-testid="confirm-delete-modal" style={{ backgroundColor: '#fff', width: '420px', border: '1px solid rgba(25,25,25,0.15)' }}>
-            <div style={{ padding: '16px 22px', borderBottom: '1px solid rgba(25,25,25,0.08)' }}>
-              <h3 style={{ margin: 0, fontFamily: 'Barlow', fontWeight: 900 }}>Delete Document?</h3>
-            </div>
-            <div style={{ padding: '20px 22px', fontSize: '13px', color: '#525252' }}>
-              You are about to permanently delete <strong style={{ color: '#191919' }}>{confirmDelete.file_name}</strong> ({confirmDelete.category}). This action is logged for audit and cannot be undone.
-            </div>
-            <div style={{ padding: '14px 22px', borderTop: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button onClick={() => setConfirmDelete(null)} style={{ padding: '10px 20px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '12px' }}>Cancel</button>
-              <button data-testid="confirm-delete-btn" onClick={doDelete} style={{ padding: '10px 22px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Barlow', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Delete</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

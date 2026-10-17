@@ -116,6 +116,8 @@ async def evidence(db, employee, reference):
     row = await find_linked_record(db.leave_evidence, reference, employee)
     if row.get("employee_id") not in [*reference_ids(employee), employee["_id"]]:
         raise HTTPException(403, "Supporting document belongs to another employee")
+    if row.get("publication_state") not in (None, "Ready"):
+        raise HTTPException(409, "Supporting document requires administrator recovery")
     return row
 
 

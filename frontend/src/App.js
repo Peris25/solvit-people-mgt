@@ -9,6 +9,7 @@ import Employees from './pages/Employees';
 import Organogram from './pages/Organogram';
 import StaffDirectory from './pages/StaffDirectory';
 import Solvers from './pages/Solvers';
+import SolverAssessments from './pages/SolverAssessments';
 import Recruitment from './pages/Recruitment';
 import Onboarding from './pages/Onboarding';
 import Performance from './pages/Performance';
@@ -22,6 +23,8 @@ import Budget from './pages/Budget';
 import Policies from './pages/Policies';
 import Disciplinary from './pages/Disciplinary';
 import Calendar from './pages/Calendar';
+import Benefits from './pages/Benefits';
+import Reporting from './pages/Reporting';
 import Leave from './pages/Leave';
 import Compliance from './pages/Compliance';
 import Settings from './pages/Settings';
@@ -38,6 +41,8 @@ import IneligibleApplicants from './pages/IneligibleApplicants';
 import EligibleSolvers from './pages/EligibleSolvers';
 import PublicSolverApply from './pages/PublicSolverApply';
 import Notifications from './pages/Notifications';
+import Documents from './pages/Documents';
+import MfaSecurity from './pages/MfaSecurity';
 import { NotificationProvider } from './context/NotificationContext';
 
 export default function App() {
@@ -58,7 +63,12 @@ export default function App() {
             <Route path="organogram" element={<Organogram />} />
             <Route path="staff-directory" element={<StaffDirectory />} />
             <Route path="employees/:id" element={<EmployeeProfile />} />
+            <Route path="my-profile" element={<EmployeeProfile selfService />} />
+            <Route path="documents" element={<Documents />} />
+            <Route path="benefits" element={<Benefits />} />
+            <Route path="reporting" element={<Reporting />} />
             <Route path="solvers" element={<Solvers />} />
+            <Route path="solver-assessments" element={<SolverAssessments />} />
             <Route path="solver-requisitions" element={<SolverRequisitions />} />
             <Route path="solver-eligible" element={<EligibleSolvers />} />
             <Route path="solver-ineligible" element={<IneligibleApplicants />} />
@@ -78,6 +88,7 @@ export default function App() {
             <Route path="leave" element={<AccessGate module="M18"><Leave /></AccessGate>} />
             <Route path="compliance" element={<AccessGate module="M19"><Compliance /></AccessGate>} />
             <Route path="settings" element={<Settings />} />
+            <Route path="account-security" element={<MfaSecurity />} />
             <Route path="masters" element={<MastersSettings />} />
             <Route path="forms" element={<Forms />} />
             <Route path="my-tasks" element={<MyTasks />} />

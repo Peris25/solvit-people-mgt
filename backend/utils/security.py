@@ -273,3 +273,19 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
             except ValueError:
                 pass
         return await call_next(request)
+
+
+class BrowserOriginMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            from urllib.parse import urlsplit
+            origin = request.headers.get("origin")
+            configured = [x.strip().rstrip("/") for x in os.environ.get("CORS_ORIGINS", "").split(",") if x.strip() and x.strip() != "*"]
+            frontend = os.environ.get("FRONTEND_URL", "").strip().rstrip("/")
+            if frontend: configured.append(frontend)
+            # Deployment host must be constrained by the reverse proxy.
+            own = f"{request.url.scheme}://{request.url.netloc}"
+            allowed = set(configured + [own])
+            if (origin and origin.rstrip("/") not in allowed) or (not origin and request.headers.get("sec-fetch-site") in {"cross-site", "same-site"}):
+                return Response('{"detail":"Untrusted request origin"}', status_code=403, media_type="application/json")
+        return await call_next(request)

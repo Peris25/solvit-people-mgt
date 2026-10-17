@@ -7,6 +7,8 @@ from database import get_db
 from utils.employee_access import authorize_employee, scoped_employee_query, find_linked_record, reject_identity_changes
 from utils.auth import get_current_user
 import uuid
+from utils.legacy_security import module_access, audit, projection, HR
+from utils.employee_integrity import integrity_write, tenant_of, employee_key, tenant_query
 
 router = APIRouter(prefix="/disciplinary", tags=["disciplinary"])
 
@@ -35,6 +37,7 @@ async def list_cases(request: Request, status: Optional[str] = None):
     user = await get_current_user(request)
     if user["role"] not in ["hr_admin", "hr_manager", "line_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    module_access(user, "M14", write=request.method != "GET")
     db = get_db()
     query = await scoped_employee_query(db, user, "M14")
     if status:
@@ -42,7 +45,8 @@ async def list_cases(request: Request, status: Optional[str] = None):
     if user["role"] == "line_manager":
         query = {"$and": [query, {"status": {"$nin": ["Closed", "Resolved", "Completed"]}}]}
     cases = await db.disciplinary_cases.find(query).sort("created_at", -1).to_list(100)
-    return [fmt(c) for c in cases]
+    await audit(db, user, "disciplinary.cases.viewed", "list")
+    return [case_view(c, user) for c in cases]
 
 
 @router.post("")
@@ -50,13 +54,15 @@ async def create_case(case: CaseCreate, request: Request):
     user = await get_current_user(request)
     if user["role"] not in ["hr_admin", "hr_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    module_access(user, "M14", write=request.method != "GET")
     db = get_db()
-    await authorize_employee(db, user, case.employee_id, "M14", write=True)
+    target = await authorize_employee(db, user, case.employee_id, "M14", write=True)
+    case = case.model_copy(update={"employee_id": employee_key(target), "employee_name": target.get("full_name", "")})
     case_id = str(uuid.uuid4())
     doc = {
         "id": case_id,
         "case_ref": f"DC-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{case_id[:4].upper()}",
-        "tenant_id": "solvit",
+        "tenant_id": tenant_of(user),
         **case.model_dump(),
         "status": "Investigation",
         "timeline": [{"event": "Case opened", "date": datetime.now(timezone.utc).isoformat(), "by": user["id"]}],
@@ -68,7 +74,11 @@ async def create_case(case: CaseCreate, request: Request):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    result = await db.disciplinary_cases.insert_one(doc)
+    async with integrity_write(db):
+        if await db.disciplinary_cases.find_one({"$and": [tenant_query(tenant_of(user)), {"employee_id": case.employee_id, "incident_date": case.incident_date, "allegation_category": case.allegation_category}]}):
+            raise HTTPException(409, "This employee incident is already recorded")
+        await audit(db, user, "disciplinary.case.created", doc["id"])
+        result = await db.disciplinary_cases.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
     return doc
 
@@ -76,12 +86,14 @@ async def create_case(case: CaseCreate, request: Request):
 @router.get("/{case_id}")
 async def get_case(case_id: str, request: Request):
     user = await get_current_user(request)
+    module_access(user, "M14", write=request.method != "GET")
     db = get_db()
     c = await find_linked_record(db.disciplinary_cases, case_id, user)
     await authorize_employee(db, user, c.get("employee_id"), "M14")
     if user["role"] == "line_manager" and c.get("status") in ("Closed", "Resolved", "Completed"):
         raise HTTPException(403, "No access to historical cases")
-    return fmt(c)
+    await audit(db, user, "disciplinary.case.viewed", c["_id"])
+    return case_view(c, user)
 
 
 @router.put("/{case_id}")
@@ -89,28 +101,30 @@ async def update_case(case_id: str, request: Request):
     user = await get_current_user(request)
     if user["role"] not in ["hr_admin", "hr_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    module_access(user, "M14", write=request.method != "GET")
     db = get_db()
     current = await find_linked_record(db.disciplinary_cases, case_id, user)
     await authorize_employee(db, user, current.get("employee_id"), "M14", write=True)
     body = await request.json()
+    allowed = {"status", "investigating_officer", "hearing_scheduled", "outcome", "warning_level", "appeal_filed", "appeal_date", "appeal_outcome"}
+    if not isinstance(body, dict) or set(body) - allowed:
+        raise HTTPException(422, "Only case workflow fields may be updated; history is immutable")
+    if current.get("status") in {"Closed", "Resolved", "Completed"}:
+        raise HTTPException(409, "Closed cases require a separately approved correction")
+    if body.get("status") and body["status"] not in {"Investigation", "Under Investigation", "Hearing Scheduled", "Outcome Issued", "Closed"}:
+        raise HTTPException(422, "Unknown case status")
+    if body.get("outcome") and current.get("status") not in {"Hearing Scheduled", "Outcome Issued"}:
+        raise HTTPException(409, "Record the hearing before issuing an outcome")
     reject_identity_changes(body, current)
     body["updated_at"] = datetime.now(timezone.utc).isoformat()
-    if body.get("status"):
-        body.setdefault("timeline", [])
-        # Add timeline event
-        event = {"event": f"Status changed to {body['status']}", "date": datetime.now(timezone.utc).isoformat(), "by": user["id"]}
-        await db.disciplinary_cases.update_one({"id": case_id}, {"$push": {"timeline": event}})
-
-    try:
-        result = await db.disciplinary_cases.find_one_and_update(
-            {"_id": ObjectId(case_id)}, {"$set": body}, return_document=True
-        )
-    except Exception:
-        result = await db.disciplinary_cases.find_one_and_update(
-            {"id": case_id}, {"$set": body}, return_document=True
-        )
-    if not result:
-        raise HTTPException(status_code=404, detail="Case not found")
+    timeline = list(current.get("timeline") or [])
+    timeline.append({"event": "Case workflow updated", "date": body["updated_at"], "by": user["id"]})
+    body["timeline"] = timeline
+    async with integrity_write(db):
+        fresh = await find_linked_record(db.disciplinary_cases, case_id, user)
+        if fresh != current: raise HTTPException(409, "Case changed; refresh before updating")
+        await audit(db, user, "disciplinary.case.updated", current["_id"])
+        result = await db.disciplinary_cases.find_one_and_update({"_id": current["_id"]}, {"$set": body}, return_document=True)
     return fmt(result)
 
 
@@ -119,11 +133,24 @@ async def issue_notice(case_id: str, request: Request):
     user = await get_current_user(request)
     if user["role"] not in ["hr_admin", "hr_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    module_access(user, "M14", write=request.method != "GET")
     db = get_db()
+    case = await find_linked_record(db.disciplinary_cases, case_id, user)
+    await authorize_employee(db, user, case.get("employee_id"), "M14", write=True)
     body = await request.json()
+    if not isinstance(body, dict) or set(body) - {"notice_type", "content", "response_deadline"}:
+        raise HTTPException(422, "Invalid notice fields")
+    if case.get("status") in {"Closed", "Resolved", "Completed"}:
+        raise HTTPException(409, "Cannot issue a notice for a closed case")
+    if body.get("notice_type", "Show Cause") not in {"Show Cause", "Hearing", "Written Warning", "Final Warning", "Dismissal"}:
+        raise HTTPException(422, "Unknown notice type")
+    if not isinstance(body.get("content"), str) or not 1 <= len(body["content"].strip()) <= 20000:
+        raise HTTPException(422, "Notice content is required and must be bounded")
+    if body.get("notice_type") in {"Written Warning", "Final Warning", "Dismissal"} and case.get("status") not in {"Hearing Scheduled", "Outcome Issued"}:
+        raise HTTPException(409, "Record the hearing before issuing an outcome")
     notice = {
         "id": str(uuid.uuid4()),
-        "tenant_id": "solvit",
+        "tenant_id": tenant_of(user),
         "case_id": case_id,
         "notice_type": body.get("notice_type", "Show Cause"),
         "content": body.get("content"),
@@ -131,11 +158,15 @@ async def issue_notice(case_id: str, request: Request):
         "issued_by": user["id"],
         "issued_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.case_documents.insert_one(notice)
-    await db.disciplinary_cases.update_one({"id": case_id}, {"$set": {"status": "Notice_Issued"}})
+    async with integrity_write(db):
+        fresh = await find_linked_record(db.disciplinary_cases, case_id, user)
+        if fresh != case: raise HTTPException(409, "Case changed; refresh before issuing notice")
+        await audit(db, user, "disciplinary.notice.issued", case["_id"])
+        await db.case_documents.insert_one(notice)
+        await db.disciplinary_cases.update_one({"_id": case["_id"]}, {"$set": {"status": "Notice_Issued"}})
     # Email the employee with the right warning template
     try:
-        case = await db.disciplinary_cases.find_one({"id": case_id})
+        case = await db.disciplinary_cases.find_one({"_id": case["_id"]})
         if case:
             notice_type = (body.get("notice_type") or "").lower()
             mapping = {
@@ -156,3 +187,10 @@ async def issue_notice(case_id: str, request: Request):
     except Exception:
         pass
     return {"message": "Notice issued", "notice_id": notice["id"]}
+
+
+def case_view(row, user):
+    if user.get("role") in HR:
+        return fmt(row)
+    # Brief privacy rule: managers/subjects get progress, never confidential details.
+    return projection(row, {"employee_id", "case_ref", "status", "created_at", "updated_at"})

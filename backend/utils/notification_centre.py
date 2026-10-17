@@ -15,9 +15,10 @@ from utils.solver_access import own_solver, solver_aliases, authorize_solver
 from utils.staff_views import token, restricted
 from utils.access_matrix import get_module_access
 
-CATEGORIES = ("Leave", "Approvals", "Onboarding", "Training", "Announcements", "Performance", "Recognition", "Policies", "System")
-MODULES = {"Leave": "M18", "Approvals": "M18", "Onboarding": "M04", "Training": "M08", "Performance": "M05", "Recognition": "M11", "Policies": "M13"}
+CATEGORIES = ("Benefits", "Leave", "Approvals", "Onboarding", "Training", "Announcements", "Performance", "Recognition", "Policies", "System")
+MODULES = {"Benefits": "M01", "Leave": "M18", "Approvals": "M18", "Onboarding": "M04", "Training": "M08", "Performance": "M05", "Recognition": "M11", "Policies": "M13"}
 PREVIEWS = {
+    "Benefits": ("Benefits update", "There is an update about a benefit membership request."),
     "Leave": ("Leave update", "There is an update about a leave request."),
     "Approvals": ("Approval required", "A request needs an authorized approver's attention."),
     "Onboarding": ("Onboarding update", "There is an update about onboarding or probation."),
@@ -32,7 +33,7 @@ PREVIEWS = {
 
 def category_of(row):
     value = token(row.get("category"))
-    aliases = {"leave": "Leave", "approval": "Approvals", "approvals": "Approvals", "onboarding": "Onboarding",
+    aliases = {"benefits": "Benefits", "benefit": "Benefits", "leave": "Leave", "approval": "Approvals", "approvals": "Approvals", "onboarding": "Onboarding",
                "probation": "Onboarding", "training": "Training", "learning": "Training", "lnd": "Training",
                "announcement": "Announcements", "announcements": "Announcements", "hrannouncement": "Announcements",
                "performance": "Performance", "recognition": "Recognition", "policies": "Policies", "policy": "Policies"}
@@ -154,6 +155,38 @@ async def related_link(db, user, row, category):
     if not isinstance(data, dict):
         return None, None
     try:
+        if data.get('solver_assessment_id'):
+            from utils.solver_assessments import load
+            await load(db, user, data['solver_assessment_id'])
+            return '/solver-assessments?assessment=' + quote(data['solver_assessment_id'], safe=''), None
+        if data.get('solver_workflow') and data.get('solver_id'):
+            await authorize_solver(db, user, data['solver_id'])
+            return '/solvers', None
+        if category == "Performance" and data.get("performance_review_id"):
+            from utils.performance_workflows import record
+            review, employee = await record(db, user, data["performance_review_id"])
+            if data.get("employee_id") not in [employee_key(employee), str(employee["_id"]), employee["_id"]]:
+                return None, None
+            return "/performance?review=" + quote(str(review.get("id") or review["_id"]), safe=""), None
+        if data.get("lifecycle_employee_id"):
+            from utils.lifecycle_workflows import task_access, query
+            employee = await find_employee(db, data["lifecycle_employee_id"], tenant_of(user))
+            if not employee:
+                return None, None
+            for collection in (db.onboarding_tasks, db.tasks):
+                for task in await collection.find(query(employee)).to_list(None):
+                    try:
+                        await task_access(db, user, task)
+                        return "/onboarding", None
+                    except HTTPException:
+                        continue
+            return None, None
+        if category == "Benefits":
+            record = await find_linked_record(db.benefit_requests, str(data.get("benefit_request_id") or ""), user)
+            employee = await authorize_employee(db, user, record.get("employee_id"), "M01")
+            if user.get("role") not in {"hr_admin", "hr_manager"} and employee_key(employee) != user.get("employee_id"):
+                return None, None
+            return "/benefits", None
         if category in ("Leave", "Approvals", "Training"):
             field = "training_request_id" if category == "Training" else "leave_request_id"
             reference = data.get(field) or row.get(field)
@@ -168,7 +201,7 @@ async def related_link(db, user, row, category):
                 chosen = await find_employee(db, supplied, tenant_of(user))
                 if not chosen or chosen["_id"] != employee["_id"]:
                     return None, None
-            path = ("/lnd?training=" if category == "Training" else "/leave?request=") + quote(storage_key(record), safe="")
+            path = ("/lnd?training=" if category == "Training" else "/leave?request=") + quote(str(record.get("id") or storage_key(record)) if category == "Training" else storage_key(record), safe="")
             if category != "Training" and employee_key(employee) != user.get("employee_id"):
                 path += "&view=team"
             action = None

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
@@ -11,6 +11,8 @@ from utils.auth import get_current_user
 import uuid
 from pathlib import Path
 import os
+import hashlib
+from utils import document_uploads
 
 router = APIRouter(prefix="/leave", tags=["leave"])
 
@@ -150,28 +152,51 @@ async def upload_leave_evidence(request: Request, file: UploadFile = File(...), 
     content = await file.read(5 * 1024 * 1024 + 1)
     if not content or len(content) > 5 * 1024 * 1024:
         raise HTTPException(422, "Supporting documents must be non-empty and at most 5 MB")
-    extension = ".pdf" if content.startswith(b"%PDF-") else ".png" if content.startswith(b"\x89PNG\r\n\x1a\n") else ".jpg" if content.startswith(b"\xff\xd8\xff") else None
-    if not extension:
+    _, extension = document_uploads.filename(file.filename)
+    if extension not in {".pdf", ".png", ".jpg", ".jpeg"}:
         raise HTTPException(422, "Upload a PDF, PNG or JPEG supporting document")
+    document_uploads.validate_content(content, extension, file.content_type)
+    await document_uploads.scan_content(content)
     key = str(uuid.uuid4())
     root = Path(os.environ.get("LEAVE_EVIDENCE_ROOT", str(Path(__file__).resolve().parents[1] / "private_uploads" / "leave"))).resolve()
-    root.mkdir(parents=True, exist_ok=True)
     path = (root / (key + extension)).resolve()
     if not path.is_relative_to(root):
         raise HTTPException(422, "Invalid document path")
     try:
-        with path.open("xb") as destination:
+        root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as destination:
             destination.write(content)
     except OSError:
         raise HTTPException(503, "Private document storage is unavailable")
+    inserted = False
     try:
-        await db.leave_evidence.insert_one({"id": key, "tenant_id": tenant_of(user), "employee_id": employee_key(employee),
-                                           "document_type": document_type, "storage_name": path.name, "size_bytes": len(content),
-                                           "uploaded_by": user["id"], "created_at": datetime.now(timezone.utc).isoformat()})
+        async with integrity_write(db):
+            await authorize_employee(db, user, employee_key(employee), "M18", write=True)
+            await db.leave_evidence.insert_one({"id": key, "tenant_id": tenant_of(user), "employee_id": employee_key(employee),
+                                               "document_type": document_type, "storage_name": path.name, "size_bytes": len(content),
+                                               "scan_status": "Clean", "publication_state": "Pending_Audit",
+                                               "content_sha256": hashlib.sha256(content).hexdigest(),
+                                               "uploaded_by": user["id"], "created_at": datetime.now(timezone.utc).isoformat()})
+            inserted = True
+            await _evidence_audit(db, user, employee, key, "uploaded", content)
+            await db.leave_evidence.update_one({"id": key, "tenant_id": tenant_of(user)}, {"$set": {"publication_state": "Ready"}})
+    except HTTPException:
+        if not inserted: path.unlink(missing_ok=True)
+        raise
     except Exception:
-        path.unlink(missing_ok=True)  # Only this newly created, checked file.
-        raise HTTPException(503, "The supporting document could not be saved")
+        # Preserve uncertain metadata/file writes for controlled recovery, never
+        # publish a document whose required upload audit did not complete.
+        raise HTTPException(503, {"code": "leave_evidence_needs_review", "id": key,
+                                  "message": "Supporting document needs administrator review. Refresh before retrying."})
     return {"id": key, "document_type": document_type, "size_bytes": len(content)}
+
+
+async def _evidence_audit(db, user, employee, document_id, action, content):
+    await db.document_audit.insert_one({"id": str(uuid.uuid4()), "tenant_id": tenant_of(user),
+        "document_id": document_id, "source": "leave_evidence", "employee_id": employee_key(employee),
+        "action": action, "by_user_id": user["id"], "by_role": user["role"],
+        "scan_status": "Clean", "content_sha256": hashlib.sha256(content).hexdigest(),
+        "timestamp": datetime.now(timezone.utc).isoformat()})
 
 
 @router.put("/{request_id}/supporting-info")
@@ -197,11 +222,40 @@ async def download_leave_evidence(document_id: str, request: Request):
     employee = await authorize_employee(db, user, row.get("employee_id"), "M18")
     if employee_key(employee) != user.get("employee_id") and user.get("role") not in ("hr_admin", "hr_manager"):
         raise HTTPException(403, "Medical/birth documents are restricted to the employee and HR")
+    if row.get("publication_state") not in (None, "Ready"):
+        raise HTTPException(503, "Supporting document requires administrator review")
     root = Path(os.environ.get("LEAVE_EVIDENCE_ROOT", str(Path(__file__).resolve().parents[1] / "private_uploads" / "leave"))).resolve()
-    path = (root / str(row.get("storage_name", ""))).resolve()
-    if not path.is_relative_to(root) or not path.is_file():
+    try:
+        stored = row.get("storage_name")
+        if not isinstance(stored, str) or not stored or Path(stored).name != stored or any(c in stored for c in "/\\:"):
+            raise ValueError()
+        path = (root / stored).resolve()
+        if not path.is_relative_to(root) or not path.is_file(): raise ValueError()
+        with path.open("rb") as source:
+            content = source.read(5 * 1024 * 1024 + 1)
+    except (OSError, ValueError, RuntimeError):
         raise HTTPException(404, "Supporting document unavailable")
-    return FileResponse(path, filename="leave-evidence" + path.suffix, headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+    if not content or len(content) > 5 * 1024 * 1024:
+        raise HTTPException(503, "Supporting document requires administrator review")
+    extension = path.suffix.lower()
+    if extension not in {".pdf", ".png", ".jpg", ".jpeg"}:
+        raise HTTPException(503, "Supporting document requires administrator review")
+    digest = hashlib.sha256(content).hexdigest()
+    if row.get("content_sha256") and row["content_sha256"] != digest:
+        raise HTTPException(503, "Supporting document requires administrator review")
+    document_uploads.validate_content(content, extension, None)
+    # Scan actual bytes for every download, including legacy files; no backfill,
+    # silent legacy exemption or automatic file/record deletion.
+    await document_uploads.scan_content(content)
+    try:
+        await _evidence_audit(db, user, employee, str(row.get("id") or row["_id"]), "downloaded", content)
+    except Exception:
+        raise HTTPException(503, "Supporting document audit is unavailable; download was not granted")
+    # Serve precisely the bytes validated/scanned/audited, not a path reopened
+    # later by a response iterator (which could change after inspection).
+    return Response(content, media_type=document_uploads.MIME[extension],
+                    headers={"Content-Disposition": f'attachment; filename="leave-evidence{extension}"',
+                             "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
 
 @router.get("/balances/{employee_id}")

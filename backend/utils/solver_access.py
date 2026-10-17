@@ -11,14 +11,13 @@ from utils.access_matrix import get_module_access, CUSTOM_ROLE_DEFINITIONS
 from utils.employee_integrity import tenant_of, tenant_query, find_employee, email_matches, normalize_email
 
 HR_ROLES = {"hr_admin", "hr_manager"}
-OPERATIONAL_FIELDS = ("full_name", "phone_number", "email", "solver_code", "lifecycle_state",
+OPERATIONAL_FIELDS = ("full_name", "phone_number", "email", "region", "area_covered", "solver_code", "lifecycle_state",
                       "vehicle_categories", "zones_covered", "county", "sub_county", "onboarded_at",
                       "activation_date", "performance_tier", "accuracy_score", "reliability_score",
                       "timeliness_score", "client_rating_average", "jobs_completed", "payment_method",
                       "client_rating_30d", "client_rating_90d", "latest_client_rating", "latest_rating_at")
 MANAGER_WRITE_FIELDS = {"full_name", "phone_number", "email", "vehicle_categories", "zones_covered",
-                        "lifecycle_state", "accuracy_score", "reliability_score", "timeliness_score",
-                        "client_rating_average", "performance_tier", "payment_method"}
+                        "lifecycle_state", "region", "area_covered", "payment_method"}
 
 
 def solver_key(record):
@@ -99,6 +98,10 @@ async def solver_access(db, user, write=False):
     if base_role in ("solver", "employee"):
         if write:
             raise HTTPException(403, "No access to modify this Solver record")
+        own = await own_solver(db, user)
+        from utils.solver_workflows import view
+        if view(own)['lifecycle_state'] not in {'Active', 'Registering'}:
+            raise HTTPException(403, 'Solver access is unavailable for this lifecycle state')
         return {"level": "Read", "scope": "own_record"}
     scope = entry.get("scope")
     if scope == "solvers_manager":
@@ -128,11 +131,13 @@ async def authorize_solver(db, user, reference, write=False):
 
 
 def solver_view(record, user):
+    from utils.solver_workflows import view
+    record = view(record)
     # Keep legacy UI storage-id URLs while providing the canonical UUID
     # explicitly. Neither identity is rewritten in MongoDB.
     out = deepcopy(record) if user.get("role") in HR_ROLES else {
         field: deepcopy(record[field]) for field in OPERATIONAL_FIELDS if field in record}
-    for field in ("password_hash", "password_history", "refresh_tokens", "access_token"):
+    for field in ("password_hash", "password_history", "refresh_tokens", "access_token", "otp_code", "otp_secret", "otp_expires_at", "refresh_token", "token", "stored_path"):
         out.pop(field, None)
     out.update(id=str(record["_id"]), _id=str(record["_id"]), canonical_id=solver_key(record))
     return out
@@ -184,10 +189,11 @@ async def solver_identity_write(db, supplied, user, original=None):
     return out
 
 
-async def audit_solver(db, user, event, records=(), fields=()):
+async def audit_solver(db, user, event, records=(), fields=(), *, entity_type=None, entity_id=None):
     """Metadata-only audit, tenant scoped; never copy private record values."""
     try:
         await db.audit_logs.insert_one({"id": str(uuid.uuid4()), "tenant_id": tenant_of(user),
+            **({'entity_type': entity_type, 'entity_id': str(entity_id)} if entity_type and entity_id else {}),
             "actor_id": str(user.get("id") or user.get("_id") or ""), "event": event,
             "timestamp": datetime.now(timezone.utc).isoformat(), "outcome": "success",
             "detail": {"solver_ids": [solver_key(r) for r in records], "fields": sorted(fields)}})

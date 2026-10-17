@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import StatusBadge from '../components/StatusBadge';
+import PerformanceWorkflow, { CycleConfiguration } from '../components/PerformanceWorkflow';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -8,6 +9,8 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
 export default function Performance() {
   const { user } = useAuth();
   const [reviews, setReviews] = useState([]);
+  const [cycles, setCycles] = useState([]);
+  const [error, setError] = useState('');
   const [cycle, setCycle] = useState(null);
   const [nineBox, setNineBox] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -24,22 +27,25 @@ export default function Performance() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
-      const [revRes, cycleRes] = await Promise.all([api.getReviews(), api.getActiveCycle()]);
+      const [revRes, cycleRes, cyclesRes] = await Promise.all([api.getReviews(), api.getActiveCycle(), api.getReviewCycles()]);
+      setCycles(cyclesRes.data);
+      setViewReview(previous => revRes.data.find(row => row.id === (previous?.id || new URLSearchParams(window.location.search).get('review'))) || null);
       setReviews(revRes.data);
       setCycle(cycleRes.data);
       if (['hr_admin', 'hr_manager'].includes(user?.role)) {
         const empRes = await api.getEmployees();
         setEmployees(empRes.data.filter(e => e.lifecycle_state === 'Active'));
       }
-    } finally { setLoading(false); }
+    } catch { setError('Unable to load performance information. Please retry.'); } finally { setLoading(false); }
   }, [user?.role]);
 
   useEffect(() => { load(); if (['hr_admin', 'hr_manager', 'executive'].includes(user?.role)) api.getTalentDensity().then(r => setTalentDensity(r.data)).catch(() => {}); }, [load, user?.role]);
 
   const loadNineBox = async () => {
-    const res = await api.getNineBoxMatrix();
-    setNineBox(res.data);
+    try { const res = await api.getNineBoxMatrix(); setNineBox(res.data); }
+    catch { setError('Unable to load the HR matrix.'); }
   };
 
   const createReview = async (e) => {
@@ -49,7 +55,7 @@ export default function Performance() {
       await api.createReview(newReview);
       setShowCreate(false);
       load();
-    } finally { setSaving(false); }
+    } catch (err) { setError(typeof err.response?.data?.detail === 'string' ? err.response.data.detail : 'Unable to create the review.'); } finally { setSaving(false); }
   };
 
   const NINE_BOX_LABELS = { Stars: '#22C55E', Core_Contributor: '#3B82F6', Culture_Risk: '#F59E0B', Realignment_Needed: '#F97316', Exit_Track: '#EF4444' };
@@ -59,10 +65,11 @@ export default function Performance() {
       const res = await api.getReview(r.id);
       setViewReview(res.data || r);
     } catch {
-      setViewReview(r);
+      setViewReview(null);
+      setError('Unable to open this review. Please retry.');
     }
     const emp = employees.find(e => e.id === r.employee_id);
-    setViewEmpName(emp?.full_name || r.employee_id);
+    setViewEmpName(r.employee_name || emp?.full_name || 'Employee unavailable');
   };
 
   const printPDF = () => {
@@ -187,20 +194,22 @@ export default function Performance() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '24px' }}>
         <div>
           <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', margin: 0 }}>Performance Reviews</h1>
-          {cycle && <p style={{ color: '#525252', fontSize: '13px', margin: 0, marginTop: '4px' }}>Active cycle: {cycle.cycle_type} {cycle.cycle_year}</p>}
+          {cycle?.is_active ? <p style={{ color: '#525252', fontSize: '13px', margin: 0, marginTop: '4px' }}>Active cycle: {cycle.cycle_type} {cycle.cycle_year}</p> : <p>No review cycle currently active</p>}
         </div>
         {['hr_admin', 'hr_manager'].includes(user?.role) && (
           <button data-testid="create-review-btn" onClick={() => setShowCreate(true)} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>+ Create Review</button>
         )}
       </div>
 
+      {error && <div role="alert">{error} <button onClick={load}>Retry</button></div>}
+      {['hr_admin', 'hr_manager'].includes(user?.role) && <CycleConfiguration cycles={cycles} onUpdated={load} />}
       {/* Talent Density Score banner (correction §3) */}
       {talentDensity && (
         <div data-testid="talent-density-card" style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '18px 22px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap' }}>
           <div style={{ flex: '0 0 auto' }}>
             <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.18em', color: '#525252' }}>Talent Density</div>
             <div style={{ fontSize: '40px', fontWeight: 900, letterSpacing: '-0.04em', color: talentDensity.status === 'Healthy' ? '#22C55E' : talentDensity.status === 'Below Target' ? '#F97316' : '#FF353F' }}>
-              {talentDensity.score_pct}%
+              {talentDensity.score_pct == null ? 'Awaiting data' : `${talentDensity.score_pct}%`}
             </div>
             <div style={{ fontSize: '11px', color: '#525252' }}>Target: {talentDensity.target_pct}% · <strong style={{ color: talentDensity.status === 'Healthy' ? '#22C55E' : talentDensity.status === 'Below Target' ? '#F97316' : '#FF353F' }}>{talentDensity.status}</strong></div>
           </div>
@@ -217,7 +226,7 @@ export default function Performance() {
             </div>
             <div style={{ padding: '10px 12px', backgroundColor: '#F9FAFB', border: '1px solid rgba(25,25,25,0.06)' }}>
               <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252' }}>Alignment Survey</div>
-              <div style={{ fontSize: '20px', fontWeight: 900, color: '#191919' }}>{talentDensity.components.tertiary_alignment_pct}%</div>
+              <div style={{ fontSize: '20px', fontWeight: 900, color: '#191919' }}>{talentDensity.components.tertiary_alignment_pct == null ? 'Awaiting data' : `${talentDensity.components.tertiary_alignment_pct}%`}</div>
               <div style={{ fontSize: '10px', color: '#9CA3AF' }}>weight 15%</div>
             </div>
           </div>
@@ -226,7 +235,7 @@ export default function Performance() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid rgba(25,25,25,0.1)', marginBottom: '20px' }}>
-        {['reviews', '9-box'].map(t => (
+        {(['hr_admin', 'hr_manager'].includes(user?.role) ? ['reviews', '9-box'] : ['reviews']).map(t => (
           <button key={t} onClick={() => { setTab(t); if (t === '9-box') loadNineBox(); }}
             style={{ padding: '10px 20px', backgroundColor: 'transparent', border: 'none', borderBottom: tab === t ? '2px solid #FF353F' : '2px solid transparent', marginBottom: '-2px', cursor: 'pointer', fontSize: '12px', fontWeight: tab === t ? 700 : 400, color: tab === t ? '#FF353F' : '#525252', fontFamily: 'Arial', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
             {t === '9-box' ? '9-Box Matrix' : 'Reviews'}
@@ -235,7 +244,7 @@ export default function Performance() {
       </div>
 
       {loading ? <div style={{ padding: '48px', textAlign: 'center' }}>Loading...</div> : tab === 'reviews' ? (
-        <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
+        <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
               <tr style={{ backgroundColor: '#F5F5F5' }}>
@@ -247,8 +256,8 @@ export default function Performance() {
             <tbody>
               {reviews.map((r, i) => (
                 <tr key={r.id} style={{ borderBottom: '1px solid rgba(25,25,25,0.05)', backgroundColor: i % 2 === 0 ? '#fff' : '#FAFAFA' }}>
-                  <td style={{ padding: '10px 14px', fontWeight: 700, color: '#191919' }}>{r.employee_id?.substring(0, 8)}...</td>
-                  <td style={{ padding: '10px 14px', color: '#525252' }}>{r.cycle_type?.replace('_', ' ')}</td>
+                  <td style={{ padding: '10px 14px', fontWeight: 700, color: '#191919' }}>{r.employee_name || 'Employee unavailable'}</td>
+                  <td style={{ padding: '10px 14px', color: '#525252' }}>{r.cycle_type?.replace('_', ' ') || r.cycle_label || 'Historical'}</td>
                   <td style={{ padding: '10px 14px', color: '#525252' }}>{r.cycle_year}</td>
                   <td style={{ padding: '10px 14px' }}>{r.section_a_score ?? '—'}</td>
                   <td style={{ padding: '10px 14px' }}>{r.section_b_score ?? '—'}</td>
@@ -293,7 +302,7 @@ export default function Performance() {
         <div className="solvit-no-print" style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '24px' }}>
           <div style={{ backgroundColor: '#fff', width: '720px', maxHeight: '90vh', overflowY: 'auto', border: '1px solid rgba(25,25,25,0.15)' }}>
             <div className="solvit-no-print" style={{ padding: '18px 24px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontFamily: 'Barlow', fontWeight: 900, letterSpacing: '-0.02em' }}>Performance Review — Read Only</h3>
+              <h3 style={{ margin: 0, fontFamily: 'Barlow', fontWeight: 900, letterSpacing: '-0.02em' }}>Performance Review</h3>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button data-testid="review-pdf-btn" onClick={printPDF} style={{ padding: '8px 16px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Barlow' }}>Download PDF</button>
                 <button onClick={() => setViewReview(null)} style={{ background: 'none', border: '1px solid rgba(25,25,25,0.2)', padding: '6px 12px', cursor: 'pointer', fontSize: '11px', fontFamily: 'Barlow', fontWeight: 700, textTransform: 'uppercase' }}>Close</button>
@@ -304,8 +313,8 @@ export default function Performance() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                   <div>
                     <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#FF353F', fontFamily: 'Barlow' }}>SOLVIT · Performance Review</div>
-                    <h2 style={{ margin: '6px 0 0', fontFamily: 'Barlow', fontWeight: 900, letterSpacing: '-0.03em', fontSize: '24px' }}>{viewEmpName}</h2>
-                    <div style={{ fontSize: '12px', color: '#525252', marginTop: '2px' }}>{viewReview.cycle_type?.replace('_', ' ')} {viewReview.cycle_year}</div>
+                    <h2 style={{ margin: '6px 0 0', fontFamily: 'Barlow', fontWeight: 900, letterSpacing: '-0.03em', fontSize: '24px' }}>{viewReview.employee_name || viewEmpName}</h2>
+                    <div style={{ fontSize: '12px', color: '#525252', marginTop: '2px' }}>{viewReview.cycle_type?.replace('_', ' ') || viewReview.cycle_label || 'Historical'} {viewReview.cycle_year}</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#525252' }}>Overall Score</div>
@@ -319,7 +328,7 @@ export default function Performance() {
                 {[
                   { label: 'Section A — KPI', value: viewReview.section_a_score, sub: 'Performance objectives' },
                   { label: 'Section B — Values', value: viewReview.section_b_score, sub: 'Peer 360° alignment' },
-                  { label: 'Section C — Output', value: viewReview.section_c_score, sub: 'NPS / CSAT / Output' },
+                  { label: `Section C - ${viewReview.scoring_policy?.section_c || 'Feedback'}`, value: viewReview.section_c_score, sub: viewReview.scoring_policy?.section_c || 'Historical source' },
                 ].map(s => (
                   <div key={s.label} style={{ padding: '14px', backgroundColor: '#F5F5F5', borderLeft: '3px solid #191919' }}>
                     <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', fontFamily: 'Barlow' }}>{s.label}</div>
@@ -329,6 +338,7 @@ export default function Performance() {
                 ))}
               </div>
 
+              <PerformanceWorkflow key={viewReview.id + viewReview.status} review={viewReview} onUpdated={load} />
               {viewReview.section_a_kpis && viewReview.section_a_kpis.length > 0 && (
                 <div style={{ marginBottom: '20px' }}>
                   <h4 style={{ margin: '0 0 8px', fontFamily: 'Barlow', fontWeight: 900, fontSize: '13px', letterSpacing: '-0.01em' }}>KPI Detail</h4>
@@ -370,6 +380,7 @@ export default function Performance() {
               <button onClick={() => setShowCreate(false)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}>×</button>
             </div>
             <form onSubmit={createReview} style={{ padding: '24px' }}>
+              {error && <p role="alert">{error}</p>}
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Employee</label>
                 <select required value={newReview.employee_id} onChange={e => setNewReview(p => ({ ...p, employee_id: e.target.value }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', outline: 'none' }}>

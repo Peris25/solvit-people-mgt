@@ -88,6 +88,13 @@ async def initialize_synthetic_fixtures():
 
 
 if __name__ == "__main__":
+    # Only this guarded, outbound-blocked synthetic SUT substitutes the malware
+    # verdict. Production routes retain fail-closed scanning; content validation
+    # still runs unchanged in this local integration process.
+    from utils import document_uploads
+    async def synthetic_document_scan(content):
+        return None
+    document_uploads.scan_content = synthetic_document_scan
     fixture_baseline = asyncio.run(initialize_synthetic_fixtures())
     from server import app, SESSION_EXEMPT_ENDPOINTS
     from utils import security
@@ -115,6 +122,8 @@ if __name__ == "__main__":
         security._login_fail_cache.clear()
         security._lockout_until.clear()
         security._rate_buckets.clear()
+        from database import get_db
+        await get_db().auth_login_limits.delete_many({})
         return {"test_only": True}
     SESSION_EXEMPT_ENDPOINTS.update((reset_test_fixtures, reset_test_auth_limits))
     import uvicorn

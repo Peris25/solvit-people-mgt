@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timezone
@@ -12,6 +12,7 @@ from utils.employee_integrity import tenant_query, tenant_of, integrity_write
 from utils.solver_access import (solver_access, authorize_solver, find_solver, own_solver, solver_view,
                                  solver_key, solver_aliases, manager_fields, solver_identity_write)
 from utils.solver_access import audit_solver, HR_ROLES
+from utils import solver_workflows as workflow
 
 router = APIRouter(prefix="/solvers", tags=["solvers"])
 
@@ -25,6 +26,8 @@ class SolverCreate(BaseModel):
     full_name: str
     phone_number: str
     email: Optional[str] = None
+    region: Optional[str] = None
+    area_covered: Optional[str] = None
     national_id_number: Optional[str] = None
     kra_pin: Optional[str] = None
     nssf_number: Optional[str] = None
@@ -44,6 +47,8 @@ class SolverUpdate(BaseModel):
     full_name: Optional[str] = None
     phone_number: Optional[str] = None
     email: Optional[str] = None
+    region: Optional[str] = None
+    area_covered: Optional[str] = None
     national_id_number: Optional[str] = None
     kra_pin: Optional[str] = None
     bank_name: Optional[str] = None
@@ -60,47 +65,77 @@ class SolverUpdate(BaseModel):
     performance_tier: Optional[str] = None
 
 
-@router.get("")
-async def list_solvers(request: Request, lifecycle_state: Optional[str] = None, search: Optional[str] = None):
-    user = await get_current_user(request)
-    db = get_db()
-    entry = await solver_access(db, user)
+async def directory_records(db, user):
+    entry = await workflow.directory_access(db, user)
     if entry.get("scope") == "aggregate":
-        return []
+        return entry, []
     query = tenant_query(tenant_of(user))
     if entry.get("scope") == "own_record":
         own = await own_solver(db, user)
         query = {"$and": [query, {"_id": own["_id"]}]}
-    if lifecycle_state:
-        query = {"$and": [query, {"lifecycle_state": lifecycle_state}]}
-    if search:
-        query = {"$and": [query, {"$or": [
-            {"full_name": {"$regex": re.escape(search), "$options": "i"}},
-            {"phone_number": {"$regex": re.escape(search), "$options": "i"}}]}]}
-    records = await db.solvers.find(query).sort("full_name", 1).to_list(500)
+    records = await db.solvers.find(query).sort("full_name", 1).to_list(None)
     for record in records:
         await find_solver(db, solver_key(record), user)
+    return entry, records
+
+
+@router.get("")
+async def list_solvers(request: Request, lifecycle_state: Optional[str] = None, search: Optional[str] = None,
+                       region: Optional[str] = None, category: Optional[str] = None):
+    user = await get_current_user(request)
+    db = get_db()
+    entry, records = await directory_records(db, user)
+    if search and len(search) > 200:
+        raise HTTPException(422, "Search must be within 200 characters")
+    rows = []
+    for record in records:
+        row = workflow.view(record)
+        if lifecycle_state and str(row['lifecycle_state']).casefold() != lifecycle_state.casefold(): continue
+        if region and str(row.get('region') or '').strip().casefold() != region.strip().casefold(): continue
+        if category and category not in row['vehicle_categories']: continue
+        if search and search.strip().casefold() not in ' '.join(str(row.get(k) or '') for k in ('full_name','phone_number','email','region','area_covered')).casefold(): continue
+        rows.append(workflow.directory_view(record) if entry.get('scope') == 'directory_only' else solver_view(record, user))
     if user.get("role") in HR_ROLES:
         await audit_solver(db, user, "solver.private_list.view", records)
-    return [solver_view(record, user) for record in records]
+    return rows
+
+
+@router.get('/me')
+async def my_solver(request: Request):
+    user = await get_current_user(request)
+    db = get_db()
+    await solver_access(db, user)
+    record = await own_solver(db, user)
+    return solver_view(record, user)
+
+
+@router.get('/directory-options')
+async def directory_options(request: Request):
+    user = await get_current_user(request)
+    entry, records = await directory_records(get_db(), user)
+    rows = [workflow.view(record) for record in records]
+    return {'regions': sorted({str(r['region']) for r in rows if r.get('region')}),
+            'categories': sorted({v for r in rows for v in r['vehicle_categories']}),
+            'states': sorted({str(r['lifecycle_state']) for r in rows})}
 
 
 @router.get("/stats")
 async def get_solver_stats(request: Request):
     user = await get_current_user(request)
     db = get_db()
-    entry = await solver_access(db, user)
+    entry = await workflow.directory_access(db, user)
     query = tenant_query(tenant_of(user))
     if entry.get("scope") == "own_record":
         own = await own_solver(db, user)
         query = {"$and": [query, {"_id": own["_id"]}]}
-    records = await db.solvers.find(query, {"lifecycle_state": 1}).to_list(None)
+    records = await db.solvers.find(query).to_list(None)
     stats = {}
     for record in records:
-        state = record.get("lifecycle_state") or "Unknown"
+        state = workflow.view(record)["lifecycle_state"]
         stats[state] = stats.get(state, 0) + 1
     return {"by_state": stats, "total": sum(stats.values()), "active": stats.get("Active", 0),
-            "can_manage": entry.get("level") in ("Full", "Manage") and entry.get("scope") not in ("own_record", "aggregate")}
+            "can_manage": entry.get("level") in ("Full", "Manage") and entry.get("scope") not in ("own_record", "aggregate", "directory_only"),
+            "directory_only": entry.get("scope") == "directory_only"}
 
 
 @router.post("")
@@ -131,7 +166,7 @@ async def create_solver(solver: SolverCreate, request: Request):
         solver_doc.update(changes)
         result = await db.solvers.insert_one(solver_doc)
         solver_doc["_id"] = result.inserted_id
-    await audit_solver(db, user, "solver.created", [solver_doc], supplied)
+        await audit_solver(db, user, "solver.created", [solver_doc], supplied)
     from automation.engine import automation_engine
     await automation_engine.fire_event("solver_registered", {"solver_id": str(solver_doc["_id"]), "tenant_id": tenant_of(user)})
     return solver_view(solver_doc, user)
@@ -158,14 +193,20 @@ async def update_solver(solver_id: str, upd: SolverUpdate, request: Request):
         raise HTTPException(422, "Invalid Solver lifecycle state")
     async with integrity_write(db):
         original = await authorize_solver(db, user, solver_id, write=True)
+        readonly_scores = {'accuracy_score','reliability_score','timeliness_score','client_rating_average','performance_tier'}
+        if any(key in supplied and supplied[key] != original.get(key) for key in readonly_scores):
+            raise HTTPException(409, "Job-derived scores are read-only; use the audited rating workflow")
+        if supplied.get('lifecycle_state') == 'Active' and original.get('lifecycle_state') != 'Active':
+            raise HTTPException(409, "Use the verified activation action")
         update_data = await solver_identity_write(db, supplied, user, original)
         update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
         result = await db.solvers.find_one_and_update(
             {"$and": [tenant_query(tenant_of(user)), {"_id": original["_id"]}]},
             {"$set": update_data}, return_document=True)
+        if result:
+            await audit_solver(db, user, "solver.updated", [result], update_data)
     if not result:
         raise HTTPException(404, "Solver not found")
-    await audit_solver(db, user, "solver.updated", [result], update_data)
     # Email the solver if a meaningful status/tier transition just happened
     try:
         from utils.email_triggers import fire_and_forget
@@ -204,13 +245,26 @@ async def activate_solver(solver_id: str, request: Request):
     db = get_db()
     async with integrity_write(db):
         original = await authorize_solver(db, user, solver_id, write=True)
+        if workflow.view(original)['lifecycle_state'] != 'Registering':
+            raise HTTPException(409, "Activation is only available for registering Solvers; reactivation requires policy confirmation")
+        await workflow.activation_ready(db, user, original)
         result = await db.solvers.find_one_and_update(
             {"$and": [tenant_query(tenant_of(user)), {"_id": original["_id"]}]},
             {"$set": {"lifecycle_state": "Active", "activation_date": datetime.now(timezone.utc).isoformat()[:10],
+                      "activation_publication_state": "Pending_Audit",
                       "updated_at": datetime.now(timezone.utc).isoformat()}}, return_document=True)
+        if result:
+            await audit_solver(db, user, "solver.activated", [result], ["lifecycle_state", "activation_date"])
+            await workflow.notify(db, result, "activated", result["activation_date"])
+            tasks = await db.onboarding_tasks.find(workflow.task_query(original)).to_list(None)
+            for task in tasks:
+                if task.get('task_key') == 'S06':
+                    await db.onboarding_tasks.update_one({'_id': task['_id']}, {'$set': {'status': 'Completed', 'completed_by': user['id'], 'completed_at': workflow.now()}})
+            await db.solvers.update_one({'_id': original['_id']}, {'$set': {'activation_publication_state': 'Ready'}})
+            result['activation_publication_state'] = 'Ready'
+
     if not result:
         raise HTTPException(404, "Solver not found")
-    await audit_solver(db, user, "solver.activated", [result], ["lifecycle_state", "activation_date"])
     # Email the solver activation confirmation (best-effort)
     try:
         from utils.email_triggers import fire_and_forget
@@ -260,6 +314,13 @@ async def submit_client_rating(solver_id: str, request: Request):
     }
     async with integrity_write(db):
         await authorize_solver(db, user, solver_id, write=True)
+        job_id = body.get('job_id')
+        if job_id is not None:
+            if not isinstance(job_id, str) or not job_id.strip() or len(job_id) > 200:
+                raise HTTPException(422, 'Invalid job reference')
+            rating_doc['job_id'] = job_id.strip()
+            if await db.solver_ratings.find_one({'$and': [tenant_query(tenant_of(user)), {'solver_id': {'$in': solver_aliases(record)}, 'job_id': rating_doc['job_id'], 'voided': False}]}):
+                raise HTTPException(409, 'A rating is already recorded for this Solver job')
         await db.solver_ratings.insert_one(rating_doc)
         await _recompute_solver_averages(db, solver_key(record), user)
     await audit_solver(db, user, "solver.rating.created", [record], ["accuracy", "timeliness", "overall"])
@@ -273,7 +334,7 @@ async def _recompute_solver_averages(db, solver_id: str, user):
     cutoff_90 = (now - timedelta(days=90)).isoformat()
     record = await find_solver(db, solver_id, user)
     all_ratings = await db.solver_ratings.find({"$and": [tenant_query(tenant_of(user)),
-        {"solver_id": {"$in": solver_aliases(record)}, "voided": False}]}).to_list(1000)
+        {"solver_id": {"$in": solver_aliases(record)}, "voided": False}]}).to_list(None)
 
     def _avg(ratings, field):
         if not ratings: return None
@@ -336,3 +397,105 @@ async def void_rating(rating_id: str, request: Request):
         await _recompute_solver_averages(db, rating["solver_id"], user)
     await audit_solver(db, user, "solver.rating.voided", [await find_solver(db, rating["solver_id"], user)], ["voided"])
     return {"voided": True}
+
+
+@router.get('/{solver_id}/workflow')
+async def solver_workflow(solver_id: str, request: Request):
+    user = await get_current_user(request)
+    db = get_db()
+    record = await authorize_solver(db, user, solver_id)
+    tasks = await db.onboarding_tasks.find(workflow.task_query(record)).to_list(None)
+    gates = await workflow.verification(db, user, record)
+    assessments = await db.form_submissions.find({'$and': [tenant_query(tenant_of(user)),
+        {'$or': [{'subject_solver_id': {'$in': solver_aliases(record)}},
+                 {'data.solver_id': {'$in': solver_aliases(record)}}]},
+        {'form_id': {'$in': ['form-02', 'form-03', 'form-25']}, 'workflow_kind': {'$ne': 'solver_assessment_v1'}}]}).to_list(None)
+    private = user.get('role') in HR_ROLES or (await solver_access(db, user)).get('scope') == 'solvers_manager'
+    reviews = await db.solver_assessment_reviews.find({'$and': [tenant_query(tenant_of(user)),
+        {'solver_id': {'$in': solver_aliases(record)}}]}).to_list(None)
+    return {'solver_id': solver_key(record), 'can_manage': private,
+        'can_upload': user.get('role') in HR_ROLES,
+        'tasks': [{key: row.get(key) for key in ('id','task_key','title','status','due_date','completed_at')} for row in tasks],
+        'verification': [{ 'gate': gate, 'verified': bool(row.get('verified')), 'created_at': row.get('created_at'),
+                          **({'document_id': row.get('document_id'), 'reference': row.get('reference'),
+                              'score': row.get('score'), 'maximum': row.get('maximum'), 'outcome': row.get('outcome')} if private else {})} for gate,row in gates.items()],
+        'assessments': [{**{key: row.get(key) for key in ('id','form_id','form_title','status','score','passed','pass_mark','submitted_at')},
+                         'reviewed': any(review.get('assessment_id') == str(row.get('id') or row['_id']) and review.get('publication_state') == 'Ready' for review in reviews)} for row in assessments],
+        'assessment_notice': 'Historical results are preserved. Post-interview Parts A/B require the approved question/case bank and Masters scoring configuration.'}
+
+
+@router.post('/{solver_id}/induction')
+async def initiate_induction(solver_id: str, request: Request):
+    user = await get_current_user(request)
+    db = get_db()
+    async with integrity_write(db):
+        record = await authorize_solver(db, user, solver_id, write=True)
+        if workflow.view(record)['lifecycle_state'] != 'Registering':
+            raise HTTPException(409, 'Induction initiation requires a registering Solver')
+        from routes.onboarding import _create_solver_induction
+        await _create_solver_induction(db, solver_key(record), record)
+        await audit_solver(db, user, 'solver.induction.initiated', [record])
+        await workflow.notify(db, record, 'initiated', 'initial')
+    return {'initiated': True}
+
+
+@router.post('/{solver_id}/verification')
+async def verify_induction(solver_id: str, request: Request):
+    user = await get_current_user(request)
+    db = get_db()
+    body = await request.json()
+    async with integrity_write(db):
+        record = await authorize_solver(db, user, solver_id, write=True)
+        if workflow.view(record)['lifecycle_state'] != 'Registering':
+            raise HTTPException(409, 'Verification requires a registering Solver')
+        return await workflow.verify_gate(db, user, record, body)
+
+
+@router.post('/{solver_id}/assessments/{assessment_id}/review')
+async def review_solver_assessment(solver_id: str, assessment_id: str, request: Request):
+    from utils.employee_access import find_linked_record
+    user = await get_current_user(request)
+    db = get_db()
+    async with integrity_write(db):
+        record = await authorize_solver(db, user, solver_id, write=True)
+        assessment = await find_linked_record(db.form_submissions, assessment_id, user)
+        subject = assessment.get('subject_solver_id') or (assessment.get('data') or {}).get('solver_id')
+        if subject not in solver_aliases(record) or assessment.get('form_id') not in {'form-02', 'form-03', 'form-25'}:
+            raise HTTPException(403, 'Assessment does not belong to this Solver')
+        if assessment.get('status') not in {'Submitted', 'Completed'}:
+            raise HTTPException(409, 'Assessment is not ready for review')
+        query = {'tenant_id': tenant_of(user), 'solver_id': solver_key(record), 'assessment_id': str(assessment.get('id') or assessment['_id'])}
+        existing = await db.solver_assessment_reviews.find_one(query)
+        if existing and existing.get('publication_state') != 'Ready':
+            raise HTTPException(409, 'This review requires administrator recovery before retrying')
+        if not existing:
+            await db.solver_assessment_reviews.insert_one({**query, 'id': str(uuid.uuid4()),
+                'reviewed_by': user['id'], 'created_at': workflow.now(),
+                'publication_state': 'Pending_Audit',
+                'recorded_outcome': 'Pass' if assessment.get('passed') is True else 'Fail' if assessment.get('passed') is False else 'Not recorded'})
+            await audit_solver(db, user, 'solver.assessment.reviewed', [record], ['assessment_id'])
+            await workflow.notify(db, record, 'assessment_reviewed', query['assessment_id'])
+            await db.solver_assessment_reviews.update_one(query, {'$set': {'publication_state': 'Ready'}})
+    return {'reviewed': True, 'scores_changed': False}
+
+
+@router.get('/{solver_id}/documents')
+async def solver_documents(solver_id: str, request: Request):
+    from utils import solver_documents as service
+    user = await get_current_user(request)
+    return await service.listing(get_db(), user, solver_id)
+
+
+@router.post('/{solver_id}/documents')
+async def upload_solver_document(solver_id: str, request: Request, file: UploadFile = File(...),
+                                 category: str = Form(...), visibility: str = Form('hr_only'), confidential: bool = Form(True)):
+    from utils import solver_documents as service
+    user = await get_current_user(request)
+    return await service.upload(get_db(), user, solver_id, file, category, visibility, confidential)
+
+
+@router.get('/{solver_id}/documents/{document_id}/download')
+async def download_solver_document(solver_id: str, document_id: str, request: Request):
+    from utils import solver_documents as service
+    user = await get_current_user(request)
+    return await service.download(get_db(), user, solver_id, document_id)

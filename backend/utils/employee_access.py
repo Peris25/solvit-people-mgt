@@ -72,13 +72,25 @@ async def scoped_employee_query(db, user, module, employee_id=None, field="emplo
 
 
 async def find_linked_record(collection, reference, user):
-    clauses = [{"id": reference}]
+    clauses = [{"id": reference}, {"_id": reference}]
     if ObjectId.is_valid(reference):
-        clauses.append({"_id": ObjectId(reference)})
+        clauses.extend([{"_id": ObjectId(reference)}, {"id": ObjectId(reference)}])
     rows = await collection.find({"$and": [tenant_query(tenant_of(user)), {"$or": clauses}]}).to_list(2)
     if len(rows) != 1:
         raise HTTPException(404 if not rows else 409, "Record not found or ambiguous")
-    return rows[0]
+    row = rows[0]
+    canonical = row.get("id")
+    if canonical is not None:
+        if not isinstance(canonical, (str, ObjectId)):
+            raise HTTPException(409, "Record identity needs administrator review")
+        canonical = str(canonical)
+        aliases = [{"id": canonical}, {"_id": canonical}]
+        if ObjectId.is_valid(canonical):
+            aliases += [{"id": ObjectId(canonical)}, {"_id": ObjectId(canonical)}]
+        matches = await collection.find({"$and": [tenant_query(tenant_of(user)), {"$or": aliases}]}).to_list(2)
+        if len(matches) != 1 or matches[0]["_id"] != row["_id"]:
+            raise HTTPException(409, "Record identity is ambiguous")
+    return row
 
 
 async def saved_manager(db, user, employee, supplied=None):

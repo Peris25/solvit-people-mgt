@@ -17,7 +17,19 @@ from typing import Optional
 from datetime import datetime, timezone
 from bson import ObjectId
 from database import get_db
-from utils.auth import get_current_user
+from utils.auth import get_current_user as authenticate
+from utils.legacy_security import module_access, serialize_write, audit
+from utils.employee_access import find_linked_record
+from utils.employee_integrity import tenant_of
+
+async def get_current_user(request):
+    user = await authenticate(request)
+    # Preserve the existing HR allocation-administration operation, not GP authority.
+    allocation_admin = user.get("role") == "hr_admin" and "/allocations" in request.url.path
+    module_access(user, "M12", write=request.method != "GET" and not allocation_admin)
+    if tenant_of(user) != "solvit":
+        raise HTTPException(403, "Legacy budget data is available only in its original company")
+    return user
 import uuid
 
 router = APIRouter(prefix="/budget", tags=["budget"])
@@ -124,7 +136,7 @@ async def get_envelope(request: Request):
     if user["role"] not in ["hr_admin", "hr_manager", "finance", "executive", "it_admin"]:
         raise HTTPException(status_code=403, detail="No access to Budget Governance")
     db = get_db()
-    await _ensure_baseline(db)
+    # Reads never create financial baseline records.
     # Live setting — envelope % of GP (default 50)
     from routes.masters_settings import get_setting
     envelope_pct = await get_setting("budget_compensation", "people_cost_envelope_pct_of_gp", 50)
@@ -217,6 +229,7 @@ async def get_summary(request: Request):
 
 
 @router.post("/gp-record")
+@serialize_write
 async def record_gp(request: Request):
     """§1 Finance-only: submit / update GP Actual for the current cycle."""
     user = await get_current_user(request)
@@ -247,7 +260,13 @@ async def record_gp(request: Request):
         "submitted_at": datetime.now(timezone.utc).isoformat(),
         "is_baseline": False,
     }
+    await audit(db, user, "budget.gp.recorded", period)
     if existing:
+        if existing.get("actual_gp_kes") != gp:
+            update.update(form28_confirmed=False, active_tier=None)
+            history = list(existing.get("revision_history") or [])
+            history.append({key: existing.get(key) for key in ("actual_gp_kes", "form28_confirmed", "active_tier", "submitted_by", "submitted_at", "form28_signed_by", "form28_signed_at")})
+            update["revision_history"] = history
         await db.gp_records.update_one({"_id": existing["_id"]}, {"$set": update})
         return fmt({**existing, **update})
     doc = {"id": str(uuid.uuid4()), "tenant_id": "solvit", "period": period,
@@ -257,6 +276,7 @@ async def record_gp(request: Request):
 
 
 @router.post("/form-28")
+@serialize_write
 async def submit_form28(request: Request):
     """§7 Form 28 — Finance & Operations Manager confirms GP Actual + active Tier.
     Unlocks bonus + salary increase approvals downstream."""
@@ -280,6 +300,7 @@ async def submit_form28(request: Request):
         "form28_signed_by_name": user.get("full_name") or user.get("email"),
         "form28_signed_at": datetime.now(timezone.utc).isoformat(),
     }
+    await audit(db, user, "budget.gate.confirmed", gp["_id"])
     await db.gp_records.update_one({"_id": gp["_id"]}, {"$set": confirmation})
 
     # Audit
@@ -354,6 +375,7 @@ async def allocations_summary(request: Request):
 
 
 @router.post("/allocations")
+@serialize_write
 async def create_allocation(request: Request):
     """HR Admin creates an allocation against confirmed headroom.
     Allocations > KES 50k require Finance approval (Pending_Finance status)."""
@@ -376,6 +398,8 @@ async def create_allocation(request: Request):
     # Finance approval threshold pulled from Masters Settings (default 50,000)
     from routes.masters_settings import get_setting
     finance_threshold = await get_setting("budget_compensation", "allocation_finance_approval_threshold_kes", 50_000)
+    if not summary.get("form28_confirmed"):
+        raise HTTPException(409, "Finance must confirm the company gate first")
     needs_finance = amount >= finance_threshold
     doc = {
         "id": str(uuid.uuid4()),
@@ -415,6 +439,7 @@ async def create_allocation(request: Request):
 
 
 @router.put("/allocations/{alloc_id}")
+@serialize_write
 async def update_allocation(alloc_id: str, request: Request):
     """HR Admin can edit Planned/Approved (e.g. amend amount, mark Spent).
     Finance can flip Pending_Finance → Approved.
@@ -422,19 +447,22 @@ async def update_allocation(alloc_id: str, request: Request):
     user = await get_current_user(request)
     db = get_db()
     body = await request.json()
-    try:
-        alloc = await db.budget_allocations.find_one({"_id": ObjectId(alloc_id)})
-    except Exception:
-        alloc = await db.budget_allocations.find_one({"id": alloc_id})
-    if not alloc:
-        raise HTTPException(status_code=404, detail="Allocation not found")
-
+    alloc = await find_linked_record(db.budget_allocations, alloc_id, user)
+    if not isinstance(body, dict) or set(body) - {"status", "spent_amount_kes", "initiative_name", "amount_kes", "linked_module", "notes"}:
+        raise HTTPException(422, "Invalid allocation fields")
+    if alloc.get("status") in {"Spent", "Cancelled"}:
+        raise HTTPException(409, "Historical allocation is immutable")
     update = {"updated_at": datetime.now(timezone.utc).isoformat()}
 
     # Finance approval flip
     if "status" in body and body["status"] == "Approved" and alloc.get("status") == "Pending_Finance":
         if user["role"] != "finance":
             raise HTTPException(status_code=403, detail="Only Finance can approve allocations ≥ KES 50,000")
+        if alloc.get("created_by") == user["id"]:
+            raise HTTPException(403, "Cannot approve your own allocation")
+        summary = await allocations_summary(request)
+        if not summary.get("form28_confirmed") or int(alloc.get("amount_kes") or 0) > summary.get("remaining_kes", 0):
+            raise HTTPException(409, "Finance gate or available headroom does not permit this approval")
         update["status"] = "Approved"
         update["approved_by"] = user["id"]
         update["approved_at"] = datetime.now(timezone.utc).isoformat()
@@ -442,8 +470,10 @@ async def update_allocation(alloc_id: str, request: Request):
     elif body.get("status") == "Spent":
         if user["role"] != "hr_admin":
             raise HTTPException(status_code=403, detail="HR Admin only")
+        if alloc.get("status") != "Approved":
+            raise HTTPException(409, "Only approved allocations can be marked spent")
         spent = int(body.get("spent_amount_kes") or 0)
-        if spent < 0:
+        if spent < 0 or spent > int(alloc.get("amount_kes") or 0):
             raise HTTPException(status_code=400, detail="spent_amount_kes must be ≥ 0")
         update["status"] = "Spent"
         update["spent_amount_kes"] = spent
@@ -453,10 +483,22 @@ async def update_allocation(alloc_id: str, request: Request):
     else:
         if user["role"] != "hr_admin":
             raise HTTPException(status_code=403, detail="HR Admin only")
+        if body.get("status"):
+            raise HTTPException(422, "Invalid allocation transition")
+        if alloc.get("status") not in {"Planned", "Pending_Finance"}:
+            raise HTTPException(409, "Approved allocation amounts cannot be amended")
+        if "amount_kes" in body:
+            try: amount = int(body["amount_kes"])
+            except (ValueError, TypeError): raise HTTPException(422, "Invalid allocation amount")
+            summary = await allocations_summary(request)
+            if amount <= 0 or amount > summary.get("remaining_kes", 0):
+                raise HTTPException(409, "Allocation exceeds available headroom")
+            body["amount_kes"] = amount
         for k in ["initiative_name", "amount_kes", "linked_module", "notes"]:
             if k in body:
                 update[k] = body[k]
 
+    await audit(db, user, "budget.allocation.updated", alloc["_id"])
     try:
         result = await db.budget_allocations.find_one_and_update(
             {"_id": alloc["_id"]}, {"$set": update}, return_document=True
@@ -469,13 +511,15 @@ async def update_allocation(alloc_id: str, request: Request):
 
 
 @router.delete("/allocations/{alloc_id}")
+@serialize_write
 async def delete_allocation(alloc_id: str, request: Request):
     user = await get_current_user(request)
     if user["role"] != "hr_admin":
         raise HTTPException(status_code=403, detail="HR Admin only")
     db = get_db()
-    try:
-        await db.budget_allocations.delete_one({"_id": ObjectId(alloc_id)})
-    except Exception:
-        await db.budget_allocations.delete_one({"id": alloc_id})
-    return {"deleted": True}
+    alloc = await find_linked_record(db.budget_allocations, alloc_id, user)
+    if alloc.get("status") not in {"Planned", "Pending_Finance"}:
+        raise HTTPException(409, "Approved or spent allocation history cannot be removed")
+    await audit(db, user, "budget.allocation.cancelled", alloc["_id"])
+    await db.budget_allocations.update_one({"_id": alloc["_id"]}, {"$set": {"status": "Cancelled", "cancelled_by": user["id"], "cancelled_at": datetime.now(timezone.utc).isoformat()}})
+    return {"deleted": False, "cancelled": True}

@@ -55,7 +55,7 @@ class TestDocuments:
     def test_upload_view_delete_audit_cycle(self, hr_client):
         emps = hr_client.get(f"{API}/api/employees").json()
         emp_id = emps[0]["id"]
-        files = {"file": ("contract.pdf", b"%PDF-1.4 dummy", "application/pdf")}
+        files = {"file": ("contract.pdf", b"%PDF-1.4\nSynthetic local document\n%%EOF", "application/pdf")}
         data = {"category": "Signed Employment Contract"}
         r = hr_client.post(f"{API}/api/documents/employee/{emp_id}/upload", files=files, data=data)
         assert r.status_code == 200, r.text
@@ -77,7 +77,7 @@ class TestDocuments:
     def test_upload_rejects_oversize(self, hr_client):
         emps = hr_client.get(f"{API}/api/employees").json()
         emp_id = emps[0]["id"]
-        big = b"x" * (10 * 1024 * 1024 + 1)
+        big = b"x" * (20 * 1024 * 1024 + 1)
         files = {"file": ("big.pdf", big, "application/pdf")}
         data = {"category": "Other", "category_label": "Test"}
         r = hr_client.post(f"{API}/api/documents/employee/{emp_id}/upload", files=files, data=data)

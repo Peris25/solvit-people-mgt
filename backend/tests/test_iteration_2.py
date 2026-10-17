@@ -172,13 +172,8 @@ class TestForms:
         subject = hr_session.get(f"{BASE_URL}/api/auth/me").json()["employee_id"]
         payload = {"answers": answers, "employee_id": subject}
         r = hr_session.post(f"{BASE_URL}/api/forms/form-03/submit", json=payload, timeout=15)
-        assert r.status_code in (200, 201), f"submit got {r.status_code}: {r.text[:200]}"
-        data = r.json()
-        # score 0-10, pass_mark 8
-        assert "score" in data, f"Expected 'score' in response: {data}"
-        assert 0 <= data["score"] <= 10
-        if "pass_mark" in data:
-            assert data["pass_mark"] == 8
+        assert r.status_code == 403, 'HR must verify documented results rather than impersonate a Solver'
+
 
 
 # ---------- Stay Interviews ----------
@@ -193,8 +188,10 @@ class TestStayInterviews:
         assert len(data) >= 1, f"Expected >=1 seeded stay interview, got {len(data)}"
 
     def test_create(self, hr_session):
+        employee_rows = hr_session.get(f"{BASE_URL}/api/employees").json()
+        linked = next(row for row in employee_rows if row.get("lifecycle_state") == "Active" and not row.get("board_only"))
         payload = {
-            "employee_id": "TEST_emp_si_1",
+            "employee_id": linked["id"],
             "employee_name": "TEST Interviewee",
             "scheduled_date": "2026-02-15",
             "trigger_reason": "9-month tenure review (TEST)",
@@ -318,7 +315,7 @@ class TestResetDemoData:
         assert len(emps) >= 9
         assert len({e["id"] for e in emps}) == len(emps)
         assert all(e.get("lifecycle_state") != "Exited" for e in emps)
-        # Verify nine-box: 7+ placements for current cycle year
+        # Verify nine-box against the authorized cohort, excluding board-only reviews.
         from datetime import datetime
         cy = datetime.now().year
         nb = hr_session.get(f"{BASE_URL}/api/performance/nine-box/matrix?cycle_year={cy}", timeout=15).json()
@@ -333,7 +330,12 @@ class TestResetDemoData:
                     placements += len(v["employees"])
         elif isinstance(nb, list):
             placements = len(nb)
-        assert placements >= 7, f"Expected 7+ 9-box placements, got {placements}. Response: {str(nb)[:300]}"
+        eligible = hr_session.get(f"{BASE_URL}/api/performance?cycle_year={cy}", timeout=15).json()
+        expected = [review for review in eligible if review.get("nine_box_placement") in nb]
+        assert expected, "Synthetic authorized review cohort must include placements"
+        assert placements == len(expected), f"Expected {len(expected)} authorized placements, got {placements}"
+        visible_ids = {review["employee_id"] for review in expected}
+        assert all(item["employee_id"] in visible_ids for items in nb.values() for item in items)
         # Verify notifications
         notifs = hr_session.get(f"{BASE_URL}/api/automation/notifications", timeout=15).json()
         assert len(notifs) >= 4, f"Expected >=4 notifications, got {len(notifs)}"

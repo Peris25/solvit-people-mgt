@@ -32,3 +32,8 @@ test('changing account clears old items while waiting for its inbox', async () =
 test('first-login restricted sessions do not fetch protected notifications', async () => {
   useAuth.mockReturnValue({ user: { id: 'one', role: 'employee', must_change_password: true } }); await render(); expect(api.getNotificationCentre).not.toHaveBeenCalled();
 });
+
+ test('MFA challenge sessions do not fetch protected notifications', async () => {
+  useAuth.mockReturnValue({ user: { id: 'one', role: 'it_admin', mfa_required: true, mfa_verified: false } });
+  await render(); expect(api.getNotificationCentre).not.toHaveBeenCalled();
+});

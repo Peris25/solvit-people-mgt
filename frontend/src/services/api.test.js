@@ -29,3 +29,15 @@ test('ordinary permission errors do not force a password change', async () => {
     dispatch.mockRestore();
   }
 });
+
+
+test('MFA-required responses gate the current UI without treating verification as complete', async () => {
+  const dispatch = jest.spyOn(window,'dispatchEvent');
+  const detail = {code:'mfa_required',action:'enroll'};
+  const error = {response:{status:403,data:{detail}}};
+  try {
+    await expect(reject(error)).rejects.toBe(error);
+    expect(dispatch.mock.calls[0][0].type).toBe('solvit:mfa-required');
+    expect(dispatch.mock.calls[0][0].detail).toEqual(detail);
+  } finally { dispatch.mockRestore(); }
+});

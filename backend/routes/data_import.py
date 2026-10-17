@@ -525,11 +525,14 @@ async def error_report_xlsx(request: Request):
     ws = wb.active
     ws.title = "Errors"
     ws.append(["Row", "Errors", "Field Values"])
+    from utils.administrative_reporting import export_value, access_audit
     for row in error_rows:
-        ws.append([row["row_index"], " · ".join(row.get("errors") or []),
-                   " | ".join(f"{k}={v}" for k, v in (row.get("raw") or {}).items() if v)])
+        values=[row["row_index"], " · ".join(row.get("errors") or []),
+                   " | ".join(f"{k}={v}" for k, v in (row.get("raw") or {}).items() if v)]
+        ws.append([export_value(value) for value in values])
     bio = io.BytesIO()
     wb.save(bio)
     bio.seek(0)
+    await access_audit(get_db(),user,"report.exported",report="import_errors",count=len(error_rows))
     return StreamingResponse(bio, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                             headers={"Content-Disposition": "attachment; filename=solvit_import_errors.xlsx"})
+                             headers={"Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Content-Disposition": "attachment; filename=solvit_import_errors.xlsx"})

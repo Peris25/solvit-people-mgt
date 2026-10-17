@@ -313,6 +313,13 @@ SECTION_ROLE_ASSIGNMENTS = {
 }
 
 # Apply role tagging to known multi-step forms
+# FRD Form03 options must include the approved answer text. Historical submissions
+# retain their original answers and scores.
+for field in FORM_SCHEMAS['form-03']['sections'][0]['fields']:
+    if field['id'] in {'q1', 'q2', 'q3'}:
+        answer_index = {'q1': 1, 'q2': 1, 'q3': 1}[field['id']]
+        field['options'][answer_index] = field['correct_answer']
+
 if "form-23" in FORM_SCHEMAS and FORM_SCHEMAS["form-23"].get("sections"):
     role_for_section = {"it": "employee", "admin": "line_manager", "finance": "finance", "hr": "hr_admin"}
     for sec in FORM_SCHEMAS["form-23"]["sections"]:
@@ -370,6 +377,8 @@ async def my_form_tasks(request: Request):
     subs = await db.form_submissions.find(query).sort("created_at", -1).to_list(100)
     visible = []
     for submission in subs:
+        if submission.get("form_id") == "form-06":
+            continue  # Archived form workflow cannot bypass Performance Management.
         try:
             await authorize_signature(db, user, submission.get("next_required_role"), submission.get("subject_employee_id"), submission.get("started_by"))
         except HTTPException as error:
@@ -394,7 +403,11 @@ async def start_form_submission(form_id: str, request: Request):
 
     body = await request.json()
     db = get_db()
+    if form_id in {'form-01', 'form-02', 'form-03'}:
+        raise HTTPException(409, 'Use the single-step Solver form or evidence-backed induction workflow')
     employee = await form_subject(db, user, body, matrix)
+    if form_id == "form-06":
+        raise HTTPException(409, "Use Performance Management (/performance) for staged assessments and score release; historical forms are preserved")
     if form_id == "form-15":
         raise HTTPException(409, "Submit leave through Leave Management (/leave) for policy checks and two-stage approval")
     # Starting a workflow is not permission to impersonate its later signers.
@@ -437,8 +450,12 @@ async def sign_form_step(submission_id: str, request: Request):
     if sub.get("status") != "InProgress":
         raise HTTPException(status_code=400, detail=f"Submission is {sub.get('status')}, not in progress")
 
+    if sub.get('form_id') in {'form-01','form-02','form-03'}:
+        raise HTTPException(409, 'Historical Solver workflows cannot grant induction or assessment outcomes')
     expected_role = sub.get("next_required_role")
     await authorize_signature(db, user, expected_role, sub.get("subject_employee_id"), sub.get("started_by"))
+    if sub.get("form_id") == "form-06":
+        raise HTTPException(409, "Use the staged Performance Management assessment workflow")
     if sub.get("form_id") == "form-15":
         raise HTTPException(409, "Review leave through Leave Management (/leave); historical form records are preserved")
     if body.get("employee_id") and body["employee_id"] != sub.get("subject_employee_id"):
@@ -523,7 +540,12 @@ async def get_form_schema(form_id: str, request: Request):
         raise HTTPException(status_code=404, detail=f"Form {form_id} not found")
     from routes.forms_workflow import FORM_WORKFLOW_MATRIX
     matrix = FORM_WORKFLOW_MATRIX.get(form_id, {})
-    enriched = {**schema, **matrix}
+    from copy import deepcopy
+    enriched = deepcopy({**schema, **matrix})
+    if form_id in {'form-02', 'form-03'} and user.get('role') not in {'hr_admin', 'hr_manager'}:
+        for section in enriched.get('sections', []):
+            for field in section.get('fields', []):
+                field.pop('correct_answer', None)
     return enriched
 
 
@@ -540,7 +562,16 @@ async def submit_form(form_id: str, request: Request):
     # Enforce required signatures for single-step forms
     from routes.forms_workflow import FORM_WORKFLOW_MATRIX
     matrix = FORM_WORKFLOW_MATRIX.get(form_id, {})
+    if form_id == 'form-03':
+        from utils.employee_integrity import integrity_write
+        from utils.solver_workflows import submit_code_quiz
+        async with integrity_write(db):
+            return await submit_code_quiz(db, user, body, schema)
+    if form_id == 'form-02':
+        raise HTTPException(409, 'Vehicle assessment requires the approved full question bank and Masters pass criteria; the existing five-question prototype cannot certify a Solver')
     employee = await form_subject(db, user, body, matrix)
+    if form_id == "form-06":
+        raise HTTPException(409, "Use Performance Management (/performance) for staged assessments and score release; historical forms are preserved")
     if form_id == "form-15":
         raise HTTPException(409, "Submit leave through Leave Management (/leave) for policy checks and two-stage approval")
     sequence = matrix.get("completing_users_sequence", [])
@@ -563,6 +594,7 @@ async def submit_form(form_id: str, request: Request):
         "form_title": schema["title"],
         "submitted_by": user["id"],
         "subject_employee_id": body.get("employee_id"),
+        "subject_solver_id": body.get("solver_id"),
         "data": body.get("data", {}),
         "signatures": sigs,
         "status": "Submitted",
@@ -630,4 +662,35 @@ async def get_submissions(entity_id: str, request: Request, form_id: Optional[st
     if form_id:
         query["form_id"] = form_id
     subs = await db.form_submissions.find(query).sort("submitted_at", -1).to_list(50)
-    return [fmt(s) for s in subs]
+    visible = []
+    for sub in subs:
+        # New assessment question snapshots/results have their own release gate.
+        if sub.get("workflow_kind") == "solver_assessment_v1":
+            continue
+        from routes.forms_workflow import FORM_WORKFLOW_MATRIX
+        from utils.access_matrix import get_module_access
+        module = FORM_WORKFLOW_MATRIX.get(sub.get("form_id"), {}).get("module")
+        if not module or not get_module_access(module, user.get("role")):
+            continue
+        subject = sub.get("subject_employee_id") or (sub.get("data") or {}).get("employee_id")
+        if subject:
+            try: await authorize_employee(db, user, subject, module)
+            except HTTPException as error:
+                if error.status_code in (403, 404): continue
+                raise
+        if (module == "M14" or user.get("role") == "line_manager" and sub.get("form_id") == "form-01") and user.get("role") not in {"hr_admin", "hr_manager"}:
+            sub = {key: value for key, value in sub.items() if key in {"_id", "id", "form_id", "form_title", "status", "created_at", "submitted_at"}}
+        if sub.get("form_id") == "form-06":
+            from utils.performance_workflows import employee_access
+            subject = sub.get("subject_employee_id") or (sub.get("data") or {}).get("employee_id")
+            try:
+                employee = await employee_access(db, user, subject)
+            except HTTPException as error:
+                if error.status_code in (403, 404): continue
+                raise
+            if employee_key(employee) == user.get("employee_id") or user.get("role") not in ("hr_admin", "hr_manager", "line_manager"):
+                sub = {key: value for key, value in sub.items() if key in {"_id", "id", "form_id", "form_title", "status", "created_at", "submitted_at"}}
+                sub["data"] = {}
+                sub["workflow_path"] = "/performance"
+        visible.append(fmt(sub))
+    return visible

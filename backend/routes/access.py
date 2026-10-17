@@ -159,7 +159,7 @@ async def reset_matrix_cell(request: Request):
     role = body.get("role")
     db = get_db()
     res = await db.permission_overrides.delete_one({"tenant_id": "solvit", "module_id": module_id, "role": role})
-    # Also clear from runtime (apply_override with entry=None clears it).
+    # Remove this request's override; subsequent requests reload persisted settings.
     from utils.access_matrix import RUNTIME_OVERRIDES
     RUNTIME_OVERRIDES.pop((module_id, role), None)
     return {"ok": True, "deleted": res.deleted_count, "effective": get_module_access(module_id, role)}
@@ -232,7 +232,7 @@ async def delete_custom_role(key: str, request: Request):
     # Rebase users on this role to 'employee'
     rebased = await db.users.update_many(
         {"tenant_id": "solvit", "role": key},
-        {"$set": {"role": "employee", "updated_at": datetime.now(timezone.utc).isoformat()}},
+        {"$set": {"role": "employee", "updated_at": datetime.now(timezone.utc).isoformat(), "sessions_invalidated_at": datetime.now(timezone.utc).isoformat()}},
     )
     await db.custom_roles.delete_one({"tenant_id": "solvit", "key": key})
     await db.permission_overrides.delete_many({"tenant_id": "solvit", "role": key})
@@ -304,7 +304,7 @@ async def update_user_role(user_id: str, request: Request):
 
     await db.users.update_one(
         {"_id": target["_id"]},
-        {"$set": {"role": new_role, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        {"$set": {"role": new_role, "updated_at": datetime.now(timezone.utc).isoformat(), "sessions_invalidated_at": datetime.now(timezone.utc).isoformat()}},
     )
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),

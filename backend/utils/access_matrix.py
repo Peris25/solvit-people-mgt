@@ -79,7 +79,7 @@ ACCESS_MATRIX = {
         "hr_manager":   _level("Full"),
         "line_manager": _level("Manage", "own_team"),
         "finance":      None,
-        "employee":     _level("Read",   "own_record"),
+        "employee":     _level("Manage", "own_record"),  # Own goals/self-assessment only; stage guards enforce this.
         "solver":       None,
         "executive":    _level("Read",   "aggregate"),
     },
@@ -247,26 +247,89 @@ def get_module_access(module_id: str, role: str) -> dict | None:
         # Custom roles inherit a base role's matrix wholesale; explicit
         # per-cell overrides are stored in RUNTIME_OVERRIDES.
         inherit = cdef.get("inherits_from") or "employee"
-        return ACCESS_MATRIX.get(module_id, {}).get(inherit)
+        return get_module_access(module_id, inherit)
     return ACCESS_MATRIX.get(module_id, {}).get(role)
 
 
 # ============================================================================
 # Runtime override store — populated from MongoDB on startup. Mutated by the
-# /access/matrix/cell endpoint and read by every gatekeeper synchronously.
+# /access/matrix/cell endpoint and read by gatekeepers through a request snapshot.
 # ============================================================================
 # Maps (module_id, role) → {"level": "Full|Manage|Read", "scope": str|None}
 # A value of None means an explicit "remove access" override.
-RUNTIME_OVERRIDES: dict[tuple[str, str], dict | None] = {}
+# A stable proxy preserves imports in existing helpers while HTTP requests use
+# isolated snapshots. Outside requests, scripts/tests retain the explicit store.
+from collections.abc import MutableMapping
+from contextvars import ContextVar
+from contextlib import asynccontextmanager
+from fastapi import HTTPException
 
-# Maps role_key → {"label": str, "description": str, "inherits_from": str}
-CUSTOM_ROLE_DEFINITIONS: dict[str, dict] = {}
+_permission_state = ContextVar("permission_state", default=None)
+
+
+class PermissionStore(MutableMapping):
+    def __init__(self, name):
+        self.name = name
+        self.fallback = {}
+
+    def current(self):
+        state = _permission_state.get()
+        return state[self.name] if state is not None else self.fallback
+
+    def __getitem__(self, key): return self.current()[key]
+    def __setitem__(self, key, value): self.current()[key] = value
+    def __delitem__(self, key): del self.current()[key]
+    def __iter__(self): return iter(self.current())
+    def __len__(self): return len(self.current())
+    def copy(self): return self.current().copy()
+
+
+RUNTIME_OVERRIDES = PermissionStore("overrides")
+CUSTOM_ROLE_DEFINITIONS = PermissionStore("roles")
+
+
+async def read_runtime_state(db):
+    """Read primary MongoDB on every request; never reuse a worker cache.
+
+    Build off to the side, then publish only a complete request-local snapshot.
+    No TTL window, global clear/refill, new index or historical rewrite.
+    """
+    overrides, roles = {}, {}
+    try:
+        async for doc in db.permission_overrides.find({"tenant_id": "solvit"}):
+            key = (doc.get("module_id"), doc.get("role"))
+            if not all(isinstance(value, str) and value for value in key) or key in overrides:
+                raise ValueError("Ambiguous permission configuration")
+            if not doc.get("removed") and doc.get("level") not in {"Read", "Manage", "Full"}:
+                raise ValueError("Invalid permission level")
+            if doc.get("scope") is not None and not isinstance(doc["scope"], str):
+                raise ValueError("Invalid permission scope")
+            entry = None if doc.get("removed") else {"level": doc["level"]}
+            if entry is not None and doc.get("scope"): entry["scope"] = doc["scope"]
+            overrides[key] = entry
+        async for doc in db.custom_roles.find({"tenant_id": "solvit"}):
+            key, parent = doc.get("key"), doc.get("inherits_from", "employee")
+            if not isinstance(key, str) or not key or key in roles or parent not in {*ROLES, "it_admin", "board"}:
+                raise ValueError("Invalid custom role configuration")
+            roles[key] = {"label": doc.get("label", key), "description": doc.get("description", ""), "inherits_from": parent}
+    except Exception as error:
+        raise HTTPException(503, "Permission configuration is unavailable; access was not granted") from error
+    return {"overrides": overrides, "roles": roles}
+
+
+@asynccontextmanager
+async def request_permissions(db):
+    token = _permission_state.set(await read_runtime_state(db))
+    try:
+        yield
+    finally:
+        _permission_state.reset(token)
 
 
 def apply_override(module_id: str, role: str, entry: dict | None) -> None:
-    """Set or clear a single matrix cell at runtime."""
+    """Set an explicit override; None denies. Reset deletes the key separately."""
     if entry is None:
-        RUNTIME_OVERRIDES.pop((module_id, role), None)
+        RUNTIME_OVERRIDES[(module_id, role)] = None
     else:
         # Normalize: only persist level + scope keys, drop anything else.
         norm = {"level": entry.get("level")}
@@ -292,31 +355,12 @@ def remove_custom_role(key: str) -> None:
 
 
 async def load_runtime_state(db) -> None:
-    """Hydrate RUNTIME_OVERRIDES and CUSTOM_ROLE_DEFINITIONS from MongoDB.
-
-    Called once at server startup so role-based gating reflects any persisted
-    IT Admin customizations immediately.
-    """
+    """Explicit non-request initialization; request guards never trust this copy."""
+    state = await read_runtime_state(db)
     RUNTIME_OVERRIDES.clear()
+    RUNTIME_OVERRIDES.update(state["overrides"])
     CUSTOM_ROLE_DEFINITIONS.clear()
-    async for doc in db.permission_overrides.find({"tenant_id": "solvit"}):
-        mod = doc.get("module_id")
-        role = doc.get("role")
-        if not mod or not role:
-            continue
-        if doc.get("removed"):
-            RUNTIME_OVERRIDES[(mod, role)] = None
-        else:
-            entry = {"level": doc.get("level")}
-            if doc.get("scope"):
-                entry["scope"] = doc["scope"]
-            RUNTIME_OVERRIDES[(mod, role)] = entry
-    async for r in db.custom_roles.find({"tenant_id": "solvit"}):
-        CUSTOM_ROLE_DEFINITIONS[r["key"]] = {
-            "label": r.get("label", r["key"]),
-            "description": r.get("description", ""),
-            "inherits_from": r.get("inherits_from", "employee"),
-        }
+    CUSTOM_ROLE_DEFINITIONS.update(state["roles"])
 
 
 def effective_matrix() -> dict:

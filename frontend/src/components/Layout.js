@@ -6,6 +6,7 @@ import Sidebar from './Sidebar';
 import AIAgent from './AIAgent';
 import FirstLoginTour from './FirstLoginTour';
 import RequiredPasswordChange from './RequiredPasswordChange';
+import MfaSecurity from '../pages/MfaSecurity';
 
 export default function Layout() {
   const { user } = useAuth();
@@ -28,12 +29,13 @@ export default function Layout() {
 
   if (user === null) return <Navigate to="/login" replace />;
   if (user.must_change_password) return <RequiredPasswordChange />;
+  if (user.mfa_required && !user.mfa_verified) return <MfaSecurity key={user.id} required />;
 
   // Solver — mobile bottom-nav-only interface (no sidebar)
   if (user.role === 'solver') {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#F5F5F5', fontFamily: 'Nunito Sans, sans-serif' }}>
-        <nav style={{ padding: '12px', textAlign: 'right' }}><Link to="/notifications">Notifications{unreadCount > 0 ? ` (${unreadCount} unread)` : ''}</Link></nav>
+        <nav style={{ padding: '12px', textAlign: 'right' }}><Link to="/account-security" style={{ marginRight: '16px' }}>Account security</Link><Link to="/notifications">Notifications{unreadCount > 0 ? ` (${unreadCount} unread)` : ''}</Link></nav>
         <Outlet />
         <FirstLoginTour />
       </div>

@@ -5,6 +5,10 @@ from utils.solver_access import authorize_solver
 
 
 async def authorize_task(db, user, task, write=False):
+    if task.get("task_type") == "exit_workflow":
+        from utils.lifecycle_workflows import task_access
+        await task_access(db, user, task, write=write)
+        return
     if user.get("role") in ("hr_admin", "hr_manager"):
         return
     solver_reference = task.get("solver_id") or (task.get("entity_id") if task.get("entity_type") == "solver" else None)

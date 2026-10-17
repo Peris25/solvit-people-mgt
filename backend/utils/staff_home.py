@@ -1,6 +1,5 @@
 """Read-only personal home projection. Never accepts a client employee identity."""
 from datetime import datetime, timezone
-from urllib.parse import quote
 import math
 
 from fastapi import HTTPException
@@ -54,7 +53,39 @@ async def staff_home_data(db, user, balance_loader):
         snapshot["quick_links"].append({"label": label, "path": path})
 
     if can_personal(user, "M01"):
-        link("My Profile", "/employees/" + quote(employee_key(employee), safe=""))
+        link("My Profile", "/my-profile")
+        link("Documents", "/documents")
+        link("Benefits & payroll information", "/benefits")
+        from utils import benefits
+        # Eligibility prompts derive from approved policy; reads never create membership.
+        if not employee.get("board_only"):
+            schemes = await db.benefit_schemes.find(tenant).to_list(None)
+            memberships = await benefits.memberships(db, user, employee)
+            for scheme in schemes:
+                if benefits.eligible(scheme, employee) and not any(row.get("scheme_id") == scheme.get("id") and row.get("status") in {"Pending_HR", "Approved"} for row in memberships):
+                    snapshot["tasks"].append({"id": "benefit:" + identifier(scheme), "kind": "benefits", "title": "Review eligible benefit enrolment", "due_date": scheme.get("enrolment_deadline"), "status": "Available", "path": "/benefits"})
+    if user.get('role') in {'employee', 'line_manager'}:
+        from utils.solver_workflows import directory_access
+        try:
+            await directory_access(db, user)
+            link('Solver Directory', '/solvers')
+        except HTTPException as error:
+            if error.status_code != 403: raise
+    if user.get('role') in {'hr_admin', 'hr_manager', 'line_manager'}:
+        from utils import solver_assessments
+        try:
+            if user.get('role') in solver_assessments.HR_ROLES: solver_assessments.hr(user)
+            else: await solver_assessments.assessor(db, user)
+            link('Solver assessments', '/solver-assessments')
+            pending = await db.form_submissions.find({'$and': [tenant, {'workflow_kind': solver_assessments.KIND,
+                'status': {'$in': ['AwaitingScoring', 'Scored']}}]}).to_list(None)
+            for row in pending:
+                if row.get('publication_state') != 'Ready': continue
+                if user.get('role') not in solver_assessments.HR_ROLES and user['id'] not in {row.get('assessor_id'), row.get('reviewer_id')}: continue
+                snapshot['tasks'].append({'id': identifier(row), 'kind': 'solver_assessment', 'title': 'Review assigned Solver assessment',
+                    'status': row['status'], 'due_date': row.get('due_at'), 'path': '/solver-assessments?assessment=' + identifier(row)})
+        except HTTPException as error:
+            if error.status_code != 403: raise
     if can_personal(user, "M18"):
         link("Leave", "/leave")
         # Missing/invalid start date must not turn into invented full-year accrual.
@@ -73,15 +104,23 @@ async def staff_home_data(db, user, balance_loader):
         snapshot["pending_leave"] = [{"id": identifier(row), **project(row, ("leave_type", "start_date", "end_date", "working_days", "status"))} for row in rows]
 
     if get_module_access("M13", user.get("role")):
-        link("Documents & policies", "/policies")
+        link("Policy Library", "/policies")
     if can_personal(user, "M08"):
         link("Learning & Development", "/lnd")
+        from urllib.parse import quote
+        learning_rows = await db.training_requests.find({"$and": [own, {"status": {"$in": ["Approved", "Completion_Submitted"]}}]}).to_list(None)
+        for row in learning_rows:
+            snapshot["tasks"].append({"id": identifier(row), "kind": "learning", "title": "Complete assigned training" if row.get("status") == "Approved" else "Training completion awaiting HR verification",
+                "due_date": row.get("due_on") or row.get("proposed_end_date"), "status": row.get("status"),
+                "path": "/lnd?training=" + quote(identifier(row), safe="")})
 
     task_access = get_module_access("M17", user.get("role"))
     if task_access:
         link("My Tasks", "/my-tasks")
         forms = await db.form_submissions.find({"$and": [tenant, {"subject_employee_id": {"$in": refs}, "status": "InProgress"}]}).sort("created_at", -1).to_list(None)
         for row in forms:
+            if row.get("form_id") == "form-06":
+                continue
             try:
                 await authorize_signature(db, user, row.get("next_required_role"), row.get("subject_employee_id"), row.get("started_by"))
             except HTTPException as error:
@@ -92,6 +131,17 @@ async def staff_home_data(db, user, balance_loader):
                                       **project(row, ("form_title", "form_id", "due_date", "status"))})
 
     if can_personal(user, "M04"):
+        link("Onboarding & Offboarding", "/onboarding")
+        checklists = getattr(db, "onboarding_tasks", None)
+        if checklists is not None:
+            from utils.lifecycle_workflows import task_access as checklist_access
+            rows = await checklists.find({"$and": [tenant, {"entity_type": "employee",
+                "entity_id": {"$in": refs}, "assigned_role": "employee",
+                "status": {"$in": ["Pending", "In_Progress"]}}]}).to_list(None)
+            for row in rows:
+                await checklist_access(db, user, row, write=True)
+                snapshot["tasks"].append({"id": identifier(row), "kind": "onboarding", "path": "/onboarding",
+                    **project(row, ("title", "due_date", "status"))})
         if not task_access:
             link("My Tasks", "/my-tasks")
         rows = await db.tasks.find({"$and": [tenant, {"status": {"$in": ["Pending", "In_Progress", "Open"]}}, {
@@ -129,7 +179,13 @@ async def staff_home_data(db, user, balance_loader):
 
     if can_personal(user, "M05"):
         rows = await db.performance_reviews.find(own).sort("created_at", -1).to_list(30)
-        snapshot["reviews"] = [{"id": identifier(row), **project(row, ("overall_score", "rating", "section_a_score", "section_b_score", "section_c_score", "cycle_type", "cycle_year", "status"))} for row in rows]
+        from utils.performance_workflows import projection as review_projection
+        snapshot["reviews"] = [review_projection(row, user, employee) for row in rows]
+        link("Performance", "/performance")
+        for row in rows:
+            if row.get("workflow_version") == 1 and row.get("status") in {"Draft", "Self_Draft"}:
+                snapshot["tasks"].append({"id": identifier(row), "kind": "performance", "title": "Complete self-assessment",
+                    "status": row["status"], "due_date": row.get("self_due_on"), "path": "/performance?review=" + identifier(row)})
     if can_personal(user, "M11"):
         rows = await db.recognitions.find({"$and": [tenant, {"$or": [{"employee_id": {"$in": refs}}, {"nominee_id": {"$in": refs}}]}]}).sort("created_at", -1).to_list(30)
         snapshot["recognitions"] = [{"id": identifier(row), **project(row, ("recognition_type", "specific_behaviour", "created_at")),

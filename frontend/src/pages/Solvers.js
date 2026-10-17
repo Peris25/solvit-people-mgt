@@ -1,10 +1,18 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useAuth } from '../context/AuthContext';
+import SolverWorkflow from '../components/SolverWorkflow';
 import StatusBadge from '../components/StatusBadge';
 import * as api from '../services/api';
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
 
 export default function Solvers() {
+  const { user } = useAuth();
+  const generation = useRef(0);
+  const [loadedFor, setLoadedFor] = useState(null);
+  const [region, setRegion] = useState('');
+  const [category, setCategory] = useState('');
+  const [options, setOptions] = useState({ regions: [], categories: [] });
   const [solvers, setSolvers] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -16,27 +24,32 @@ export default function Solvers() {
   const [viewSolver, setViewSolver] = useState(null);
   const [error, setError] = useState('');
 
-  const canEdit = stats?.can_manage === true;
+  const current = loadedFor === user?.id;
+  const canEdit = current && stats?.can_manage === true;
 
 
   const loadSolvers = useCallback(async () => {
-    setLoading(true); setError('');
+    const requestId = ++generation.current;
+    setLoading(true); setError(''); setViewSolver(null);
     try {
-      const [sRes, statsRes] = await Promise.all([
-        api.getSolvers({ search, lifecycle_state: filterState || undefined }),
-        api.getSolverStats()
+      const [sRes, statsRes, optionsRes] = await Promise.all([
+        api.getSolvers({ search, lifecycle_state: filterState || undefined, region: region || undefined, category: category || undefined }),
+        api.getSolverStats(),
+        api.getSolverDirectoryOptions()
       ]);
+      if (requestId !== generation.current) return;
       if (!Array.isArray(sRes.data) || !statsRes.data) throw new Error(sRes.error || statsRes.error || 'Solver information could not be loaded.');
       setSolvers(sRes.data);
-      setStats(statsRes.data);
+      setStats(statsRes.data); setOptions(optionsRes.data || { regions: [], categories: [] }); setLoadedFor(user?.id);
     } catch (e) {
+      if (requestId !== generation.current) return;
       setSolvers([]); setStats(null);
       const detail = e.response?.data?.detail;
       setError(typeof detail === 'string' ? detail : detail?.message || e.message);
-    } finally { setLoading(false); }
-  }, [search, filterState]);
+    } finally { if (requestId === generation.current) setLoading(false); }
+  }, [search, filterState, region, category, user?.id]);
 
-  useEffect(() => { loadSolvers(); }, [loadSolvers]);
+  useEffect(() => { loadSolvers(); return () => { generation.current += 1; }; }, [loadSolvers]);
 
   const saveSolver = async (e) => {
     e.preventDefault();
@@ -46,7 +59,7 @@ export default function Solvers() {
       setShowForm(false);
       setForm({ full_name: '', phone_number: '', payment_method: 'MPesa', vehicle_categories: [], zones_covered: [] });
       loadSolvers();
-    } finally { setSaving(false); }
+    } catch (e) { setError(typeof e.response?.data?.detail === 'string' ? e.response.data.detail : 'Could not register Solver. Please retry.'); } finally { setSaving(false); }
   };
 
   const toggleCheckbox = (key, val) => {
@@ -71,7 +84,7 @@ export default function Solvers() {
       </div>
 
       {/* Stats */}
-      {stats && (
+      {current && stats && (
         <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
           {Object.entries(stats.by_state || {}).map(([state, count]) => (
             <div key={state} style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '14px 20px', minWidth: '100px' }}>
@@ -84,36 +97,39 @@ export default function Solvers() {
 
       {error && <p role="alert" style={{ color: '#991B1B' }}>Could not load Solver information: {error}</p>}
       {/* Filters */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
         <input data-testid="search-solvers" placeholder="Search name or phone..." value={search} onChange={e => setSearch(e.target.value)}
           style={{ padding: '8px 12px', border: '1px solid rgba(25,25,25,0.15)', fontSize: '13px', width: '240px', fontFamily: 'Arial', outline: 'none' }} />
         <select data-testid="filter-solver-state" value={filterState} onChange={e => setFilterState(e.target.value)} style={{ padding: '8px 12px', border: '1px solid rgba(25,25,25,0.15)', fontSize: '13px', fontFamily: 'Arial' }}>
           <option value="">All States</option>
           {['Registering', 'Active', 'Suspended', 'Inactive', 'Deactivated'].map(s => <option key={s}>{s}</option>)}
         </select>
+        <select aria-label="Filter Solver region" value={region} onChange={e => setRegion(e.target.value)}><option value="">All regions</option>{options.regions.map(value => <option key={value}>{value}</option>)}</select>
+        <select aria-label="Filter Solver category" value={category} onChange={e => setCategory(e.target.value)}><option value="">All vehicle categories</option>{options.categories.map(value => <option key={value}>{value}</option>)}</select>
       </div>
 
       {/* Table */}
-      <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
+      <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', overflowX: 'auto' }}>
         {loading ? <div style={{ padding: '48px', textAlign: 'center' }}>Loading...</div> : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
               <tr style={{ backgroundColor: '#F5F5F5' }}>
-                {['Name', 'Phone', 'Zones', 'Vehicle Types', 'Accuracy', 'Reliability', 'Client Rating', 'Tier', 'State', 'Actions'].map(h => (
+                {['Name', 'Phone', 'Region / area', 'Zones', 'Vehicle Types', 'Accuracy', 'Reliability', 'Client Rating', 'Tier', 'State', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', borderBottom: '1px solid rgba(25,25,25,0.08)', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {solvers.map((s, i) => (
+              {(current ? solvers : []).map((s, i) => (
                 <tr key={s.id} data-testid={`solver-row-${s.id}`} style={{ borderBottom: '1px solid rgba(25,25,25,0.05)', backgroundColor: i % 2 === 0 ? '#fff' : '#FAFAFA' }}>
                   <td style={{ padding: '10px 14px', fontWeight: 700, color: '#191919' }}>{s.full_name}</td>
                   <td style={{ padding: '10px 14px', color: '#525252' }}>{s.phone_number}</td>
+                  <td style={{ padding: '10px 14px' }}>{[s.region, s.area_covered].filter(Boolean).join(' / ') || 'Not recorded'}</td>
                   <td style={{ padding: '10px 14px', color: '#525252', fontSize: '10px' }}>{(s.zones_covered || []).slice(0, 2).join(', ')}{(s.zones_covered || []).length > 2 ? ` +${s.zones_covered.length - 2}` : ''}</td>
                   <td style={{ padding: '10px 14px', color: '#525252', fontSize: '10px' }}>{(s.vehicle_categories || []).join(', ')}</td>
-                  <td style={{ padding: '10px 14px', fontWeight: 700, color: s.accuracy_score >= 90 ? '#166534' : '#191919' }}>{s.accuracy_score ? `${s.accuracy_score}%` : '—'}</td>
-                  <td style={{ padding: '10px 14px' }}>{s.reliability_score ? `${s.reliability_score}%` : '—'}</td>
-                  <td style={{ padding: '10px 14px', fontWeight: 700 }}>{s.client_rating_average ? `${s.client_rating_average}/5.0` : '—'}</td>
+                  <td style={{ padding: '10px 14px', fontWeight: 700, color: s.accuracy_score >= 90 ? '#166534' : '#191919' }}>{s.accuracy_score != null ? `${s.accuracy_score}%` : '—'}</td>
+                  <td style={{ padding: '10px 14px' }}>{s.reliability_score != null ? `${s.reliability_score}%` : '—'}</td>
+                  <td style={{ padding: '10px 14px', fontWeight: 700 }}>{s.client_rating_average ? `${s.client_rating_average} (recorded)` : '—'}</td>
                   <td style={{ padding: '10px 14px' }}>
                     {s.performance_tier ? <span style={{ fontSize: '10px', fontWeight: 700, color: tierColors[s.performance_tier] || '#525252', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.performance_tier.replace('_', ' ')}</span> : <span style={{ color: '#9CA3AF' }}>—</span>}
                   </td>
@@ -122,20 +138,20 @@ export default function Solvers() {
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button data-testid={`view-solver-${s.id}`} onClick={() => setViewSolver(s)} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid rgba(25,25,25,0.2)', color: '#191919', backgroundColor: 'transparent', cursor: 'pointer', fontFamily: 'Barlow', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>View</button>
                       {canEdit && s.lifecycle_state === 'Registering' && (
-                        <button onClick={async () => { await api.activateSolver(s.id); loadSolvers(); }} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #22C55E', backgroundColor: 'transparent', color: '#22C55E', cursor: 'pointer', fontFamily: 'Barlow', fontWeight: 700 }}>Activate</button>
+                        <button onClick={async () => { try { await api.activateSolver(s.id); loadSolvers(); } catch (e) { setError(typeof e.response?.data?.detail === 'string' ? e.response.data.detail : 'Activation could not be completed.'); } }} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #22C55E', backgroundColor: 'transparent', color: '#22C55E', cursor: 'pointer', fontFamily: 'Barlow', fontWeight: 700 }}>Activate</button>
                       )}
                     </div>
                   </td>
                 </tr>
               ))}
-              {solvers.length === 0 && <tr><td colSpan={10} style={{ padding: '32px', textAlign: 'center', color: '#9CA3AF' }}>No solvers found</td></tr>}
+              {solvers.length === 0 && <tr><td colSpan={11} style={{ padding: '32px', textAlign: 'center', color: '#9CA3AF' }}>No solvers found</td></tr>}
             </tbody>
           </table>
         )}
       </div>
 
       {/* View Solver Modal */}
-      {viewSolver && (
+      {current && viewSolver && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '24px' }}>
           <div data-testid="solver-view-modal" style={{ backgroundColor: '#fff', width: '600px', maxHeight: '90vh', overflowY: 'auto', border: '1px solid rgba(25,25,25,0.15)' }}>
             <div style={{ padding: '18px 24px', borderBottom: '3px solid #FF353F', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -148,17 +164,21 @@ export default function Solvers() {
             <div style={{ padding: '24px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', fontSize: '12px', marginBottom: '20px' }}>
                 <Field label="Phone" value={viewSolver.phone_number} />
+                <Field label="Email" value={viewSolver.email} />
+                <Field label="Region" value={viewSolver.region} />
+                <Field label="Area covered" value={viewSolver.area_covered} />
                 <Field label="Payment Method" value={viewSolver.payment_method} />
                 <Field label="State" value={viewSolver.lifecycle_state} />
                 <Field label="Tier" value={(viewSolver.performance_tier || '—').replace('_', ' ')} />
-                <Field label="Accuracy" value={viewSolver.accuracy_score ? `${viewSolver.accuracy_score}%` : '—'} />
+                <Field label="Accuracy" value={viewSolver.accuracy_score != null ? `${viewSolver.accuracy_score}%` : '—'} />
                 <Field label="Reliability" value={viewSolver.reliability_score ? `${viewSolver.reliability_score}%` : '—'} />
-                <Field label="Client Rating" value={viewSolver.client_rating_average ? `${viewSolver.client_rating_average}/5.0` : '—'} />
+                <Field label="Client Rating" value={viewSolver.client_rating_average != null ? `${viewSolver.client_rating_average} (recorded)` : '—'} />
                 <Field label="Onboarded" value={viewSolver.onboarded_at ? new Date(viewSolver.onboarded_at).toLocaleDateString('en-GB') : '—'} />
               </div>
               <Field label="Vehicle Categories" value={(viewSolver.vehicle_categories || []).join(', ') || '—'} block />
               <Field label="Zones Covered" value={(viewSolver.zones_covered || []).join(', ') || '—'} block />
               {viewSolver.notes && <Field label="Notes" value={viewSolver.notes} block />}
+              {!stats?.directory_only && <SolverWorkflow solverId={viewSolver.id} accountId={user?.id} onChanged={loadSolvers} />}
             </div>
           </div>
         </div>
@@ -173,10 +193,10 @@ export default function Solvers() {
               <button onClick={() => setShowForm(false)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}>×</button>
             </div>
             <form onSubmit={saveSolver} style={{ padding: '24px' }}>
-              {[{ key: 'full_name', label: 'Full Name', type: 'text' }, { key: 'phone_number', label: 'Phone (+254...)', type: 'tel' }].map(f => (
+              {[{ key: 'full_name', label: 'Full Name', type: 'text' }, { key: 'phone_number', label: 'Phone (+254...)', type: 'tel' }, { key: 'region', label: 'Region', type: 'text' }, { key: 'area_covered', label: 'Area covered', type: 'text' }].map(f => (
                 <div key={f.key} style={{ marginBottom: '16px' }}>
                   <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>{f.label}</label>
-                  <input type={f.type} required value={form[f.key] || ''} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
+                  <input type={f.type} required={f.key === 'full_name' || f.key === 'phone_number'} value={form[f.key] || ''} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
                     style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', boxSizing: 'border-box', outline: 'none' }} />
                 </div>
               ))}

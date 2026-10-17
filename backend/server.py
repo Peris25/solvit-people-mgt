@@ -10,14 +10,17 @@ from pathlib import Path
 from database import init_db, close_db
 from automation.engine import automation_engine
 from automation.seed_data import seed_all
-from utils.security import SecurityHeadersMiddleware, BodySizeLimitMiddleware
+from utils.security import SecurityHeadersMiddleware, BodySizeLimitMiddleware, BrowserOriginMiddleware
 
 # Routes
 from routes.auth_routes import router as auth_router
+from routes.mfa_routes import router as mfa_router
 from routes.employees import router as employees_router
 from routes.solvers import router as solvers_router
+from routes.solver_assessments import router as solver_assessments_router
 from routes.recruitment import router as recruitment_router
 from routes.onboarding import router as onboarding_router
+from routes.lifecycle import router as lifecycle_router
 from routes.performance import router as performance_router
 from routes.surveys import router as surveys_router
 from routes.retention import router as retention_router
@@ -28,6 +31,7 @@ from routes.recognition import router as recognition_router
 from routes.budget import router as budget_router
 from routes.policies import router as policies_router
 from routes.disciplinary import router as disciplinary_router
+from routes.benefits import router as benefits_router
 from routes.calendar import router as calendar_router
 from routes.leave import router as leave_router
 from routes.compliance import router as compliance_router
@@ -38,6 +42,7 @@ from routes.automation_routes import router as automation_router
 from routes.access import router as access_router
 from routes.masters_settings import router as masters_settings_router
 from routes.exports import router as exports_router
+from routes.reporting import router as reporting_router
 from routes.documents import router as documents_router
 from routes.data_import import router as data_import_router
 from routes.email_templates import router as email_templates_router
@@ -56,6 +61,8 @@ _AUTH_RECOVERY_ROUTES = {("/auth/login", "POST"), ("/auth/logout", "POST"),
                          ("/auth/password/change", "POST")}
 SESSION_EXEMPT_ENDPOINTS = {route.endpoint for route in auth_router.routes
                             if any((route.path, method) in _AUTH_RECOVERY_ROUTES for method in route.methods)}
+SESSION_EXEMPT_ENDPOINTS.update(route.endpoint for route in mfa_router.routes
+    if route.path in {"/auth/mfa/status", "/auth/mfa/enroll", "/auth/mfa/confirm", "/auth/mfa/verify"})
 # Preserve the existing anonymous recruitment application surface.
 SESSION_EXEMPT_ENDPOINTS.update(route.endpoint for route in solver_intake_router.routes
                                 if route.path in ("/solver-intake/counties", "/solver-intake/public/{rid}",
@@ -63,8 +70,17 @@ SESSION_EXEMPT_ENDPOINTS.update(route.endpoint for route in solver_intake_router
 
 
 async def protect_application_session(request: Request):
-    if request.scope.get("endpoint") not in SESSION_EXEMPT_ENDPOINTS:
-        await require_password_change_completed(request)
+    # Health remains independent of DB configuration. All business/auth handlers
+    # (including MFA-exempt login/refresh) receive fresh request-local permissions.
+    if request.scope.get("endpoint") is health:
+        yield
+        return
+    from database import get_db
+    from utils.access_matrix import request_permissions
+    async with request_permissions(get_db()):
+        if request.scope.get("endpoint") not in SESSION_EXEMPT_ENDPOINTS:
+            await require_password_change_completed(request)
+        yield
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -85,7 +101,7 @@ if not _cors_origins or _cors_origins == ["*"]:
     _cors_origins = [_frontend] if _frontend else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins,
+    allow_origins=[origin for origin in _cors_origins if origin != "*"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
@@ -96,6 +112,7 @@ app.add_middleware(
 # ─── Security headers + body-size guard ───
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(BodySizeLimitMiddleware)
+app.add_middleware(BrowserOriginMiddleware)
 
 
 # ─── Generic error handler — never leak stack traces / internal detail ───
@@ -108,10 +125,13 @@ async def _generic_exception_handler(request: Request, exc: Exception):
 API_PREFIX = "/api"
 
 app.include_router(auth_router, prefix=API_PREFIX)
+app.include_router(mfa_router, prefix=API_PREFIX)
 app.include_router(employees_router, prefix=API_PREFIX)
 app.include_router(solvers_router, prefix=API_PREFIX)
+app.include_router(solver_assessments_router, prefix=API_PREFIX)
 app.include_router(recruitment_router, prefix=API_PREFIX)
 app.include_router(onboarding_router, prefix=API_PREFIX)
+app.include_router(lifecycle_router, prefix=API_PREFIX)
 app.include_router(performance_router, prefix=API_PREFIX)
 app.include_router(surveys_router, prefix=API_PREFIX)
 app.include_router(retention_router, prefix=API_PREFIX)
@@ -122,6 +142,7 @@ app.include_router(recognition_router, prefix=API_PREFIX)
 app.include_router(budget_router, prefix=API_PREFIX)
 app.include_router(policies_router, prefix=API_PREFIX)
 app.include_router(disciplinary_router, prefix=API_PREFIX)
+app.include_router(benefits_router, prefix=API_PREFIX)
 app.include_router(calendar_router, prefix=API_PREFIX)
 app.include_router(leave_router, prefix=API_PREFIX)
 app.include_router(compliance_router, prefix=API_PREFIX)
@@ -132,6 +153,7 @@ app.include_router(automation_router, prefix=API_PREFIX)
 app.include_router(access_router, prefix=API_PREFIX)
 app.include_router(masters_settings_router, prefix=API_PREFIX)
 app.include_router(exports_router, prefix=API_PREFIX)
+app.include_router(reporting_router, prefix=API_PREFIX)
 app.include_router(documents_router, prefix=API_PREFIX)
 app.include_router(data_import_router, prefix=API_PREFIX)
 app.include_router(email_templates_router, prefix=API_PREFIX)

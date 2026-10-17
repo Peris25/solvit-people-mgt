@@ -8,6 +8,8 @@ from utils.employee_access import scoped_employee_query, authorize_employee
 from utils.access_matrix import get_module_access
 from utils.auth import get_current_user
 import uuid
+from utils.employee_integrity import tenant_of, tenant_query, integrity_write
+from utils.legacy_security import module_access, audit, projection, HR
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
@@ -51,6 +53,8 @@ EVENT_COLORS = {
 async def get_calendar_events(request: Request, days_ahead: int = 90):
     user = await get_current_user(request)
     db = get_db()
+    if not 1 <= days_ahead <= 366:
+        raise HTTPException(422, "Calendar range must be 1 to 366 days")
     from datetime import timedelta
     now = datetime.now(timezone.utc)
     end_date = (now + timedelta(days=days_ahead)).isoformat()[:10]
@@ -59,7 +63,7 @@ async def get_calendar_events(request: Request, days_ahead: int = 90):
     all_events = []
 
     # Get public holidays
-    holidays = await db.public_holidays.find({"tenant_id": "solvit", "date": {"$gte": start_date, "$lte": end_date}}).to_list(50)
+    holidays = await db.public_holidays.find({"tenant_id": tenant_of(user), "date": {"$gte": start_date, "$lte": end_date}}).to_list(50)
     for h in holidays:
         all_events.append({
             "id": str(h.get("id", str(h.get("_id", "")))),
@@ -85,7 +89,7 @@ async def get_calendar_events(request: Request, days_ahead: int = 90):
     for lr in approved_leaves:
         all_events.append({
             "id": str(lr.get("id", str(lr.get("_id", "")))),
-            "title": f"{lr.get('leave_type', 'Leave')} — Employee",
+            "title": "Away",
             "event_type": "leave",
             "start_date": lr.get("start_date"),
             "end_date": lr.get("end_date"),
@@ -97,7 +101,7 @@ async def get_calendar_events(request: Request, days_ahead: int = 90):
 
     # Get onboarding milestones
     onboarding_emps = await db.employees.find({
-        "tenant_id": "solvit",
+        "tenant_id": tenant_of(user),
         "lifecycle_state": {"$in": ["Onboarding", "Probation"]}
     }).to_list(50)
     visible_onboarding = []
@@ -128,11 +132,17 @@ async def get_calendar_events(request: Request, days_ahead: int = 90):
 
     # Get survey windows
     surveys = await db.survey_windows.find({
-        "tenant_id": "solvit",
+        "tenant_id": tenant_of(user),
         "status": "Open",
         "open_date": {"$lte": end_date}
     }).to_list(10)
     for s in surveys:
+        if not get_module_access("M06", user.get("role")):
+            continue
+        if user["role"] not in HR:
+            audience = "Solver" if user["role"] == "solver" else "FTE"
+            if (s.get("survey_type", "").endswith("solver")) != (audience == "Solver"):
+                continue
         all_events.append({
             "id": str(s.get("id", str(s.get("_id", "")))),
             "title": s.get("title", "Survey"),
@@ -146,11 +156,14 @@ async def get_calendar_events(request: Request, days_ahead: int = 90):
 
     # Get manual events
     manual = await db.calendar_events.find({
-        "tenant_id": "solvit",
+        "tenant_id": tenant_of(user),
         "start_date": {"$gte": start_date, "$lte": end_date}
     }).to_list(100)
     for e in manual:
-        e_fmt = fmt(e)
+        # Legacy manual rows have no approved publication audience: HR-only.
+        if user.get("role") not in HR or not get_module_access("M15", user.get("role")):
+            continue
+        e_fmt = projection(e, {"title", "event_type", "start_date", "end_date", "all_day", "description", "employee_id", "employee_name", "color", "module"})
         e_fmt["color"] = EVENT_COLORS.get(e.get("event_type", ""), "#6B7280")
         all_events.append(e_fmt)
 
@@ -163,14 +176,19 @@ async def create_event(event: CalendarEvent, request: Request):
     if user["role"] not in ["hr_admin", "hr_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
+    module_access(user, "M15", write=True)
+    if event.employee_id:
+        await authorize_employee(db, user, event.employee_id, "M04")
     doc = {
         "id": str(uuid.uuid4()),
-        "tenant_id": "solvit",
+        "tenant_id": tenant_of(user),
         **event.model_dump(),
         "color": event.color or EVENT_COLORS.get(event.event_type, "#6B7280"),
         "created_by": user["id"],
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    result = await db.calendar_events.insert_one(doc)
+    async with integrity_write(db):
+        await audit(db, user, "calendar.event.created", doc["id"])
+        result = await db.calendar_events.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
     return doc

@@ -259,28 +259,9 @@ async def execute_reject_leave(db, params: dict, user: dict) -> Dict[str, Any]:
 
 
 async def execute_send_recognition(db, params: dict, user: dict) -> Dict[str, Any]:
-    now = datetime.now(timezone.utc).isoformat()
-    doc = {
-        "id": str(uuid.uuid4()), "tenant_id": "solvit",
-        "recognition_type": "Manager",
-        "employee_id": params["employee_id"],
-        "employee_name": params.get("employee_name"),
-        "message": params["message"],
-        "category": "AI-assisted",
-        "nominator_id": user["id"],
-        "nominator_name": user.get("full_name") or user.get("email"),
-        "status": "Approved",
-        "created_at": now,
-    }
-    await db.recognitions.insert_one(doc)
-    await db.notifications.insert_one({
-        "id": str(uuid.uuid4()), "tenant_id": "solvit",
-        "user_id": params["employee_id"],
-        "title": "You've been recognised",
-        "message": f"{user.get('full_name') or 'Your manager'} recognised you: \"{params['message']}\"",
-        "is_read": False, "created_at": now,
-    })
-    return {"ok": True, "recognition_id": doc["id"]}
+    from routes.recognition import record_manager_recognition
+    result = await record_manager_recognition(db, user, {"employee_id": params["employee_id"], "specific_behaviour": params["message"]})
+    return {"ok": True, "recognition_id": result["id"]}
 
 
 async def execute_send_email(db, params: dict, user: dict) -> Dict[str, Any]:
@@ -326,32 +307,37 @@ async def execute_send_email(db, params: dict, user: dict) -> Dict[str, Any]:
 
 
 async def execute_mark_task(db, params: dict, user: dict) -> Dict[str, Any]:
+    from utils.employee_access import find_linked_record
+    from utils.task_access import authorize_task
+    from utils.employee_integrity import integrity_write
+    from utils.legacy_security import audit
     task_id = params["task_id"]
-    now = datetime.now(timezone.utc).isoformat()
-    res = await db.tasks.update_one({"id": task_id},
-        {"$set": {"status": "Done", "completed_at": now, "completed_by": user["id"]}})
+    async with integrity_write(db):
+        task = await find_linked_record(db.tasks, task_id, user)
+        if task.get("task_type") == "exit_workflow":
+            from utils.lifecycle_workflows import update_checklist
+            result = await update_checklist(db, user, db.tasks, task, "Completed")
+            return {"ok": True, "task_id": task_id}
+        await authorize_task(db, user, task, write=True)
+        if task.get("status") in {"Done", "Completed"}: return {"ok": True, "task_id": task_id}
+        await audit(db, user, "task.completed", task["_id"])
+        res = await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"status": "Done", "completed_at": datetime.now(timezone.utc).isoformat(), "completed_by": user["id"]}})
     return {"ok": res.modified_count > 0, "task_id": task_id}
 
 
 async def execute_assign_training(db, params: dict, user: dict) -> Dict[str, Any]:
-    now = datetime.now(timezone.utc).isoformat()
-    doc = {
-        "id": str(uuid.uuid4()), "tenant_id": "solvit",
-        "employee_id": params["employee_id"], "employee_name": params.get("employee_name"),
-        "title": params["training_name"], "name": params["training_name"],
-        "status": "Approved", "source": "AI Assistant",
-        "requested_by": user["id"], "requested_by_name": user.get("full_name") or user.get("email"),
-        "created_at": now,
-    }
-    await db.training_requests.insert_one(doc)
-    await db.notifications.insert_one({
-        "id": str(uuid.uuid4()), "tenant_id": "solvit",
-        "user_id": params["employee_id"],
-        "title": "Training assigned",
-        "message": f"You've been assigned the training **{params['training_name']}**.",
-        "is_read": False, "created_at": now,
-    })
-    return {"ok": True, "training_id": doc["id"]}
+    from utils.employee_integrity import integrity_write
+    from utils.learning_workflows import prepare_request, persist_request
+    # The assistant may nominate training, never fabricate approval or bypass
+    # the employee's saved manager and training-cost authorization rules.
+    async with integrity_write(db):
+        row=await prepare_request(db,user,{"employee_id":params["employee_id"],"training_name":params["training_name"],
+            "provider":params.get("provider") or "Internal","delivery_method":params.get("delivery_method") or "Internal",
+            "cost_kes":params.get("cost_kes",0),"duration_days":params.get("duration_days",1),
+            "business_justification":params.get("business_justification") or "HR Assistant training nomination"})
+        await persist_request(db,user,row)
+    return {"ok":True,"training_id":row["id"]}
+
 
 
 EXECUTORS = {

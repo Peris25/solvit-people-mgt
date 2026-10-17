@@ -447,12 +447,18 @@ async def get_audit_log(request: Request, category: str | None = None, limit: in
     user = await get_current_user(request)
     if user["role"] not in ("it_admin", "hr_admin"):
         raise HTTPException(status_code=403, detail="Audit log restricted to IT Admin and HR Admin")
-    db = get_db()
-    q = {"tenant_id": "solvit"}
-    if category:
-        q["category"] = category
-    rows = await db.settings_audit.find(q).sort("timestamp", -1).to_list(min(limit, 500))
-    for r in rows:
-        r["id"] = r.get("id") or str(r.get("_id", ""))
-        r.pop("_id", None)
-    return rows
+    from utils import administrative_reporting as reporting
+    from utils.employee_integrity import tenant_of, tenant_query
+    db=get_db()
+    if not 1<=limit<=500:raise HTTPException(422,'Invalid audit limit')
+    q=tenant_query(tenant_of(user))
+    if category:q={'$and':[q,{'category':category}]}
+    rows=await db.settings_audit.find(q).sort('timestamp',-1).to_list(limit)
+    result=[];actors={}
+    for row in rows:
+        safe=await reporting.audit_projection(db,user,'settings_audit',row,actors)
+        if safe:
+            result.append({**safe,'category':reporting.scalar(row.get('category')),'field':'Configuration field',
+                           'old_value':'[redacted]','new_value':'[redacted]','changed_by_name':safe['actor_name']})
+    await reporting.access_audit(db,user,'report.audit.viewed',source='settings_audit')
+    return result

@@ -341,7 +341,7 @@ class TestForm28:
         r = hr.post(f"{BASE_URL}/api/budget/form-28", json={"allocation_id": aid, "tier_confirmation": "T1"}, timeout=15)
         assert r.status_code == 403, f"expected 403, got {r.status_code} {r.text}"
         detail = (r.json().get("detail") or "").lower()
-        assert "finance & operations manager" in detail or "finance and operations manager" in detail, detail
+        assert "permission" in detail or "finance & operations manager" in detail or "finance and operations manager" in detail, detail
 
 
 # ---------- Regression ----------

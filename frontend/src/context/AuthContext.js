@@ -37,8 +37,10 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const requirePasswordChange = () => setUser(current => current ? { ...current, must_change_password: true } : current);
+    const requireMfa = event => setUser(current => current ? { ...current, mfa_required: true, mfa_verified: false, mfa_action: event.detail?.action || 'verify' } : current);
+    window.addEventListener('solvit:mfa-required', requireMfa);
     window.addEventListener('solvit:password-change-required', requirePasswordChange);
-    return () => window.removeEventListener('solvit:password-change-required', requirePasswordChange);
+    return () => { window.removeEventListener('solvit:password-change-required', requirePasswordChange); window.removeEventListener('solvit:mfa-required', requireMfa); };
   }, []);
 
   const login = async (email, password) => {
@@ -72,8 +74,21 @@ export function AuthProvider({ children }) {
     return res.data;
   };
 
+  const mfaCall = useCallback(async (path, body) => (await axios.post(`${API}/api/auth/mfa/${path}`, body, { withCredentials: true })).data, []);
+  const getMfaStatus = useCallback(async () => (await axios.get(`${API}/api/auth/mfa/status`, { withCredentials: true })).data, []);
+  const startMfa = password => mfaCall('enroll', { password });
+  // Keep the recovery-code screen mounted until the user saves its one-time output.
+  const confirmMfa = code => mfaCall('confirm', { code });
+  const verifyMfa = async (value, recovery = false) => {
+    const data = await mfaCall('verify', recovery ? { recovery_code: value } : { code: value });
+    setUser(data);
+    return data;
+  };
+  const rotateRecoveryCodes = password => mfaCall('recovery-codes', { password });
+  const resetMfa = (accountId, password, reference) => mfaCall(`reset/${encodeURIComponent(accountId)}`, { password, reference });
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, checkAuth, changePassword }}>
+    <AuthContext.Provider value={{ user, login, logout, checkAuth, changePassword, getMfaStatus, startMfa, confirmMfa, verifyMfa, rotateRecoveryCodes, resetMfa }}>
       {children}
     </AuthContext.Provider>
   );

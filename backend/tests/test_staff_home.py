@@ -18,7 +18,7 @@ def fixture(role="employee", **changes):
     owner = account(employee_id="staff", role=role)
     user = {**owner, "id": str(owner["_id"])}
     db = Database([emp, employee("other", email="other@example.com")], [owner])
-    for name in ("leave_requests", "tasks", "notifications", "notification_receipts", "form_submissions", "performance_reviews", "recognitions"):
+    for name in ("leave_requests", "tasks", "notifications", "notification_receipts", "form_submissions", "performance_reviews", "recognitions", "training_requests", "benefit_schemes", "benefit_requests"):
         setattr(db, name, Collection())
     return db, user, emp
 
@@ -75,6 +75,9 @@ def test_empty_data_has_real_empty_states_and_existing_balance_is_reused():
     assert data["leave_balance"] == {"annual_days_remaining": 0, "sick_days_remaining": 0}
     assert data["tasks"] == data["notifications"] == data["pending_leave"] == []
     assert data["unread_notifications"] == 0
+    assert {"label": "My Profile", "path": "/my-profile"} in data["quick_links"]
+    assert {"label": "Documents", "path": "/documents"} in data["quick_links"]
+    assert {"label": "Policy Library", "path": "/policies"} in data["quick_links"]
     assert "announcements" not in data
 
 
@@ -141,3 +144,15 @@ def test_route_ignores_forged_employee_manager_and_role_query_parameters():
     request = SimpleNamespace(query_params={"employee_id": "other", "manager_id": "other", "role": "hr_admin"})
     with patch.object(dashboard, "get_current_user", AsyncMock(return_value=user)), patch.object(dashboard, "get_db", return_value=db), patch("routes.leave.get_leave_balances", AsyncMock(return_value={})):
         assert asyncio.run(dashboard.staff_home(request))["employee"]["id"] == "staff"
+
+
+def test_learning_home_actions_use_own_records_and_canonical_links():
+    db, user, _ = fixture()
+    db.training_requests = Collection([
+        {"id": "canonical-training", "_id": "storage-training", "tenant_id": "solvit", "employee_id": "staff", "status": "Approved", "due_on": "2026-11-01"},
+        {"id": "private", "tenant_id": "solvit", "employee_id": "other", "status": "Approved"},
+    ])
+    actions = [item for item in load(db, user)["tasks"] if item.get("kind") == "learning"]
+    assert len(actions) == 1
+    assert actions[0]["path"] == "/lnd?training=canonical-training"
+    assert actions[0]["due_date"] == "2026-11-01"

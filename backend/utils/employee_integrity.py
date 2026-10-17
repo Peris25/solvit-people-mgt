@@ -191,6 +191,8 @@ async def change_employee_state(db, reference, new_state):
         current = await find_employee(db, reference)
         if not current:
             raise HTTPException(404, "Employee not found")
+        if current.get("offboarding_started_at") and new_state != current.get("lifecycle_state"):
+            raise HTTPException(409, "Use the authorized offboarding workflow to change this lifecycle state.")
         await validate_manager_departure(db, current, new_state)
         result = await db.employees.find_one_and_update({"_id": current["_id"]}, {"$set": {
             "lifecycle_state": new_state, "updated_at": datetime.now(timezone.utc).isoformat()

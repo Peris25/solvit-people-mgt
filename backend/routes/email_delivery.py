@@ -210,11 +210,11 @@ async def get_audit(request: Request, limit: int = 50):
     user = await get_current_user(request)
     if user.get("role") not in ("it_admin", "hr_admin"):
         raise HTTPException(status_code=403, detail="No access")
-    db = get_db()
-    rows = await db.email_delivery_audit.find({"tenant_id": "solvit"}).sort("timestamp", -1).to_list(min(limit, 200))
-    for r in rows:
-        r.pop("_id", None)
-    return rows
+    from utils import administrative_reporting as reporting
+    db=get_db()
+    result=await reporting.audit_feed(db,user,limit=limit,sources=['email_delivery_audit'])
+    await reporting.access_audit(db,user,'report.audit.viewed',source='email_delivery_audit')
+    return [{**row,'action':row['event'],'by_user_name':row['actor_name']} for row in result['items']]
 
 
 @router.get("/log")
@@ -236,9 +236,10 @@ async def get_email_log(request: Request, limit: int = 100, status: Optional[str
         raise HTTPException(status_code=403, detail="No access")
     db = get_db()
     n = min(max(limit, 1), 500)
-    q = {"tenant_id": "solvit"}
+    from utils.employee_integrity import tenant_of, tenant_query
+    q = tenant_query(tenant_of(user))
     if status:
-        q["status"] = status
+        q = {"$and":[q,{"status":status}]}
     primary = await db.email_log.find(q).sort("sent_at", -1).to_list(n)
     ai = await db.email_send_log.find(q).sort("sent_at", -1).to_list(n)
 
@@ -275,7 +276,16 @@ async def get_email_log(request: Request, limit: int = 100, status: Optional[str
             "source": "ai_agent", "sent_by_name": r.get("sent_by_name"),
         })
     rows.sort(key=lambda r: r.get("sent_at") or "", reverse=True)
-    return rows[:n]
+    from utils import administrative_reporting as reporting
+    result=[]
+    for row in rows[:n]:
+        row['to']=reporting.opaque(str(row.get('to') or ''),'recipient:')
+        row['subject']='Email delivery metadata (content redacted)'
+        row['error']='Delivery failed; review protected provider logs' if row.get('error') else None
+        row.pop('sent_by_name',None)
+        result.append(row)
+    await reporting.access_audit(db,user,'report.email_delivery.viewed',count=len(result))
+    return result
 
 
 
@@ -315,27 +325,9 @@ async def export_email_log_csv(request: Request, status: Optional[str] = None, l
     user = await get_current_user(request)
     if user.get("role") != "it_admin":
         raise HTTPException(status_code=403, detail="IT Admin only")
-    from fastapi.responses import StreamingResponse
-    import csv
-    import io
-    db = get_db()
-    q = {"tenant_id": "solvit"}
-    if status:
-        q["status"] = status
-    rows = await db.email_log.find(q).sort("sent_at", -1).to_list(min(max(limit, 1), 5000))
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(["sent_at", "to", "subject", "template_key", "mode", "status", "formal", "retry_count", "error"])
-    for r in rows:
-        writer.writerow([
-            r.get("sent_at"), r.get("to"), r.get("subject"),
-            r.get("template_key"), r.get("mode"), r.get("status"),
-            r.get("formal", False), r.get("retry_count", 0),
-            (r.get("error") or "").replace("\n", " ")[:300],
-        ])
-    buf.seek(0)
-    return StreamingResponse(
-        iter([buf.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=email_log.csv"},
-    )
+    from routes.exports import _csv_response
+    from utils import administrative_reporting as reporting
+    if not 1<=limit<=500:raise HTTPException(422,'Email export limit must be between 1 and 500')
+    rows=await get_email_log(request,limit=limit,status=status)
+    await reporting.access_audit(get_db(),user,'report.exported',report='email_delivery',count=len(rows))
+    return _csv_response(rows,'email_log.csv')

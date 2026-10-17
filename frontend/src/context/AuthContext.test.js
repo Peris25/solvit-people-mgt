@@ -52,3 +52,24 @@ test('a server requirement event gates a previously normal session', async () =>
   expect(auth.user.must_change_password).toBe(true);
   expect(axios.get).toHaveBeenCalledTimes(1);
 });
+
+
+test('MFA verification upgrades identity but enrollment confirmation keeps one-time recovery display pending', async () => {
+  await act(async () => root.render(<AuthProvider><Probe /></AuthProvider>));
+  axios.post.mockResolvedValueOnce({data:{id:'synthetic',mfa_required:true,mfa_verified:false}});
+  await act(async () => auth.login('staff@example.com','local-password'));
+  axios.post.mockResolvedValueOnce({data:{user:{id:'synthetic',mfa_verified:true},recovery_codes:['SYNTHETIC']}});
+  let output; await act(async () => { output = await auth.confirmMfa('123456'); });
+  expect(output.recovery_codes).toEqual(['SYNTHETIC']); expect(auth.user.mfa_verified).toBe(false);
+  axios.post.mockResolvedValueOnce({data:{id:'synthetic',mfa_required:true,mfa_verified:true}});
+  await act(async () => auth.verifyMfa('SYNTHETIC-RECOVERY',true));
+  expect(auth.user.mfa_verified).toBe(true);
+  expect(axios.post).toHaveBeenLastCalledWith(expect.stringContaining('/auth/mfa/verify'),{recovery_code:'SYNTHETIC-RECOVERY'},{withCredentials:true});
+});
+
+test('a server MFA requirement event removes previously verified UI access', async () => {
+  localStorage.setItem('solvit_auth','1'); axios.get.mockResolvedValue({status:200,data:{id:'synthetic',mfa_verified:true}});
+  await act(async () => root.render(<AuthProvider><Probe /></AuthProvider>));
+  await act(async () => window.dispatchEvent(new CustomEvent('solvit:mfa-required',{detail:{action:'enroll'}})));
+  expect(auth.user.mfa_required).toBe(true); expect(auth.user.mfa_verified).toBe(false); expect(auth.user.mfa_action).toBe('enroll');
+});

@@ -120,15 +120,13 @@ class TestTriggers:
         s = sessions["hr_admin"]
         _, idx = employees_index
         emp = idx[EMAILS["employee"]]
-        r0 = s.post(f"{BASE_URL}/api/performance", json={
-            "employee_id": emp["id"], "cycle_type": "Mid_Year", "cycle_year": 2026,
-        })
-        assert r0.status_code in (200, 201), r0.text
-        rid = r0.json().get("id") or r0.json().get("review_id")
-        anchor = _ts_now()
+        # Legacy completion via an arbitrary status write must no longer bypass
+        # employee, manager and HR assessments or publish a confidential score.
+        reviews = s.get(f"{BASE_URL}/api/performance").json()
+        assert reviews
+        rid = reviews[0]["id"]
         r = s.put(f"{BASE_URL}/api/performance/{rid}", json={"status": "Completed"})
-        assert r.status_code in (200, 204), r.text
-        assert _wait_for_template(sessions["it_admin"], "performance.review_complete", anchor) is not None
+        assert r.status_code == 409, r.text
 
     def test_recognition_peer(self, sessions, employees_index):
         anchor = _ts_now()
@@ -171,12 +169,14 @@ class TestTriggers:
             "employee_name": emp.get("full_name", "Emp"),
             "allegation_category": "Conduct",
             "allegation_details": f"TEST iter18 {notice_type}",
-            "incident_date": "2026-01-10",
+            "incident_date": {"Written Warning": "2026-01-10", "Final Warning": "2026-01-11", "Dismissal": "2026-01-12"}[notice_type],
         })
         assert r0.status_code in (200, 201), r0.text
         cid = r0.json().get("id")
+        hearing = s.put(f"{BASE_URL}/api/disciplinary/{cid}", json={"status": "Hearing Scheduled"})
+        assert hearing.status_code == 200, hearing.text
         anchor = _ts_now()
-        r = s.post(f"{BASE_URL}/api/disciplinary/{cid}/issue-notice", json={"notice_type": notice_type})
+        r = s.post(f"{BASE_URL}/api/disciplinary/{cid}/issue-notice", json={"notice_type": notice_type, "content": "Synthetic authorized hearing outcome"})
         assert r.status_code in (200, 201), r.text
         assert _wait_for_template(sessions["it_admin"], template_key, anchor) is not None, f"missing {template_key}"
 
@@ -189,7 +189,8 @@ class TestTriggers:
             "reason": "TEST iter18",
         })
         assert r.status_code in (200, 201), r.text
-        assert _wait_for_template(sessions["it_admin"], "comp.salary_review", anchor) is not None
+        assert r.json()["status"] == "Pending_Finance_Approval"
+        assert _wait_for_template(sessions["it_admin"], "comp.salary_review", anchor, attempts=2, delay=0.1) is None
 
     def test_recruitment_flow(self, sessions):
         s = sessions["hr_admin"]
@@ -207,6 +208,8 @@ class TestTriggers:
         assert _wait_for_template(sessions["it_admin"], "recruitment.application_received", anchor) is not None
         for stage, tpl in [
             ("Competency_Test", "recruitment.invite_competency"),
+            ("Values_Assessment", "recruitment.invite_values"),
+            ("Growth_Mindset", "recruitment.invite_growth"),
             ("Physical_Interview", "recruitment.invite_interview"),
         ]:
             a = _ts_now()
@@ -248,9 +251,10 @@ class TestTriggers:
         pid = r.json().get("id")
         assert _wait_for_template(sessions["it_admin"], "lnd.project_assigned", anchor) is not None
         anchor2 = _ts_now()
-        r2 = s.put(f"{BASE_URL}/api/projects/{pid}", json={"status": "Completed"})
-        assert r2.status_code in (200, 204), r2.text
-        assert _wait_for_template(sessions["it_admin"], "lnd.project_completed", anchor2) is not None
+        r2 = s.put(f"{BASE_URL}/api/projects/{pid}", json={"status": "Completed - Pending Review"})
+        assert r2.status_code == 200, r2.text
+        assert r2.json()["status"] == "Completed - Pending Review"
+        assert _wait_for_template(sessions["it_admin"], "lnd.project_completed", anchor2, attempts=2, delay=0.1) is None
 
     def test_lnd_training_request(self, sessions, employees_index):
         _, idx = employees_index
@@ -291,25 +295,17 @@ class TestTriggers:
                 return sol
         return None
 
-    def test_solver_activation(self, sessions):
-        sol = self._solver_with_email(sessions["hr_admin"])
-        if not sol:
-            pytest.skip("no solver has an email — trigger would silently skip (CODE GAP REPORTED)")
-        anchor = _ts_now()
-        r = sessions["hr_admin"].post(f"{BASE_URL}/api/solvers/{sol['id']}/activate", json={})
-        if r.status_code not in (200, 201):
-            pytest.skip(f"activation route returned {r.status_code}")
-        assert _wait_for_template(sessions["it_admin"], "solver.activation", anchor) is not None
+    def test_solver_activation_without_verification_is_rejected(self, sessions):
+        sol = self._solver_with_email(sessions['hr_admin'])
+        assert sol is not None, 'Disposable seed must contain a Solver with an email'
+        r = sessions['hr_admin'].post(f"{BASE_URL}/api/solvers/{sol['id']}/activate", json={})
+        assert r.status_code == 409, 'Activation must not bypass evidence-backed induction'
 
-    def test_solver_tier_upgrade(self, sessions):
-        sol = self._solver_with_email(sessions["hr_admin"])
-        if not sol:
-            pytest.skip("no solver has an email")
-        anchor = _ts_now()
-        r = sessions["hr_admin"].put(f"{BASE_URL}/api/solvers/{sol['id']}", json={"performance_tier": "Top"})
-        if r.status_code not in (200, 204):
-            pytest.skip(f"tier update returned {r.status_code}")
-        assert _wait_for_template(sessions["it_admin"], "solver.tier_upgrade", anchor) is not None
+    def test_solver_direct_tier_override_is_rejected(self, sessions):
+        sol = self._solver_with_email(sessions['hr_admin'])
+        assert sol is not None, 'Disposable seed must contain a Solver with an email'
+        r = sessions['hr_admin'].put(f"{BASE_URL}/api/solvers/{sol['id']}", json={'performance_tier': 'Top'})
+        assert r.status_code == 409, 'Job-derived tiers cannot be changed through generic profile edits'
 
     def test_solver_suspension(self, sessions):
         sol = self._solver_with_email(sessions["hr_admin"])

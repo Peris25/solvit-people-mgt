@@ -96,7 +96,7 @@ async def line_manager_widget(request: Request):
         in_progress = await db.performance_reviews.count_documents({
             "tenant_id": "solvit",
             "employee_id": emp_id,
-            "status": {"$in": ["Draft", "In_Progress", "Scoring", "Pending_Review_Meeting"]},
+            "status": {"$in": ["Draft", "Self_Draft", "Self_Submitted", "Manager_Submitted", "HR_Reviewed", "In_Progress", "Scoring", "Pending_Review_Meeting"]},
         })
         if in_progress:
             open_reviews += in_progress

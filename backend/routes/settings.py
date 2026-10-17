@@ -139,9 +139,13 @@ async def get_audit_log(request: Request, limit: int = 50, entity: Optional[str]
     user = await get_current_user(request)
     if user["role"] not in ["hr_admin", "hr_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    db = get_db()
-    query = {"tenant_id": "solvit"}
+    from utils import administrative_reporting as reporting
+    from utils.employee_integrity import tenant_of
+    db=get_db()
+    result=await reporting.audit_feed(db,user,limit=limit,sources=['audit_log'])
+    rows=result['items']
     if entity:
-        query["entity"] = entity
-    logs = await db.audit_log.find(query).sort("timestamp", -1).limit(limit).to_list(limit)
-    return [fmt(l) for l in logs]
+        wanted=reporting.opaque(str(tenant_of(user))+':'+entity,'target:')
+        rows=[row for row in rows if row.get('target_reference')==wanted]
+    await reporting.access_audit(db,user,'report.audit.viewed',source='audit_log')
+    return [{**row,'action':row['event'],'performed_by':row['actor_id'],'entity':row['target_reference']} for row in rows]

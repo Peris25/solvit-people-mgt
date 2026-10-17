@@ -29,7 +29,7 @@ FORM_OUTCOME_HANDLERS = {
     # Resignation (form-31) — kicks off 7-task exit workflow
     "resignation.submitted":  {"new_state": "Exiting",     "downstream_event": "employee_exiting"},
     # Exit clearance fully signed (form-23)
-    "clearance.signed_off":   {"new_state": "Exited",      "downstream_event": "all_exit_tasks_completed"},
+    "clearance.signed_off":   {"flag_set": "clearance_signed_off"},
     # Confidentiality form (form-24) — no state change, just complete the exit task
     "confidentiality.signed": {"task_complete": "ET03"},
     # Solver onboarding outcomes (form-02 / form-03 quizzes)
@@ -105,9 +105,14 @@ class AutomationEngine:
         self.scheduler.add_job(self._check_anniversaries, "cron", hour=8, minute=30, id="anniversary_check")
         # Email retry queue — process pending retries every minute
         self.scheduler.add_job(self._process_email_retries, "interval", minutes=1, id="email_retry_queue")
+        self.scheduler.add_job(self._process_approved_exits, "interval", seconds=60, id="approved_exit_deactivation")
         self.scheduler.start()
         self._started = True
         logger.info("✅ Automation Engine started")
+
+    async def _process_approved_exits(self):
+        from utils.lifecycle_workflows import process_approved_exits
+        await process_approved_exits(self.db)
 
     async def _process_email_retries(self):
         """Drain the email retry queue. Best-effort — never raise."""
@@ -181,18 +186,8 @@ class AutomationEngine:
                 {"$set": {"status": "Completed", "completed_at": datetime.now(timezone.utc).isoformat()}}
             )
 
-        # Solver progress flag (form-01..03)
-        if spec.get("solver_progress"):
-            solver_id = data.get("solver_id") or emp_id
-            if solver_id:
-                try:
-                    await self.db.solvers.update_one(
-                        {"id": solver_id},
-                        {"$set": {f"progress.{spec['solver_progress']}": True,
-                                  "updated_at": datetime.now(timezone.utc).isoformat()}}
-                    )
-                except Exception:
-                    pass
+        # Solver progress is evidence-backed by the Solver verification workflow.
+        # Generic form events cannot grant induction success or activation.
 
         # Set a generic flag on employee document
         if spec.get("flag_set") and emp_id:
@@ -269,43 +264,22 @@ class AutomationEngine:
         task_type = payload.get("task_type", "general")
         employee_id = data.get("employee_id")
         if task_type == "onboarding_setup":
-            # Trigger onboarding task creation
             if employee_id:
-                from routes.onboarding import FTE_ONBOARDING_TASKS
-                tasks = []
-                for template in FTE_ONBOARDING_TASKS:
-                    tasks.append({
-                        "id": str(uuid.uuid4()),
-                        "tenant_id": "solvit",
-                        "entity_id": employee_id,
-                        "entity_type": "employee",
-                        "task_key": template["task_key"],
-                        "title": template["title"],
-                        "assigned_role": template["assigned_role"],
-                        "status": "Pending",
-                        "created_at": datetime.now(timezone.utc).isoformat()
-                    })
-                if tasks:
-                    await self.db.onboarding_tasks.insert_many(tasks)
+                from routes.onboarding import _create_onboarding_tasks
+                from utils.employee_integrity import find_employee, integrity_write, employee_key
+                async with integrity_write(self.db):
+                    employee = await find_employee(self.db, employee_id)
+                    if employee and employee.get("lifecycle_state") in ("Onboarding", "Probation"):
+                        await _create_onboarding_tasks(self.db, employee_key(employee), "employee", employee)
         elif task_type == "solver_induction":
             solver_id = data.get("solver_id")
             if solver_id:
-                from routes.onboarding import SOLVER_INDUCTION_TASKS
-                tasks = []
-                for template in SOLVER_INDUCTION_TASKS:
-                    tasks.append({
-                        "id": str(uuid.uuid4()),
-                        "tenant_id": "solvit",
-                        "entity_id": solver_id,
-                        "entity_type": "solver",
-                        "task_key": template["task_key"],
-                        "title": template["title"],
-                        "assigned_role": template["assigned_role"],
-                        "status": "Pending",
-                        "created_at": datetime.now(timezone.utc).isoformat()
-                    })
-                if tasks:
-                    await self.db.onboarding_tasks.insert_many(tasks)
+                from utils.employee_integrity import integrity_write
+                from utils.solver_access import find_solver, solver_key
+                from routes.onboarding import _create_solver_induction
+                async with integrity_write(self.db):
+                    record = await find_solver(self.db, solver_id, {'tenant_id': data.get('tenant_id', 'solvit')})
+                    await _create_solver_induction(self.db, solver_key(record), record)
         else:
             # Generic task
             task = {
@@ -389,6 +363,8 @@ class AutomationEngine:
     async def _change_state_action(self, rule: dict, data: dict, payload: dict):
         new_state = payload.get("new_state")
         employee_id = data.get("employee_id")
+        if new_state == "Exited":
+            return  # Explicit HR approval and 17:00 EAT cutoff are enforced by lifecycle completion.
         if new_state and employee_id:
             from utils.employee_integrity import change_employee_state
             await change_employee_state(self.db, employee_id, new_state)
@@ -399,27 +375,13 @@ class AutomationEngine:
             await self._create_exit_tasks(data.get("employee_id"))
 
     async def _create_exit_tasks(self, employee_id: str):
-        """Create all 7 exit workflow tasks within 60 seconds"""
-        if not employee_id:
-            return
-        tasks = []
-        for template in EXIT_WORKFLOW_TASKS:
-            tasks.append({
-                "id": str(uuid.uuid4()),
-                "tenant_id": "solvit",
-                "task_type": "exit_workflow",
-                "task_key": template["task_key"],
-                "title": template["title"],
-                "entity_id": employee_id,
-                "entity_type": "employee",
-                "assigned_role": template["assigned_role"],
-                "status": "Pending",
-                "days_due": template["days_due"],
-                "created_at": datetime.now(timezone.utc).isoformat()
-            })
-        if tasks:
-            await self.db.tasks.insert_many(tasks)
-        logger.info(f"✅ Created {len(tasks)} exit workflow tasks for employee {employee_id}")
+        """Idempotent creation using the same clearance checklist as HR initiation."""
+        from utils.employee_integrity import find_employee, integrity_write
+        from utils.lifecycle_workflows import create_exit_tasks
+        async with integrity_write(self.db):
+            employee = await find_employee(self.db, employee_id)
+            if employee:
+                await create_exit_tasks(self.db, employee)
 
     async def _notify_hr_admin_failure(self, rule_id: str, error: str):
         """Silent failures not acceptable — notify HR Admin"""
@@ -439,6 +401,8 @@ class AutomationEngine:
         if self.db is None:
             return
         try:
+            from utils.learning_workflows import remind_due
+            await remind_due(self.db)
             await self._check_onboarding_overdue()
             await self._check_probation_reviews()
             await self._check_solver_inactive()

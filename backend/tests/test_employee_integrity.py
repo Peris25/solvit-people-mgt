@@ -185,7 +185,7 @@ def test_manager_cannot_edit_unrelated_employee():
 
 def test_repeated_conversion_does_not_create_duplicate_employee():
     from bson import ObjectId
-    candidate = {"_id": ObjectId(), "id": "candidate", "full_name": "Synthetic applicant", "email": "new@example.com", "department": "Operations", "position_applied": "Staff"}
+    candidate = {"_id": ObjectId(), "id": "candidate", "full_name": "Synthetic applicant", "email": "new@example.com", "department": "Operations", "position_applied": "Staff", "current_stage": "Offer Accepted", "status": "Active"}
     db = Database([employee("boss", "boss@example.com")], candidates=[candidate])
     request = SimpleNamespace(json=AsyncMock(return_value={"line_manager_id": "boss"}))
     with patch.object(recruitment, "get_db", return_value=db), patch.object(recruitment, "get_current_user", AsyncMock(return_value={"id": "hr", "role": "hr_admin"})), patch("automation.engine.automation_engine.fire_event", AsyncMock()):

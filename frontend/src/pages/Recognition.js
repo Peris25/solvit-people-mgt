@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import StatusBadge from '../components/StatusBadge';
 import EmployeePicker from '../components/EmployeePicker';
 import * as api from '../services/api';
@@ -16,16 +16,39 @@ export default function Recognition() {
   const [form, setForm] = useState({ nominee_id: '', nominee_name: '', values_demonstrated: [], specific_behaviour: '', impact: '' });
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { load(); }, []);
-
-  const load = async () => {
+  const epoch = useRef(0);
+  const accountId = user?.id;
+  const role = user?.role;
+  const [error, setError] = useState('');
+  const load = useCallback(async () => {
+    const current = ++epoch.current;
+    if (!accountId) { setRecs([]); setSolverAwards([]); setLoading(false); return; }
     setLoading(true);
+    setRecs([]);
+    setSolverAwards([]);
+    setError('');
+    const permittedOrEmpty = async (call) => {
+      try { return await call(); }
+      catch (failure) {
+        if (failure?.response?.status === 403) return {data: []};
+        throw failure;
+      }
+    };
     try {
-      const [r, s] = await Promise.all([api.getRecognitions(), api.getSolverAwards()]);
-      setRecs(r.data);
-      setSolverAwards(s.data);
-    } finally { setLoading(false); }
-  };
+      const awardsRole = ['hr_admin', 'hr_manager', 'line_manager', 'solver'].includes(role);
+      const [r, s] = await Promise.all([
+        role === 'solver' ? Promise.resolve({data: []}) : permittedOrEmpty(api.getRecognitions),
+        awardsRole ? permittedOrEmpty(api.getSolverAwards) : Promise.resolve({data: []})
+      ]);
+      if (current !== epoch.current) return;
+      setRecs(Array.isArray(r?.data) ? r.data : []);
+      setSolverAwards(Array.isArray(s?.data) ? s.data : []);
+    } catch (_) {
+      if (current === epoch.current) setError('Recognition could not be loaded. Please try again.');
+    } finally { if (current === epoch.current) setLoading(false); }
+  }, [accountId, role]);
+
+  useEffect(() => { load(); return () => { epoch.current += 1; }; }, [load]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -45,6 +68,7 @@ export default function Recognition() {
 
   return (
     <div data-testid="recognition-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
+      {error && <p role="alert">{error}</p>}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '24px' }}>
         <div>
           <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', margin: 0 }}>Recognition</h1>
