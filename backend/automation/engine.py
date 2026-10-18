@@ -86,6 +86,9 @@ EXIT_WORKFLOW_TASKS = [
 ]
 
 
+from utils.runtime_controls import background_jobs_enabled, pause_scheduled_jobs
+
+
 class AutomationEngine:
     def __init__(self):
         self.db = None
@@ -94,6 +97,11 @@ class AutomationEngine:
 
     async def start(self, db):
         self.db = db
+        # Event-driven form outcomes still need the DB when timers are disabled.
+        if not background_jobs_enabled():
+            pause_scheduled_jobs(self.scheduler)
+            logger.info("Background automation scheduling disabled by deployment policy")
+            return
         if self._started:
             return
         self.scheduler = AsyncIOScheduler(timezone="Africa/Nairobi")
@@ -111,11 +119,15 @@ class AutomationEngine:
         logger.info("✅ Automation Engine started")
 
     async def _process_approved_exits(self):
+        if not background_jobs_enabled():
+            return
         from utils.lifecycle_workflows import process_approved_exits
         await process_approved_exits(self.db)
 
     async def _process_email_retries(self):
         """Drain the email retry queue. Best-effort — never raise."""
+        if not background_jobs_enabled():
+            return
         try:
             from utils.email_service import process_retry_queue
             await process_retry_queue(self.db)
@@ -398,6 +410,8 @@ class AutomationEngine:
 
     async def _run_daily_cron(self):
         """Run daily cron automation checks"""
+        if not background_jobs_enabled():
+            return
         if self.db is None:
             return
         try:
@@ -515,6 +529,8 @@ class AutomationEngine:
 
     async def _check_anniversaries(self):
         """AR-RK-01 to AR-RK-04: Anniversary milestones"""
+        if not background_jobs_enabled():
+            return
         now = datetime.now(timezone.utc)
         employees = await self.db.employees.find({
             "tenant_id": "solvit",
@@ -552,6 +568,8 @@ class AutomationEngine:
 
     async def _run_compliance_check(self):
         """Run compliance check every 4 hours"""
+        if not background_jobs_enabled():
+            return
         if self.db is None:
             return
         try:

@@ -18,6 +18,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from utils.runtime_controls import background_jobs_enabled, pause_scheduled_jobs
 
 from .rules import RULES, get_rule, get_dedup_key, _today_eat
 
@@ -43,9 +44,17 @@ class ReminderEngine:
     async def start(self, db):
         self.db = db
         if self._started:
+            if not background_jobs_enabled():
+                pause_scheduled_jobs(self.scheduler)
             return
+        # Keep configuration/index initialization for explicit administrator runs;
+        # disabling timers must not leave manual deduplication uninitialized.
         await self._ensure_config()
         await self._ensure_indexes()
+        if not background_jobs_enabled():
+            pause_scheduled_jobs(self.scheduler)
+            logger.info("Reminder scheduling disabled by deployment policy")
+            return
         self.scheduler = AsyncIOScheduler(timezone="Africa/Nairobi")
         await self._register_jobs()
         self.scheduler.start()
@@ -82,6 +91,9 @@ class ReminderEngine:
 
     # ────────────────────── scheduling ─────────────────────
     async def _register_jobs(self):
+        if not background_jobs_enabled():
+            pause_scheduled_jobs(self.scheduler)
+            return
         cfg = await self.get_config()
         overrides = cfg.get("rule_overrides", {}) or {}
         if not cfg.get("master_enabled", True):
@@ -111,6 +123,8 @@ class ReminderEngine:
             )
 
     async def _run_rule_job(self, rule_id: str):
+        if not background_jobs_enabled():
+            return
         try:
             await self.run_rule(rule_id)
         except Exception as e:

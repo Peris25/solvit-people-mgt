@@ -12,6 +12,8 @@ Special behaviours:
     processed by a background coroutine in this module).
   - After 3 failed retries, an in-platform alert is created for IT Admin.
 """
+from utils.runtime_controls import outbound_email_enabled, require_outbound_email, OutboundEmailDisabled
+
 import asyncio
 import re
 import smtplib
@@ -111,6 +113,7 @@ async def _resolve_smtp(db, formal: bool) -> tuple:
 
 async def _attempt_send(host, port, encryption, user, pwd, from_addr, from_name, to, mime) -> None:
     """Perform one SMTP transaction. Raises on failure."""
+    require_outbound_email()
     if encryption == "SSL":
         server = smtplib.SMTP_SSL(host, port, timeout=15)
     else:
@@ -133,6 +136,7 @@ async def _attempt_send_sender_net(api_key, from_addr, from_name, to, subject, h
     Docs: https://api.sender.net/v2/email/send
     Raises on non-2xx so the existing retry / log path is reused.
     """
+    require_outbound_email()
     import httpx
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -153,6 +157,12 @@ async def _attempt_send_sender_net(api_key, from_addr, from_name, to, subject, h
             raise RuntimeError(f"sender.net HTTP {r.status_code}: {r.text[:200]}")
 
 
+async def suppressed_email(db, template_key=None):
+    await _log_skip(db, None, "outbound email disabled by deployment policy", template_key)
+    return {"status": "skipped", "reason": "outbound_email_disabled",
+            "message": "Outbound email is disabled by deployment policy"}
+
+
 async def send_email(
     db,
     to: str,
@@ -163,6 +173,8 @@ async def send_email(
     context: Optional[dict] = None,
     retry_count: int = 0,
 ) -> dict:
+    if not outbound_email_enabled():
+        return await suppressed_email(db, template_key)
     if not to:
         await _log_skip(db, None, "no recipient", template_key)
         return {"status": "skipped", "message": "no recipient"}
@@ -238,6 +250,8 @@ async def send_email(
         })
         return {"status": "sent", "mode": mode, "provider": provider, "to": to, "formal": is_formal}
 
+    except OutboundEmailDisabled:
+        return await suppressed_email(db, template_key)
     except Exception as e:
         err = str(e)
         await db.email_log.insert_one({
@@ -283,6 +297,8 @@ async def _alert_it_admin_failure(db, to, template_key, err):
 
 async def process_retry_queue(db) -> int:
     """Process any retries whose next_attempt_at has passed. Called by scheduler."""
+    if not outbound_email_enabled():
+        return 0
     now = datetime.now(timezone.utc).isoformat()
     cursor = db.email_retry_queue.find({
         "tenant_id": "solvit", "status": "pending",
@@ -291,6 +307,8 @@ async def process_retry_queue(db) -> int:
     rows = await cursor.to_list(50)
     processed = 0
     for row in rows:
+        if not outbound_email_enabled():
+            break
         await db.email_retry_queue.update_one(
             {"_id": row["_id"]}, {"$set": {"status": "processing"}}
         )
@@ -301,6 +319,9 @@ async def process_retry_queue(db) -> int:
             context=row.get("context") or {},
             retry_count=row["retry_count"],
         )
+        if result.get("reason") == "outbound_email_disabled":
+            await db.email_retry_queue.update_one({"_id": row["_id"]}, {"$set": {"status": "pending"}})
+            break
         final_status = "sent" if result.get("status") == "sent" else "exhausted" if row["retry_count"] >= len(RETRY_DELAYS_MIN) else "requeued"
         await db.email_retry_queue.update_one(
             {"_id": row["_id"]},

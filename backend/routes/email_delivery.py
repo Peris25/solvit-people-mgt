@@ -11,6 +11,7 @@ from database import get_db
 from utils.auth import get_current_user
 import uuid
 import smtplib
+from utils.runtime_controls import outbound_email_enabled, require_outbound_email, OutboundEmailDisabled
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -135,6 +136,9 @@ async def test_send(request: Request):
     user = await get_current_user(request)
     if not _is_it(user.get("role")):
         raise HTTPException(status_code=403, detail="IT Admin only")
+    if not outbound_email_enabled():
+        from utils.email_service import suppressed_email
+        return await suppressed_email(get_db())
     body = await request.json()
     to_addr = body.get("to")
     if not to_addr:
@@ -160,6 +164,7 @@ async def test_send(request: Request):
 
     status, code, error = "Success", "200", None
     try:
+        require_outbound_email()
         if provider == "sender_net":
             if not api_key:
                 raise RuntimeError("Sender.net API key not configured")
@@ -193,6 +198,9 @@ async def test_send(request: Request):
             server.sendmail(from_email, [to_addr], msg.as_string())
             server.quit()
             code = "250"
+    except OutboundEmailDisabled:
+        from utils.email_service import suppressed_email
+        return await suppressed_email(db)
     except smtplib.SMTPException as e:
         status, code, error = "Failed", str(getattr(e, "smtp_code", "")) or "SMTP", str(e)
     except Exception as e:
