@@ -210,7 +210,7 @@ def test_solver_form_cannot_bypass_duplicate_canonical_identity_using_storage_al
 def test_import_validation_rejects_existing_and_batch_formatted_phone_duplicates():
     headers = [c[0] for c in data_import.TEMPLATES["solver"]["columns"]]
     def row(phone, code):
-        values = {"Full Name": "Synthetic", "Phone Number": phone, "Solver ID": code, "Date of Onboarding": "01/01/2026"}
+        values = {"Full Name": "Synthetic", "Phone Number": phone, "Solver ID": code, "Date of Onboarding": "01/01/2026", "App Status": "Active"}
         return [values.get(h) for h in headers]
     results = run(data_import._validate_rows("solver", [row("0700000001", "code1"), row("0700000002", "code2"), row("+254700000002", "code3")], database([solver()])))
     assert [r["valid"] for r in results] == [False, True, False]

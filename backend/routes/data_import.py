@@ -72,7 +72,7 @@ TEMPLATES = {
             ("Phone Number",     "+254 format. Used for SMS & MPesa."),
             ("Email",            "Optional."),
             ("National ID",      ""),
-            ("Date of Onboarding","DD/MM/YYYY."),
+            ("Date of Onboarding","DD/MM/YYYY. Leave blank when unknown."),
             ("App Status",       "Active / Inactive / Suspended."),
             ("County",           "e.g. Nairobi."),
             ("Sub-County",       "e.g. Westlands."),
@@ -81,11 +81,13 @@ TEMPLATES = {
             ("Accuracy Rate (%)","0–100."),
             ("Average Client Rating","0–5.0."),
             ("Current Performance Tier","Tier 1 / Tier 2 / Tier 3."),
+            ("Region",           "Optional reference-directory region."),
+            ("Area Covered",     "Optional reference-directory coverage area."),
         ],
         "sample": [
             "SOL-NEW-001","Peter Otieno","+254711333444","peter@example.com",
             "30192837","10/01/2026","Active","Nairobi","Westlands",
-            "Saloon, SUV","42","92","4.7","Tier 1",
+            "Saloon, SUV","42","92","4.7","Tier 1",None,None,
         ],
         "valid_values": {
             "App Status": ["Active","Inactive","Suspended"],
@@ -227,7 +229,7 @@ async def _validate_rows(kind: str, rows: list, db) -> list:
 
     required = {
         "fte_employee": ["Full Name", "Job Title", "Department", "Job Level (L1–L5)", "Employment Start Date", "Work Email"],
-        "solver": ["Full Name", "Phone Number", "Date of Onboarding"],
+        "solver": ["Full Name", "Phone Number", "App Status"],
         "historical_performance": ["Employee ID", "Review Period", "Review Date", "Section A Score (1–3)", "Section B Score (1–3)"],
     }[kind]
     date_fields = {
@@ -422,10 +424,12 @@ async def execute_import(request: Request):
                     "lifecycle_state": (rec.get("App Status") or "Active"),
                     "county": rec.get("County"),
                     "sub_county": rec.get("Sub-County"),
+                    "region": rec.get("Region"),
+                    "area_covered": rec.get("Area Covered"),
                     "vehicle_categories": [v.strip() for v in str(rec.get("Vehicle Types Qualified For") or "").split(",") if v.strip()],
-                    "jobs_completed": int(rec.get("Completed Jobs Total") or 0),
-                    "accuracy_score": float(rec.get("Accuracy Rate (%)") or 0),
-                    "client_rating_average": float(rec.get("Average Client Rating") or 0),
+                    "jobs_completed": int(rec["Completed Jobs Total"]) if rec.get("Completed Jobs Total") is not None else None,
+                    "accuracy_score": float(rec["Accuracy Rate (%)"]) if rec.get("Accuracy Rate (%)") is not None else None,
+                    "client_rating_average": float(rec["Average Client Rating"]) if rec.get("Average Client Rating") is not None else None,
                     "performance_tier": rec.get("Current Performance Tier"),
                     "imported_at": now,
                     "imported_by": user["id"],
