@@ -387,6 +387,7 @@ export const getTourReport = () => api.get('/onboarding-tour/report');
 export default api;
 
 export const provisionEmployeeAccount = (data) => api.post('/access/users/employee-account', data);
+export const getEmployeeLoginReview = () => api.get('/access/employee-login-review');
 
 // Existing employee lifecycle checklists
 export const getLifecycleChecklists = () => api.get("/lifecycle/checklists");

@@ -1,5 +1,6 @@
 """Explicit, idempotent provisioning; existing passwords and roles are retained."""
 from datetime import datetime, timezone
+from collections import Counter
 
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
@@ -9,7 +10,70 @@ from utils.security import validate_password_policy
 from utils.employee_integrity import (
     employee_key, email_matches, find_employee, integrity_write,
     normalize_email, tenant_of, tenant_query,
+    resolve_user_employee,
 )
+
+
+async def employee_login_review(db, actor):
+    """Read-only rollout review. Reuse authentication's identity resolution.
+
+    Readiness is a linkage check, not a promise that MFA/password requirements
+    or deployment configuration have been completed. Never return credentials.
+    """
+    from utils.staff_directory import employment_type, visible_state
+
+    tenant = tenant_of(actor)
+    employees = await db.employees.find(tenant_query(tenant)).sort("full_name", 1).to_list(None)
+    users = await db.users.find(tenant_query(tenant)).to_list(None)
+    emails = Counter(str(e.get("work_email") or "").strip().lower() for e in employees)
+    identities = Counter(employee_key(e) for e in employees)
+    resolved, failures = {}, set()
+    for user in users:
+        try:
+            target = await resolve_user_employee(db, user)
+            if target:
+                resolved[str(user["_id"])] = str(target["_id"])
+        except HTTPException:
+            failures.add(str(user["_id"]))
+    result = []
+    for employee in employees:
+        kind = employment_type(employee.get("employment_type") or employee.get("employee_type"))
+        if kind not in ("Full_Time", None, ""):
+            continue
+        key = employee_key(employee)
+        aliases = {key, str(employee["_id"])}
+        email = str(employee.get("work_email") or "").strip().lower()
+        candidates = [u for u in users if (str(u.get("employee_id") or "") in aliases
+                      or (email and str(u.get("email") or "").strip().lower() == email))]
+        issues = []
+        if not kind: issues.append("Employment type needs HR confirmation")
+        if identities[key] > 1: issues.append("Employee identifier is duplicated")
+        if email and emails[email] > 1: issues.append("Work email is shared by employee records")
+        if employee.get("board_only") or not visible_state(employee):
+            issues.append("Employee status or visibility requires HR review before access")
+        try:
+            normalize_email(employee.get("work_email"))
+        except HTTPException:
+            issues.append("Valid work email required")
+        if not candidates:
+            issues.append("No login account found")
+        elif len(candidates) != 1:
+            issues.append("Multiple matching accounts require integrity review")
+        else:
+            user = candidates[0]
+            user_key = str(user["_id"])
+            if user_key in failures or resolved.get(user_key) != str(employee["_id"]):
+                issues.append("Account employee link requires integrity review")
+            if user.get("is_active") is False:
+                issues.append("Login account disabled")
+        user = candidates[0] if len(candidates) == 1 else None
+        result.append({"record_id": str(employee["_id"]), "employee_id": key, "full_name": employee.get("full_name"),
+                       "work_email": employee.get("work_email"), "department": employee.get("department"),
+                       "role": user.get("role") if user else None,
+                       "account_id": str(user["_id"]) if user else None,
+                       "must_change_password": bool(user.get("must_change_password")) if user else None,
+                       "status": "Needs review" if issues else "Linked", "issues": issues})
+    return result
 
 
 async def provision_employee_account(db, employee_id, password, actor):
@@ -17,6 +81,9 @@ async def provision_employee_account(db, employee_id, password, actor):
         employee = await find_employee(db, employee_id, tenant_of(actor))
         if not employee:
             raise HTTPException(404, "Employee not found")
+        from utils.staff_directory import visible_state
+        if employee.get("board_only") or not visible_state(employee):
+            raise HTTPException(409, "Employee status or visibility requires HR review before account provisioning.")
         tenant = tenant_of(employee)
         key = employee_key(employee)
         email = normalize_email(employee.get("work_email"))

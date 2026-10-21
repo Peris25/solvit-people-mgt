@@ -12,7 +12,7 @@ from utils.access_matrix import (
 import uuid
 from typing import Optional
 from pydantic import BaseModel, SecretStr
-from utils.employee_accounts import provision_employee_account
+from utils.employee_accounts import provision_employee_account, employee_login_review
 from utils.employee_access import find_linked_record
 
 router = APIRouter(prefix="/access", tags=["access"])
@@ -331,6 +331,14 @@ async def list_roles(request: Request):
 class EmployeeAccountRequest(BaseModel):
     employee_id: str
     initial_password: Optional[SecretStr] = None
+
+
+@router.get("/employee-login-review")
+async def review_employee_logins(request: Request):
+    actor = await get_current_user(request)
+    if actor.get("role") != "it_admin":
+        raise HTTPException(403, "IT Admin only")
+    return await employee_login_review(get_db(), actor)
 
 
 @router.post("/users/employee-account")

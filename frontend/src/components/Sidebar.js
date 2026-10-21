@@ -116,6 +116,8 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
           { path: '/my-tasks',    label: 'My Tasks',     Icon: ListChecks },
           { path: '/dashboard',   label: 'My Dashboard', Icon: LayoutDashboard },
           { path: '/my-profile', label: 'My Profile', Icon: Users },
+          { path: '/staff-directory', label: 'Staff Directory', Icon: Users },
+          { path: '/organogram', label: 'Organogram', Icon: Network },
           ...(['operations', 'accountmanagement'].includes(String(user?.department || '').toLowerCase().replace(/[^a-z]/g, '')) ? [{ path: '/solvers', label: 'Solver Directory', Icon: Zap }] : []),
           { path: '/documents', label: 'Documents', Icon: FileText },
           { path: '/benefits', label: 'Benefits & Payroll Info', Icon: FileText },
@@ -125,6 +127,11 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
           { path: '/lnd',         label: 'Development',  Icon: BookOpen },
           { path: '/recognition', label: 'Recognition',  Icon: Award },
           { path: '/policies',    label: 'Policies',     Icon: FileText },
+          { path: '/onboarding', label: 'My Onboarding', Icon: Rocket },
+          { path: '/projects', label: 'My Projects', Icon: Briefcase },
+          { path: '/forms', label: 'Forms', Icon: FileEdit },
+          { path: '/notifications', label: 'Notifications', Icon: Bell },
+          { path: '/account-security', label: 'Account Security', Icon: KeyRound },
         ]
       }];
     }

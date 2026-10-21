@@ -13,6 +13,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../services/api';
 import EmployeeAccountForm from '../components/EmployeeAccountForm';
+import EmployeeLoginReview from '../components/EmployeeLoginReview';
 import {
   Shield, Users as UsersIcon, RefreshCw, Plus, Trash2, X, Save, Undo2, KeyRound,
 } from 'lucide-react';
@@ -308,6 +309,7 @@ function UsersTable({ users, matrix, onChange, saving, onProvisioned }) {
         <div style={panelHint}>Changes take effect on the user's next request and are written to the audit log.</div>
       </div>
       <EmployeeAccountForm onSaved={onProvisioned} />
+      <EmployeeLoginReview />
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
         <thead><tr style={{ backgroundColor: '#FAFAFA' }}>
           {['Name', 'Email', 'Department', 'Current Role', 'Change To'].map(h => <th key={h} style={th}>{h}</th>)}
