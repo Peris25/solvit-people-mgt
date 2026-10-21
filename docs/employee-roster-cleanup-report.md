@@ -15,6 +15,7 @@ These are application-visible counts, not an unrestricted database census. No pr
 - Backup/audit failures prevent removal. Unexpected write failures retain the integrity lock for the existing controlled operator recovery procedure; no timeout-based lock clearing was added.
 - No roster was hardcoded into application logic. No employee was automatically created, reclassified, assigned a manager or given an invented start date.
 - Added an explicit HR "Existing employee" registration option: unknown start dates and role levels can remain unrecorded, no probation end is invented, and new-hire automation/welcome delivery is skipped. Ordinary new-hire creation still requires a valid start date. Existing login accounts are not created or changed as a side effect. Removal confirmation now uses an in-page dialog with error feedback rather than a native browser popup.
+- Employee forms reuse the Staff Directory's approved department configuration alongside configurable master options, retaining saved department values and respecting explicitly inactive master entries. This makes the documented Valuation and IT Support departments selectable without editing production master permissions or hardcoding another list.
 
 ## Validation
 

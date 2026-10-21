@@ -36,6 +36,7 @@ test('demo generation is unavailable even in development and removal requires co
 test('existing employee mode allows unknown start date and role level', async () => {
   api.getEmployees.mockResolvedValue({ data: [] });
   api.getAllMastersSettings.mockResolvedValue({ data: {} });
+  api.getStaffDirectory.mockResolvedValue({ data: { departments: [{ name: 'Valuation' }, { name: 'IT Support' }] } });
   await act(async () => root.render(<Employees />));
   await act(async () => container.querySelector('[data-testid="add-employee-btn"]').click());
   expect(container.querySelector('input[type="date"]').required).toBe(true);
@@ -43,6 +44,7 @@ test('existing employee mode allows unknown start date and role level', async ()
   expect(container.querySelector('input[type="date"]').required).toBe(false);
   expect(container.querySelector('input[type="date"]').value).toBe('');
   expect(container.querySelector('[data-testid="employee-role_level"]').value).toBe('');
+  expect([...container.querySelector('[data-testid="employee-department"]').options].map(o => o.value)).toEqual(expect.arrayContaining(['Valuation', 'IT Support']));
 });
 
 test.each([

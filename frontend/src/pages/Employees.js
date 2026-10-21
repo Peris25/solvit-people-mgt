@@ -71,11 +71,14 @@ export default function Employees() {
 
   useEffect(() => {
     let cancelled = false;
-    api.getAllMastersSettings().then(r => {
-      if (!cancelled) setDepartments((r.data?.workforce?.departments || [])
-        .filter(d => d.active !== false).map(d => d.name).filter(Boolean));
-    }).catch(() => {
-      if (!cancelled) setDepartmentError('Departments could not be loaded. The saved department has been preserved.');
+    Promise.allSettled([api.getAllMastersSettings(), api.getStaffDirectory()]).then(([master, directory]) => {
+      if (cancelled) return;
+      const configured = master.status === 'fulfilled' ? master.value?.data?.workforce?.departments || [] : [];
+      const inactive = new Set(configured.filter(d => d.active === false).map(d => d.name));
+      const approved = directory.status === 'fulfilled' ? directory.value?.data?.departments || [] : [];
+      setDepartments([...new Set([...configured.filter(d => d.active !== false), ...approved]
+        .map(d => d.name).filter(name => name && !inactive.has(name)))]);
+      if (master.status === 'rejected') setDepartmentError('Departments could not be loaded. The saved department has been preserved.');
     });
     return () => { cancelled = true; };
   }, []);
@@ -103,6 +106,7 @@ export default function Employees() {
     }
     try {
       const data = { ...form, current_salary_kes: form.current_salary_kes ? parseInt(form.current_salary_kes) : null };
+      if (!selected && form.existing_employee && !form.start_date) data.start_date = null;
       if (selected) {
         // Preserve legacy identity/reporting values unless explicitly edited.
         if (form.work_email === selected.work_email) delete data.work_email;
