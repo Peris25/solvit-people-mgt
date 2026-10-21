@@ -47,6 +47,18 @@ test('existing employee mode allows unknown start date and role level', async ()
   expect([...container.querySelector('[data-testid="employee-department"]').options].map(o => o.value)).toEqual(expect.arrayContaining(['Valuation', 'IT Support']));
 });
 
+test('structured API validation errors remain readable without crashing the employee form', async () => {
+  api.getEmployees.mockResolvedValue({ data: [{ id: 'example', full_name: 'Example Employee', line_manager_id: 'boss' }] });
+  api.getAllMastersSettings.mockResolvedValue({ data: {} });
+  api.updateEmployee.mockRejectedValue({ response: { data: { detail: [{ msg: 'A valid calendar date is required', input: 'private-value' }] } } });
+  await act(async () => root.render(<Employees />));
+  await act(async () => [...container.querySelectorAll('button')].find(b => b.textContent === 'Edit').click());
+  await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(container.textContent).toContain('A valid calendar date is required');
+  expect(container.textContent).not.toContain('private-value');
+  expect(container.querySelector('form')).not.toBeNull();
+});
+
 test.each([
   ['HR & People', false, false], ['HR_People', false, false],
   ['Retired Department', false, false], [undefined, false, false],

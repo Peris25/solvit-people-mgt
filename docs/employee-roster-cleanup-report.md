@@ -20,11 +20,12 @@ These are application-visible counts, not an unrestricted database census. No pr
 ## Validation
 
 - Backend: 1,182 passed, 321 skipped (existing integration/environment skips); five existing dependency/lifecycle warnings.
-- Frontend: 224 passed in 31 suites; strict production build passed.
+- Frontend: 225 passed in 31 suites; strict production build passed.
 - Fifteen new backend tests cover authorization, tenant isolation, name confirmation, canonical/storage account links, normalized-email links, reporting dependencies, self/protected records, retained history/recovery copies, backup failure, unknown dates and existing/new-hire notification behavior.
 - Frontend regression covers absence of demo generation even in development and confirmation before removal.
+- Structured API validation errors display only readable messages, without rendering error objects or echoing submitted private values. This fixes a pre-existing blank-page error discovered during production registration validation.
 - Python compilation and whitespace checks passed.
 
 ## Release and data work
 
-The backend must be deployed before the new Remove action can work. The nine confirmed production removals have not yet been executed. Expected reference count after all nine removals: 19 visible matching employees; reaching 21 requires resolving/adding the two absent reference entries without invented employment facts. Linked-account/reporting safeguards may block individual removals and require explicit review rather than automatic account deletion or manager reassignment.
+The removal release was deployed and the nine approved non-reference entries were verified absent. The Employee Database showed 19 matching non-Exited records and zero Exited records after cleanup. Existing account and history collections were not deleted or rewritten by this action. The user authorized adding the two missing reference employees, supplied one confirmed employment start date, and explicitly authorized a temporary date for the other pending HR correction. Registration and final count verification are pending renewed HR sign-in after the production session expired. The newest backend existing-employee registration support must be live to guarantee onboarding delivery is skipped.

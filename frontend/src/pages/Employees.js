@@ -10,6 +10,12 @@ const ROLE_LEVELS = ['L1', 'L2', 'L3', 'L4', 'L5', 'B1a', 'B1b'];
 
 const fmtKES = (n) => n ? `KES ${Number(n).toLocaleString('en-KE')}` : '—';
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
+const employeeError = (err, fallback) => {
+  const detail = err.response?.data?.detail;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) return detail.map(item => typeof item?.msg === 'string' ? item.msg : '').filter(Boolean).join('; ') || fallback;
+  return fallback;
+};
 
 export default function Employees() {
   const { user } = useAuth();
@@ -125,7 +131,7 @@ export default function Employees() {
       setForm({ full_name: '', work_email: '', department: '', role_title: '', role_level: 'L2', start_date: '', employment_type: 'Full_Time', current_salary_kes: '', lifecycle_state: 'Onboarding', line_manager_id: '' });
       loadEmployees();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to save');
+      setError(employeeError(err, 'Failed to save'));
     } finally { setSaving(false); }
   };
 
@@ -146,7 +152,7 @@ export default function Employees() {
       setPendingRemoval(null);
       await loadEmployees();
     } catch (err) {
-      setRemovalError(err.response?.data?.detail || 'Employee could not be removed');
+      setRemovalError(employeeError(err, 'Employee could not be removed'));
     } finally { setRemoving(false); }
   };
 
