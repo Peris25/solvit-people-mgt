@@ -5,6 +5,19 @@ import StatusBadge from '../components/StatusBadge';
 import * as api from '../services/api';
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
+const EDIT_FIELDS = [
+  ['full_name', 'Full name'], ['phone_number', 'Phone', 'tel'], ['email', 'Email', 'email'],
+  ['region', 'Region'], ['area_covered', 'Area covered'], ['payment_method', 'Payment method'],
+  ['national_id_number', 'National ID'], ['kra_pin', 'KRA PIN'], ['nssf_number', 'NSSF number'], ['sha_number', 'SHA number'],
+  ['bank_name', 'Bank name'], ['bank_account_number', 'Bank account number'], ['mpesa_number', 'MPesa number'],
+  ['driving_licence_type', 'Driving licence type'], ['driving_licence_number', 'Driving licence number'],
+  ['driving_licence_expiry', 'Driving licence expiry', 'date'], ['onboarded_at', 'Onboarding date', 'date'],
+  ['vehicle_categories', 'Vehicle categories (comma separated)', 'list'], ['zones_covered', 'Zones covered (comma separated)', 'list'],
+  ['jobs_completed', 'Completed jobs', 'number'], ['accuracy_score', 'Accuracy score', 'number'],
+  ['reliability_score', 'Reliability score', 'number'], ['timeliness_score', 'Timeliness score', 'number'],
+  ['client_rating_average', 'Recorded client rating', 'number'], ['performance_tier', 'Performance tier'], ['notes', 'Notes']
+];
+const editValue = (record, key, type) => type === 'list' ? (Array.isArray(record[key]) ? record[key].join(', ') : record[key] || '') : type === 'date' ? String(record[key] || '').slice(0, 10) : String(record[key] ?? (key === 'national_id_number' ? record.national_id : '') ?? '');
 
 export default function Solvers() {
   const { user } = useAuth();
@@ -26,10 +39,12 @@ export default function Solvers() {
   const [editingStatus, setEditingStatus] = useState(null);
   const [nextStatus, setNextStatus] = useState('');
   const [statusError, setStatusError] = useState('');
+  const [editValues, setEditValues] = useState({});
 
   const current = loadedFor === user?.id;
   const canEdit = current && stats?.can_manage === true;
-  const canEditStatus = canEdit && ['hr_admin', 'hr_manager'].includes(user?.role);
+  const canEditStatus = current && ['hr_admin', 'hr_manager'].includes(user?.role) &&
+    (stats?.can_edit_profile ?? stats?.can_manage ?? !stats?.directory_only);
 
 
   const loadSolvers = useCallback(async () => {
@@ -73,10 +88,19 @@ export default function Solvers() {
   const saveStatus = async event => {
     event.preventDefault();
     if (!canEditStatus || editingStatus?.accountId !== user?.id || saving) return;
-    if (nextStatus === editingStatus.lifecycle_state) { setEditingStatus(null); return; }
+    const changes = {};
+    if (nextStatus !== editingStatus.lifecycle_state) changes.lifecycle_state = nextStatus;
+    for (const [key, , type] of EDIT_FIELDS) {
+      if (editValues[key] !== editValue(editingStatus, key, type)) {
+        changes[key] = type === 'list' ? editValues[key].split(',').map(value => value.trim()).filter(Boolean) :
+          type === 'number' ? (editValues[key] === '' ? null : Number(editValues[key])) :
+          type === 'date' && editValues[key] === '' ? null : editValues[key];
+      }
+    }
+    if (!Object.keys(changes).length) { setEditingStatus(null); return; }
     setSaving(true); setStatusError('');
     try {
-      await api.updateSolver(editingStatus.id, { lifecycle_state: nextStatus });
+      await api.updateSolver(editingStatus.id, changes);
       setEditingStatus(null);
       await loadSolvers();
     } catch (e) {
@@ -140,7 +164,10 @@ export default function Solvers() {
             <tbody>
               {(current ? solvers : []).map((s, i) => (
                 <tr key={s.id} data-testid={`solver-row-${s.id}`} style={{ borderBottom: '1px solid rgba(25,25,25,0.05)', backgroundColor: i % 2 === 0 ? '#fff' : '#FAFAFA' }}>
-                  <td style={{ padding: '10px 14px', fontWeight: 700, color: '#191919' }}>{s.full_name}</td>
+                  <td style={{ padding: '10px 14px', fontWeight: 700, color: '#191919' }}>
+                    {s.full_name}
+                    {canEditStatus && <button data-testid={`edit-solver-${s.id}`} onClick={() => { setEditingStatus({ ...s, accountId: user?.id }); setNextStatus(s.lifecycle_state); setEditValues(Object.fromEntries(EDIT_FIELDS.map(([key, , type]) => [key, editValue(s, key, type)]))); setStatusError(''); }} style={{ display: 'block', marginTop: 6, padding: '4px 10px', fontSize: 11, border: '1px solid #FF353F', color: '#FF353F', backgroundColor: 'transparent', cursor: 'pointer', fontWeight: 700 }}>Edit</button>}
+                  </td>
                   <td style={{ padding: '10px 14px', color: '#525252' }}>{s.phone_number}</td>
                   <td style={{ padding: '10px 14px' }}>{[s.region, s.area_covered].filter(Boolean).join(' / ') || 'Not recorded'}</td>
                   <td style={{ padding: '10px 14px', color: '#525252', fontSize: '10px' }}>{(s.zones_covered || []).slice(0, 2).join(', ')}{(s.zones_covered || []).length > 2 ? ` +${s.zones_covered.length - 2}` : ''}</td>
@@ -155,7 +182,6 @@ export default function Solvers() {
                   <td style={{ padding: '10px 14px' }}>
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button data-testid={`view-solver-${s.id}`} onClick={() => setViewSolver(s)} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid rgba(25,25,25,0.2)', color: '#191919', backgroundColor: 'transparent', cursor: 'pointer', fontFamily: 'Barlow', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>View</button>
-                      {canEditStatus && <button data-testid={`edit-solver-${s.id}`} onClick={() => { setEditingStatus({ ...s, accountId: user?.id }); setNextStatus(s.lifecycle_state); setStatusError(''); }} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontWeight: 700 }}>Edit</button>}
                       {canEdit && s.lifecycle_state === 'Registering' && (
                         <button onClick={async () => { try { await api.activateSolver(s.id); loadSolvers(); } catch (e) { setError(typeof e.response?.data?.detail === 'string' ? e.response.data.detail : 'Activation could not be completed.'); } }} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #22C55E', backgroundColor: 'transparent', color: '#22C55E', cursor: 'pointer', fontFamily: 'Barlow', fontWeight: 700 }}>Activate</button>
                       )}
@@ -171,20 +197,29 @@ export default function Solvers() {
 
       {canEditStatus && editingStatus?.accountId === user?.id && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 24 }}>
-          <section role="dialog" aria-modal="true" aria-labelledby="solver-status-title" style={{ backgroundColor: '#fff', width: 440, maxWidth: '100%', padding: 24 }}>
-            <h3 id="solver-status-title">Edit Solver status</h3>
+          <section role="dialog" aria-modal="true" aria-labelledby="solver-status-title" style={{ backgroundColor: '#fff', width: 700, maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', padding: 24 }}>
+            <h3 id="solver-status-title">Edit Solver</h3>
             <p>{editingStatus.full_name}</p>
             <form onSubmit={saveStatus}>
               <label htmlFor="solver-status">Status</label>
               <select id="solver-status" value={nextStatus} disabled={saving} onChange={event => setNextStatus(event.target.value)} style={{ display: 'block', width: '100%', padding: 10, margin: '8px 0' }}>
                 {!['Registering', 'Active', 'Suspended', 'Inactive', 'Deactivated'].includes(editingStatus.lifecycle_state) && <option value={editingStatus.lifecycle_state}>{editingStatus.lifecycle_state}</option>}
-                {['Registering', 'Active', 'Suspended', 'Inactive', 'Deactivated'].map(state => <option key={state} value={state} disabled={state === 'Active' && editingStatus.lifecycle_state !== 'Active'}>{state}</option>)}
+                {['Registering', 'Active', 'Suspended', 'Inactive', 'Deactivated'].map(state => <option key={state} value={state}>{state}</option>)}
               </select>
-              <p style={{ fontSize: 12 }}>Activation requires the verified activation workflow. Reactivation remains subject to HR policy confirmation. Status changes preserve the Solver record and history.</p>
+              <p style={{ fontSize: 12 }}>HR can edit this record and change its status directly. Changes are audited; no external or legacy verification is required.</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                {EDIT_FIELDS.map(([key, label, type]) => <label key={key} htmlFor={`solver-edit-${key}`} style={{ fontSize: 12 }}>{label}
+                  <input id={`solver-edit-${key}`} type={['number', 'date', 'email', 'tel'].includes(type) ? type : 'text'}
+                    required={key === 'full_name' || key === 'phone_number'} disabled={saving} value={editValues[key] || ''}
+                    min={type === 'number' ? 0 : undefined} max={type === 'number' && key !== 'jobs_completed' ? 100 : undefined}
+                    step={key === 'jobs_completed' ? 1 : 'any'} onChange={event => setEditValues(values => ({ ...values, [key]: event.target.value }))}
+                    style={{ display: 'block', width: '100%', padding: 8, marginTop: 4, boxSizing: 'border-box', border: '1px solid #ccc' }} />
+                </label>)}
+              </div>
               {statusError && <p role="alert">{statusError}</p>}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
                 <button type="button" disabled={saving} onClick={() => setEditingStatus(null)}>Cancel</button>
-                <button type="submit" disabled={saving} style={{ backgroundColor: '#FF353F', color: '#fff', border: 'none', padding: '10px 20px' }}>{saving ? 'Saving...' : 'Save status'}</button>
+                <button type="submit" disabled={saving} style={{ backgroundColor: '#FF353F', color: '#fff', border: 'none', padding: '10px 20px' }}>{saving ? 'Saving...' : 'Save Solver'}</button>
               </div>
             </form>
           </section>

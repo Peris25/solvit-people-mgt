@@ -111,7 +111,7 @@ test('saving unchanged status does not write a record', async () => {
   expect(api.updateSolver).not.toHaveBeenCalled();
 });
 
-test('status errors remain visible and reactivation cannot bypass verification', async () => {
+test('edit errors remain visible and HR can select Active without legacy verification', async () => {
   await statusFixture();
   api.updateSolver.mockRejectedValue({ response: { data: { detail: 'Status update denied' } } });
   await act(async () => container.querySelector('[data-testid="edit-solver-one"]').click());
@@ -123,5 +123,22 @@ test('status errors remain visible and reactivation cannot bypass verification',
   await act(async () => Array.from(container.querySelectorAll('button')).find(b => b.textContent === 'Cancel').click());
   await change(container.querySelector('[data-testid="search-solvers"]'), 'Synthetic');
   await act(async () => container.querySelector('[data-testid="edit-solver-one"]').click());
-  expect(container.querySelector('#solver-status option[value="Active"]').disabled).toBe(true);
+  expect(container.querySelector('#solver-status option[value="Active"]').disabled).toBe(false);
+});
+
+test('HR Edit is beside the name and supports profile changes without resubmitting unchanged fields', async () => {
+  await statusFixture(); api.updateSolver.mockResolvedValue({ data: {} });
+  const button = container.querySelector('[data-testid="edit-solver-one"]');
+  expect(button.closest('td').textContent).toContain('Synthetic Solver');
+  await act(async () => button.click());
+  await change(container.querySelector('#solver-edit-region'), 'Coast');
+  await act(async () => container.querySelector('[role="dialog"] form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(api.updateSolver).toHaveBeenCalledWith('one', { region: 'Coast' });
+});
+
+test('HR Edit remains visible with older server capability responses', async () => {
+  api.getSolverStats.mockResolvedValue({ data: { total: 1 } });
+  api.getSolvers.mockResolvedValue({ data: [{ id: 'one', full_name: 'Synthetic', lifecycle_state: 'Active' }] });
+  await render();
+  expect(container.querySelector('[data-testid="edit-solver-one"]')).not.toBeNull();
 });

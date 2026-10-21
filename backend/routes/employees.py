@@ -10,6 +10,7 @@ from copy import deepcopy
 from pymongo.errors import DuplicateKeyError
 from utils.employee_access import authorize_employee, scoped_employee_query
 from utils.access_matrix import get_module_access
+from utils.employee_accounts import preserve_employee_account_link
 from utils.employee_integrity import (
     employee_key, find_employee, resolve_user_employee, normalize_email,
     ensure_unique_employee, validate_manager, integrity_write, insert_employee, email_matches, is_direct_report, user_employee_aliases,
@@ -51,6 +52,7 @@ class EmployeeCreate(BaseModel):
 
 
 class EmployeeUpdate(BaseModel):
+    start_date: Optional[str] = None
     work_email: Optional[str] = None
     full_name: Optional[str] = None
     preferred_name: Optional[str] = None
@@ -604,7 +606,7 @@ async def update_employee(employee_id: str, upd: EmployeeUpdate, request: Reques
                 raise HTTPException(403, "Access denied")
             if upd.model_fields_set & {"line_manager_id", "work_email", "is_md", "reports_to_md", "reports_to_finance_ops"}:
                 raise HTTPException(403, "HR must change identity or reporting relationships.")
-            protected = {"role_title", "role_level", "department", "employment_type", "lifecycle_state", "profile_photo_url",
+            protected = {"role_title", "role_level", "department", "employment_type", "start_date", "lifecycle_state", "profile_photo_url",
                          "current_salary_kes", "national_id_number", "kra_pin", "nssf_number", "sha_number"}
             proposed = upd.model_dump(exclude_unset=True, exclude_none=True)
             if any(field in proposed and proposed[field] != current.get(field) for field in protected):
@@ -617,14 +619,8 @@ async def update_employee(employee_id: str, upd: EmployeeUpdate, request: Reques
                 email = normalize_email(upd.work_email)
                 old_email = str(current.get("work_email") or "").strip().lower()
                 await ensure_unique_employee(db, email, tenant_of(user), exclude_id=current["_id"])
-                aliases = [employee_key(current), str(current["_id"])]
                 if email != old_email:
-                    owners = await email_matches(db.users, "email", old_email)
-                    if any(tenant_of(owner) != tenant_of(user) or owner.get("employee_id") not in aliases for owner in owners):
-                        raise HTTPException(409, "Review the legacy account link before changing employee email.")
-                    candidates = await email_matches(db.users, "email", email)
-                    if any(tenant_of(owner) != tenant_of(user) or owner.get("employee_id") not in aliases for owner in candidates):
-                        raise HTTPException(409, "Email belongs to a different login account.")
+                    await preserve_employee_account_link(db, current, email, user)
                 # Linked account login email, password and sessions remain unchanged.
                 update_data.update(work_email=email, work_email_normalized=email)
         if "line_manager_id" in upd.model_fields_set:

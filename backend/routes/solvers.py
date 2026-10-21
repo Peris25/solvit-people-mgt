@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime, timezone
 from bson import ObjectId
@@ -52,17 +52,25 @@ class SolverUpdate(BaseModel):
     area_covered: Optional[str] = None
     national_id_number: Optional[str] = None
     kra_pin: Optional[str] = None
+    nssf_number: Optional[str] = None
+    sha_number: Optional[str] = None
     bank_name: Optional[str] = None
     bank_account_number: Optional[str] = None
     mpesa_number: Optional[str] = None
     payment_method: Optional[str] = None
+    driving_licence_type: Optional[str] = None
+    driving_licence_number: Optional[str] = None
+    driving_licence_expiry: Optional[str] = None
+    onboarded_at: Optional[str] = None
+    notes: Optional[str] = None
+    jobs_completed: Optional[int] = Field(default=None, ge=0)
     vehicle_categories: Optional[List[str]] = None
     zones_covered: Optional[List[str]] = None
     lifecycle_state: Optional[str] = None
-    accuracy_score: Optional[float] = None
-    reliability_score: Optional[float] = None
-    timeliness_score: Optional[float] = None
-    client_rating_average: Optional[float] = None
+    accuracy_score: Optional[float] = Field(default=None, ge=0, le=100, allow_inf_nan=False)
+    reliability_score: Optional[float] = Field(default=None, ge=0, le=100, allow_inf_nan=False)
+    timeliness_score: Optional[float] = Field(default=None, ge=0, le=100, allow_inf_nan=False)
+    client_rating_average: Optional[float] = Field(default=None, ge=0, le=100, allow_inf_nan=False)
     performance_tier: Optional[str] = None
 
 
@@ -137,6 +145,7 @@ async def get_solver_stats(request: Request):
         stats[state] = stats.get(state, 0) + 1
     return {"by_state": stats, "total": sum(stats.values()), "active": stats.get("Active", 0),
             "can_manage": entry.get("level") in ("Full", "Manage") and entry.get("scope") not in ("own_record", "aggregate", "directory_only"),
+            "can_edit_profile": user.get("role") in HR_ROLES and entry.get("level") in ("Full", "Manage") and entry.get("scope") is None,
             "directory_only": entry.get("scope") == "directory_only"}
 
 
@@ -188,7 +197,7 @@ async def get_solver(solver_id: str, request: Request):
 async def update_solver(solver_id: str, upd: SolverUpdate, request: Request):
     user = await get_current_user(request)
     db = get_db()
-    supplied = upd.model_dump(exclude_none=True)
+    supplied = upd.model_dump(exclude_unset=True)
     await solver_access(db, user, write=True)
     manager_fields(user, supplied)
     if "lifecycle_state" in supplied and supplied["lifecycle_state"] not in SOLVER_STATES:
@@ -196,17 +205,34 @@ async def update_solver(solver_id: str, upd: SolverUpdate, request: Request):
     async with integrity_write(db):
         original = await authorize_solver(db, user, solver_id, write=True)
         readonly_scores = {'accuracy_score','reliability_score','timeliness_score','client_rating_average','performance_tier'}
-        if any(key in supplied and supplied[key] != original.get(key) for key in readonly_scores):
+        hr_edit = user.get('role') in HR_ROLES
+        if not hr_edit and any(key in supplied and supplied[key] != original.get(key) for key in readonly_scores):
             raise HTTPException(409, "Job-derived scores are read-only; use the audited rating workflow")
-        if supplied.get('lifecycle_state') == 'Active' and original.get('lifecycle_state') != 'Active':
+        if not hr_edit and supplied.get('lifecycle_state') == 'Active' and original.get('lifecycle_state') != 'Active':
             raise HTTPException(409, "Use the verified activation action")
         update_data = await solver_identity_write(db, supplied, user, original)
+        if hr_edit and 'national_id_number' in supplied and 'national_id' in original:
+            update_data['national_id'] = supplied['national_id_number']
         update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        hr_status_change = hr_edit and 'lifecycle_state' in supplied
+        if hr_status_change:
+            # This explicit HR decision supersedes conflicting historical state
+            # labels; it does not manufacture induction evidence or dates.
+            if 'status' in original:
+                update_data['status'] = supplied['lifecycle_state']
+            update_data['activation_publication_state'] = 'PendingAudit'
+            update_data['hr_status_decision'] = {'actor_id': user['id'], 'at': update_data['updated_at'],
+                                                'previous_state': workflow.view(original)['lifecycle_state'],
+                                                'state': supplied['lifecycle_state']}
         result = await db.solvers.find_one_and_update(
             {"$and": [tenant_query(tenant_of(user)), {"_id": original["_id"]}]},
             {"$set": update_data}, return_document=True)
         if result:
             await audit_solver(db, user, "solver.updated", [result], update_data)
+            if hr_status_change:
+                result = await db.solvers.find_one_and_update(
+                    {'$and': [tenant_query(tenant_of(user)), {'_id': original['_id']}]},
+                    {'$set': {'activation_publication_state': 'Ready'}}, return_document=True)
     if not result:
         raise HTTPException(404, "Solver not found")
     # Email the solver if a meaningful status/tier transition just happened

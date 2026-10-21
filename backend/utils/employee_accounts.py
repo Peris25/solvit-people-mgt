@@ -140,3 +140,33 @@ async def provision_employee_account(db, employee_id, password, actor):
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
         return {"id": user_id, "employee_id": key, "created": created}
+
+
+async def preserve_employee_account_link(db, employee, new_email, actor):
+    """Keep an already-authorized login attached during an explicit HR edit.
+
+    The caller holds integrity_write. Resolve locally using the same rules as
+    authentication; no external system or manual legacy verification is used.
+    Login email, password, role and account activation remain unchanged.
+    """
+    tenant = tenant_of(employee)
+    old_email = str(employee.get('work_email') or '').strip().lower()
+    candidates = await email_matches(db.users, 'email', old_email) if old_email else []
+    candidates += await email_matches(db.users, 'email', new_email)
+    accounts = {str(user['_id']): user for user in candidates}
+    pending = []
+    for user in accounts.values():
+        if tenant_of(user) != tenant:
+            raise HTTPException(409, 'Email belongs to a different login account.')
+        linked = await resolve_user_employee(db, user)
+        if not linked or linked['_id'] != employee['_id']:
+            raise HTTPException(409, 'Email belongs to a different or conflicting employee account.')
+        if user.get('employee_id') != employee_key(employee):
+            pending.append(user)
+    for user in pending:
+        await db.users.update_one({'_id': user['_id']}, {'$set': {
+            'employee_id': employee_key(employee), 'account_type': 'employee', 'tenant_id': tenant}})
+        await db.audit_logs.insert_one({'tenant_id': tenant, 'event': 'account.employee.link_normalized',
+                                       'actor_id': actor['id'], 'entity_id': str(user['_id']),
+                                       'metadata': {'employee_id': employee_key(employee)},
+                                       'timestamp': datetime.now(timezone.utc).isoformat()})

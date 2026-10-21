@@ -136,6 +136,10 @@ def test_failed_quiz_foreign_evidence_and_wrong_category_cannot_satisfy_gates():
 
 def test_activation_cannot_be_forged_through_generic_update_or_task_completion():
     db, user, _ = fixture()
+    # HR now has an explicit administrative edit path. A manager still cannot
+    # bypass the evidence workflow or alter protected scores through this API.
+    db.employees.docs.append(employee('manager', role_title='Solvers Manager'))
+    user = actor('line_manager', employee_id='manager')
     with routes(db, user):
         with pytest.raises(HTTPException): run(solvers.update_solver('one', solvers.SolverUpdate(lifecycle_state='Active'), request()))
         with pytest.raises(HTTPException): run(solvers.update_solver('one', solvers.SolverUpdate(accuracy_score=100), request()))
