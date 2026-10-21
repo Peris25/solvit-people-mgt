@@ -26,8 +26,6 @@ export default function Employees() {
   const [form, setForm] = useState({ full_name: '', work_email: '', department: '', role_title: '', role_level: 'L2', start_date: '', employment_type: 'Full_Time', current_salary_kes: '', lifecycle_state: 'Onboarding', line_manager_id: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [seeding, setSeeding] = useState(false);
-  const [seedMsg, setSeedMsg] = useState('');
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [showBulkTraining, setShowBulkTraining] = useState(false);
   const [bulkTraining, setBulkTraining] = useState({ training_name: '', provider: 'Internal', delivery_method: 'Internal', cost_kes: '', duration_days: 1, business_justification: '' });
@@ -67,24 +65,6 @@ export default function Employees() {
   };
 
   const canEdit = ['hr_admin', 'hr_manager'].includes(user?.role);
-
-  const handleSeedDemo = async () => {
-    setSeeding(true); setSeedMsg('');
-    try {
-      const res = await api.seedDemoEmployees();
-      const r = res.data;
-      if (r) {
-        setSeedMsg(`✓ ${r.inserted || 0} demo employees added across all 9 lifecycle states`);
-        await loadEmployees();
-      }
-    } catch (err) {
-      setSeedMsg(`✗ ${err.response?.data?.detail || err.message}`);
-    } finally {
-      setSeeding(false);
-      setTimeout(() => setSeedMsg(''), 6000);
-    }
-  };
-
 
   useEffect(() => {
     let cancelled = false;
@@ -151,6 +131,17 @@ export default function Employees() {
     }
   };
 
+  const handleRemove = async (emp) => {
+    if (!window.confirm(`Remove ${emp.full_name} from the employee roster? This has no in-app undo. Accounts and historical records will not be deleted. Linked accounts or direct reports must be reviewed first.`)) return;
+    try {
+      await api.removeEmployee(emp.id, emp.full_name);
+      setSelectedIds(prev => { const next = new Set(prev); next.delete(emp.id); return next; });
+      await loadEmployees();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Employee could not be removed');
+    }
+  };
+
   const openEdit = (emp) => {
     setSelected(emp);
     setForm({ ...emp, role_level: emp.role_level ?? emp.job_level ?? '',
@@ -168,11 +159,6 @@ export default function Employees() {
         </div>
         {canEdit && (
           <div style={{ display: 'flex', gap: '8px' }}>
-            {process.env.NODE_ENV === 'development' && user?.role === 'hr_admin' && (
-              <button data-testid="seed-demo-employees-btn" onClick={handleSeedDemo} disabled={seeding} style={{ padding: '10px 18px', backgroundColor: 'transparent', color: '#191919', border: '1px solid #191919', cursor: seeding ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial', opacity: seeding ? 0.6 : 1 }}>
-                {seeding ? 'Generating...' : '⚡ Generate Demo Employees'}
-              </button>
-            )}
             <button data-testid="export-employees-csv" onClick={() => api.downloadCSV('employees')} style={{ padding: '10px 18px', backgroundColor: 'transparent', color: '#191919', border: '1px solid #191919', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>↓ CSV</button>
             <button data-testid="add-employee-btn" onClick={() => { setSelected(null); setShowForm(true); }} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>
               + Add Employee
@@ -180,7 +166,6 @@ export default function Employees() {
           </div>
         )}
       </div>
-      {seedMsg && <div data-testid="seed-msg" style={{ padding: '8px 14px', backgroundColor: seedMsg.startsWith('✓') ? '#DCFCE7' : '#FEE2E2', color: seedMsg.startsWith('✓') ? '#166534' : '#991B1B', fontSize: '12px', fontWeight: 700, marginBottom: '12px' }}>{seedMsg}</div>}
 
       {/* Bulk action bar */}
       {selectedIds.size > 0 && canEdit && (
@@ -248,6 +233,9 @@ export default function Employees() {
                       {canEdit && (
                         <>
                           <button onClick={(ev) => { ev.stopPropagation(); openEdit(emp); }} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700, transition: 'all 0.15s' }}>Edit</button>
+                          {user?.role === 'hr_admin' && (
+                            <button onClick={() => handleRemove(emp)} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #DC2626', backgroundColor: 'transparent', color: '#DC2626', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>Remove</button>
+                          )}
                           {emp.lifecycle_state === 'Onboarding' && (
                             <button onClick={(ev) => { ev.stopPropagation(); handleTransition(emp.id, 'Probation'); }} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #3B82F6', backgroundColor: 'transparent', color: '#3B82F6', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>→ Probation</button>
                           )}

@@ -4,13 +4,33 @@ import Employees from './Employees';
 import * as api from '../services/api';
 
 jest.mock('../services/api');
-jest.mock('../context/AuthContext', () => ({ useAuth: () => ({ user: { role: 'hr_manager' } }) }));
+jest.mock('../context/AuthContext', () => ({ useAuth: () => ({ user: { role: 'hr_admin' } }) }));
 jest.mock('react-router-dom', () => ({ useNavigate: () => jest.fn() }));
 jest.mock('../components/EmployeePicker', () => () => <div />);
 global.IS_REACT_ACT_ENVIRONMENT = true;
 let container, root;
 beforeEach(() => { container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container); });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); jest.clearAllMocks(); });
+
+test('demo generation is unavailable even in development and removal requires confirmation', async () => {
+  api.getEmployees.mockResolvedValue({ data: [{ id: 'extra', full_name: 'Example Employee' }] });
+  api.getAllMastersSettings.mockResolvedValue({ data: {} });
+  const environment = process.env.NODE_ENV;
+  try {
+    process.env.NODE_ENV = 'development';
+    await act(async () => root.render(<Employees />));
+  } finally { process.env.NODE_ENV = environment; }
+  expect(container.textContent).not.toMatch(/generate demo employees/i);
+  const confirmation = jest.spyOn(window, 'confirm').mockReturnValue(false);
+  const button = [...container.querySelectorAll('button')].find(b => b.textContent === 'Remove');
+  await act(async () => button.click());
+  expect(api.removeEmployee).not.toHaveBeenCalled();
+  confirmation.mockReturnValue(true);
+  api.removeEmployee.mockResolvedValue({ data: { status: 'removed' } });
+  await act(async () => button.click());
+  expect(api.removeEmployee).toHaveBeenCalledWith('extra', 'Example Employee');
+  confirmation.mockRestore();
+});
 
 test.each([
   ['HR & People', false, false], ['HR_People', false, false],
@@ -27,6 +47,7 @@ test.each([
   if (loadFailure) api.getAllMastersSettings.mockRejectedValue(new Error('Unavailable'));
   api.updateEmployee.mockResolvedValue({ data: {} });
   await act(async () => root.render(<Employees />));
+  expect(container.textContent).not.toMatch(/generate demo employees/i);
   const edit = [...container.querySelectorAll('button')].find(b => b.textContent === 'Edit');
   await act(async () => edit.click());
   const select = container.querySelector('[data-testid="employee-department"]');

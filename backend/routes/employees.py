@@ -162,6 +162,52 @@ async def seed_demo_employees_endpoint(request: Request):
     return {"status": "success", "inserted": inserted, "message": f"{inserted} demo employees added covering all lifecycle states"}
 
 
+@router.delete("/{employee_id}")
+async def remove_employee(employee_id: str, request: Request):
+    """Remove an erroneous roster entry without deleting accounts or history.
+
+    Keep a restricted recovery copy before removal. Live account links and
+    reporting dependencies must be resolved explicitly rather than orphaned.
+    """
+    user = await get_current_user(request)
+    if user.get("role") != "hr_admin":
+        raise HTTPException(403, "Only HR Admin can remove employee records")
+    body = await request.json()
+    db = get_db()
+    tenant = tenant_of(user)
+    async with integrity_write(db):
+        employee = await find_employee(db, employee_id, tenant)
+        if not employee:
+            raise HTTPException(404, "Employee not found")
+        if not isinstance(body, dict) or body.get("confirm_name") != employee.get("full_name"):
+            raise HTTPException(422, "Confirm the employee's exact name before removal")
+        aliases = [employee_key(employee), str(employee["_id"]), employee["_id"]]
+        if user.get("employee_id") in aliases or employee.get("is_board_chair") or employee.get("board_only"):
+            raise HTTPException(409, "This protected employee record cannot be removed")
+        owners = await db.users.find_one({"$and": [tenant_query(tenant), {"employee_id": {"$in": aliases}}]})
+        email = str(employee.get("work_email") or "").strip().lower()
+        if owners or (email and await email_matches(db.users, "email", email, tenant)):
+            raise HTTPException(409, "Employee has a linked login account; review the account before removal")
+        report = await db.employees.find_one({"$and": [tenant_query(tenant), {
+            "line_manager_id": {"$in": aliases}, "_id": {"$ne": employee["_id"]},
+        }]})
+        if report:
+            raise HTTPException(409, "Reassign all direct reports before removing this employee")
+        removal_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        await db.removed_employee_records.insert_one({
+            "id": removal_id, "tenant_id": tenant, "employee_id": employee_key(employee),
+            "record": deepcopy(employee), "removed_by": user["id"], "removed_at": now,
+        })
+        await db.audit_logs.insert_one({
+            "id": str(uuid.uuid4()), "tenant_id": tenant, "action": "employee.removed",
+            "entity": employee_key(employee), "performed_by": user["id"],
+            "metadata": {"recovery_id": removal_id}, "timestamp": now,
+        })
+        await db.employees.delete_one({"_id": employee["_id"]})
+    return {"status": "removed", "employee_id": employee_key(employee)}
+
+
 async def _my_employee_id(db, user) -> Optional[str]:
     """Resolve the calling user's own employees.id from their work email.
     Returns None if the user has no matching employee record (system role)."""

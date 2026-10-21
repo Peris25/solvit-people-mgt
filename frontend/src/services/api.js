@@ -121,10 +121,10 @@ export const getProfileChanges = (id) => api.get(`/employees/${id}/profile-chang
 export const reviewProfileChange = (id, decision, reason) => api.put(`/employees/profile-changes/${id}/decision`, { decision, reason });
 export const createEmployee = (data) => api.post('/employees', data);
 export const updateEmployee = (id, data) => api.put(`/employees/${id}`, data);
+export const removeEmployee = (id, confirm_name) => api.delete(`/employees/${id}`, { data: { confirm_name } });
 export const transitionEmployee = (id, lifecycle_state) => api.post(`/employees/${id}/transition`, { lifecycle_state });
 export const getKanban = () => api.get('/employees/kanban');
 export const getEmployeeStats = () => api.get('/employees/stats');
-export const seedDemoEmployees = () => api.post('/employees/seed-demo');
 
 // Solvers
 export const getSolvers = (params) => api.get('/solvers', { params });
