@@ -30,6 +30,9 @@ export default function Employees() {
   const [showBulkTraining, setShowBulkTraining] = useState(false);
   const [bulkTraining, setBulkTraining] = useState({ training_name: '', provider: 'Internal', delivery_method: 'Internal', cost_kes: '', duration_days: 1, business_justification: '' });
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [pendingRemoval, setPendingRemoval] = useState(null);
+  const [removing, setRemoving] = useState(false);
+  const [removalError, setRemovalError] = useState('');
 
   const toggleSelect = (id) => setSelectedIds(prev => {
     const next = new Set(prev);
@@ -132,14 +135,15 @@ export default function Employees() {
   };
 
   const handleRemove = async (emp) => {
-    if (!window.confirm(`Remove ${emp.full_name} from the employee roster? This has no in-app undo. Accounts and historical records will not be deleted. Linked accounts or direct reports must be reviewed first.`)) return;
+    setRemoving(true); setRemovalError('');
     try {
       await api.removeEmployee(emp.id, emp.full_name);
       setSelectedIds(prev => { const next = new Set(prev); next.delete(emp.id); return next; });
+      setPendingRemoval(null);
       await loadEmployees();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Employee could not be removed');
-    }
+      setRemovalError(err.response?.data?.detail || 'Employee could not be removed');
+    } finally { setRemoving(false); }
   };
 
   const openEdit = (emp) => {
@@ -234,7 +238,7 @@ export default function Employees() {
                         <>
                           <button onClick={(ev) => { ev.stopPropagation(); openEdit(emp); }} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700, transition: 'all 0.15s' }}>Edit</button>
                           {user?.role === 'hr_admin' && (
-                            <button onClick={() => handleRemove(emp)} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #DC2626', backgroundColor: 'transparent', color: '#DC2626', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>Remove</button>
+                            <button onClick={() => { setPendingRemoval(emp); setRemovalError(''); }} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #DC2626', backgroundColor: 'transparent', color: '#DC2626', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>Remove</button>
                           )}
                           {emp.lifecycle_state === 'Onboarding' && (
                             <button onClick={(ev) => { ev.stopPropagation(); handleTransition(emp.id, 'Probation'); }} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #3B82F6', backgroundColor: 'transparent', color: '#3B82F6', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>→ Probation</button>
@@ -259,6 +263,15 @@ export default function Employees() {
         )}
       </div>
 
+      {pendingRemoval && <div role="dialog" aria-modal="true" aria-labelledby="remove-employee-title" style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+        <div style={{ backgroundColor: '#fff', padding: '24px', maxWidth: '480px', width: '100%' }}>
+          <h3 id="remove-employee-title">Remove {pendingRemoval.full_name}?</h3>
+          <p>This removes the employee from the roster and has no in-app undo. Accounts and historical records will not be deleted. Linked accounts and direct reports must be reviewed first.</p>
+          {removalError && <p role="alert" style={{ color: '#DC2626' }}>{removalError}</p>}
+          <button disabled={removing} onClick={() => setPendingRemoval(null)}>Cancel</button>{' '}
+          <button disabled={removing} onClick={() => handleRemove(pendingRemoval)} style={{ backgroundColor: '#DC2626', color: '#fff', padding: '8px 16px', border: 0 }}>{removing ? 'Removing...' : 'Remove employee'}</button>
+        </div>
+      </div>}
       {/* Add/Edit Modal */}
       {showForm && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
@@ -268,12 +281,15 @@ export default function Employees() {
               <button onClick={() => setShowForm(false)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#525252' }}>×</button>
             </div>
             <form onSubmit={saveEmployee} style={{ padding: '24px' }}>
+              {!selected && <label style={{ display: 'block', marginBottom: '16px', fontSize: '13px' }}>
+                <input type="checkbox" checked={!!form.existing_employee} onChange={e => setForm(p => ({ ...p, existing_employee: e.target.checked, role_level: e.target.checked ? '' : p.role_level }))} /> Existing employee — record missing details later; do not send onboarding notifications
+              </label>}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 {[
                   { key: 'full_name', label: 'Full Name', type: 'text', required: true },
                   { key: 'work_email', label: 'Work Email', type: 'email', required: true },
                   { key: 'role_title', label: 'Role Title', type: 'text', required: true },
-                  { key: 'start_date', label: 'Start Date', type: 'date', required: true },
+                  { key: 'start_date', label: 'Start Date', type: 'date', required: !form.existing_employee && !selected },
                 ].map(f => (
                   <div key={f.key}>
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>{f.label}</label>

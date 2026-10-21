@@ -60,3 +60,33 @@ def test_backup_failure_does_not_delete_employee_and_retains_lock():
     with pytest.raises(RuntimeError): remove(db, target)
     assert db.employees.docs == [target]
     assert db.integrity_locks.docs
+
+
+@pytest.mark.parametrize("existing,start,expected", [(True, None, None), (False, "2026-01-01", "2026-04-01")])
+def test_existing_roster_entry_keeps_unknown_dates_and_skips_onboarding(existing, start, expected):
+    db = Database([employee("boss")])
+    payload = employees.EmployeeCreate(full_name="Reference Employee", work_email="new@example.com",
+        department="IT Support", role_title="IT Support", role_level="", line_manager_id="boss",
+        start_date=start, existing_employee=existing, lifecycle_state="Active")
+    with patch.object(employees, "get_db", return_value=db), patch.object(employees, "get_current_user", AsyncMock(return_value={"id": "hr", "role": "hr_admin"})), patch(
+        "routes.masters_settings.get_setting", AsyncMock(return_value=3)
+    ), patch("automation.engine.automation_engine.fire_event", new_callable=AsyncMock) as event, patch(
+        "utils.email_triggers.fire_and_forget", new_callable=AsyncMock
+    ) as email:
+        result = asyncio.run(employees.create_employee(payload, SimpleNamespace()))
+    assert result["start_date"] == start
+    assert result["probation_end_date"] == expected
+    assert "existing_employee" not in result
+    assert event.await_count == email.await_count == (0 if existing else 1)
+
+
+@pytest.mark.parametrize("start,existing", [(None, False), ("2026-02-31", True)])
+def test_creation_rejects_missing_new_hire_date_or_invalid_date(start, existing):
+    db = Database()
+    payload = employees.EmployeeCreate(full_name="Example", work_email="new@example.com", department="Operations",
+        role_title="Example", role_level="L2", start_date=start, existing_employee=existing)
+    with patch.object(employees, "get_db", return_value=db), patch.object(employees, "get_current_user", AsyncMock(return_value={"id": "hr", "role": "hr_admin"})), patch("routes.masters_settings.get_setting", AsyncMock(return_value=3)):
+        with pytest.raises(HTTPException) as error:
+            asyncio.run(employees.create_employee(payload, SimpleNamespace()))
+    assert error.value.status_code == 422
+    assert not db.employees.docs

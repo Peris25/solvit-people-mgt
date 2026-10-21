@@ -21,15 +21,28 @@ test('demo generation is unavailable even in development and removal requires co
     await act(async () => root.render(<Employees />));
   } finally { process.env.NODE_ENV = environment; }
   expect(container.textContent).not.toMatch(/generate demo employees/i);
-  const confirmation = jest.spyOn(window, 'confirm').mockReturnValue(false);
   const button = [...container.querySelectorAll('button')].find(b => b.textContent === 'Remove');
   await act(async () => button.click());
   expect(api.removeEmployee).not.toHaveBeenCalled();
-  confirmation.mockReturnValue(true);
-  api.removeEmployee.mockResolvedValue({ data: { status: 'removed' } });
+  expect(container.querySelector('[role="dialog"]').textContent).toContain('Example Employee');
+  await act(async () => [...container.querySelectorAll('button')].find(b => b.textContent === 'Cancel').click());
+  expect(container.querySelector('[role="dialog"]')).toBeNull();
   await act(async () => button.click());
+  api.removeEmployee.mockResolvedValue({ data: { status: 'removed' } });
+  await act(async () => [...container.querySelectorAll('button')].find(b => b.textContent === 'Remove employee').click());
   expect(api.removeEmployee).toHaveBeenCalledWith('extra', 'Example Employee');
-  confirmation.mockRestore();
+});
+
+test('existing employee mode allows unknown start date and role level', async () => {
+  api.getEmployees.mockResolvedValue({ data: [] });
+  api.getAllMastersSettings.mockResolvedValue({ data: {} });
+  await act(async () => root.render(<Employees />));
+  await act(async () => container.querySelector('[data-testid="add-employee-btn"]').click());
+  expect(container.querySelector('input[type="date"]').required).toBe(true);
+  await act(async () => container.querySelector('form input[type="checkbox"]').click());
+  expect(container.querySelector('input[type="date"]').required).toBe(false);
+  expect(container.querySelector('input[type="date"]').value).toBe('');
+  expect(container.querySelector('[data-testid="employee-role_level"]').value).toBe('');
 });
 
 test.each([

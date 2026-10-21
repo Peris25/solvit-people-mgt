@@ -44,7 +44,8 @@ class EmployeeCreate(BaseModel):
     # (which sits at the apex of the reporting tree).
     line_manager_id: Optional[str] = None
     is_board_chair: bool = False
-    start_date: str
+    start_date: Optional[str] = None
+    existing_employee: bool = False
     employment_type: str = "Full_Time"
     lifecycle_state: Optional[str] = "Onboarding"
     gender: Optional[str] = None
@@ -569,13 +570,19 @@ async def create_employee(emp: EmployeeCreate, request: Request):
     from dateutil.relativedelta import relativedelta
     from routes.masters_settings import get_setting
     probation_months = int(await get_setting("organisation", "probation_period_months", 3) or 3)
-    start_dt = datetime.fromisoformat(emp.start_date) if emp.start_date else datetime.now(timezone.utc)
-    probation_end = (start_dt + relativedelta(months=probation_months)).isoformat()[:10]
+    if not emp.existing_employee and not emp.start_date:
+        raise HTTPException(422, "Start Date is required for a new employee")
+    try:
+        start_dt = date.fromisoformat(emp.start_date) if emp.start_date else None
+    except ValueError:
+        raise HTTPException(422, "Start Date must be a valid calendar date")
+    probation_end = (start_dt + relativedelta(months=probation_months)).isoformat() if start_dt else None
 
     emp_doc = {
         "id": str(uuid.uuid4()),
         "tenant_id": "solvit",
-        **emp.model_dump(),
+        **emp.model_dump(exclude={"existing_employee"}),
+        "start_date": start_dt.isoformat() if start_dt else None,
         "work_email": emp.work_email.lower(),
         "lifecycle_state": emp.lifecycle_state or "Onboarding",
         "probation_end_date": probation_end,
@@ -593,7 +600,8 @@ async def create_employee(emp: EmployeeCreate, request: Request):
 
     # Fire automation event
     from automation.engine import automation_engine
-    await automation_engine.fire_event("employee_created", {"employee_id": response_doc["id"], "employee": response_doc})
+    if not emp.existing_employee:
+        await automation_engine.fire_event("employee_created", {"employee_id": response_doc["id"], "employee": response_doc})
 
     # Log audit
     await db.audit_log.insert_one({
@@ -607,7 +615,8 @@ async def create_employee(emp: EmployeeCreate, request: Request):
     # Send the welcome email to the new employee (best-effort).
     try:
         from utils.email_triggers import fire_and_forget
-        await fire_and_forget(db, "onboarding.welcome", employee_id=response_doc["id"])
+        if not emp.existing_employee:
+            await fire_and_forget(db, "onboarding.welcome", employee_id=response_doc["id"])
     except Exception:
         pass
     return response_doc

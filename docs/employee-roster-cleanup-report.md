@@ -14,12 +14,13 @@ These are application-visible counts, not an unrestricted database census. No pr
 - Serialized removal through the existing persistent integrity lock. Before removal, save a restricted full recovery copy in `removed_employee_records` and a minimal audit event. No public recovery-copy endpoint is provided. Accounts, documents, leave and other history are not deleted or rewritten. A removed employee's profile is no longer available through the active employee API; recovery requires a controlled operator review.
 - Backup/audit failures prevent removal. Unexpected write failures retain the integrity lock for the existing controlled operator recovery procedure; no timeout-based lock clearing was added.
 - No roster was hardcoded into application logic. No employee was automatically created, reclassified, assigned a manager or given an invented start date.
+- Added an explicit HR "Existing employee" registration option: unknown start dates and role levels can remain unrecorded, no probation end is invented, and new-hire automation/welcome delivery is skipped. Ordinary new-hire creation still requires a valid start date. Existing login accounts are not created or changed as a side effect. Removal confirmation now uses an in-page dialog with error feedback rather than a native browser popup.
 
 ## Validation
 
-- Backend: 1,178 passed, 321 skipped (existing integration/environment skips); five existing dependency/lifecycle warnings.
-- Frontend: 223 passed in 31 suites.
-- Eleven new backend tests cover authorization, tenant isolation, name confirmation, canonical/storage account links, normalized-email links, reporting dependencies, self/protected records, retained history/recovery copies and backup failure.
+- Backend: 1,182 passed, 321 skipped (existing integration/environment skips); five existing dependency/lifecycle warnings.
+- Frontend: 224 passed in 31 suites; strict production build passed.
+- Fifteen new backend tests cover authorization, tenant isolation, name confirmation, canonical/storage account links, normalized-email links, reporting dependencies, self/protected records, retained history/recovery copies, backup failure, unknown dates and existing/new-hire notification behavior.
 - Frontend regression covers absence of demo generation even in development and confirmation before removal.
 - Python compilation and whitespace checks passed.
 
