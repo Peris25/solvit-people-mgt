@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Literal
 from datetime import datetime, timezone
 from bson import ObjectId
 from database import get_db
@@ -52,6 +52,21 @@ class PolicyCreate(BaseModel):
     description: Optional[str] = None
     effective_date: str
     applies_to: Optional[list] = ["all"]
+    content: Optional[str] = None
+    status: Literal["Draft", "Active"] = "Draft"
+
+
+def readable_policy(doc):
+    if isinstance(doc.get("content"), str) and doc["content"].strip():
+        return True
+    value = doc.get("file_url")
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        path = Path(value).resolve()
+        return path.is_relative_to(UPLOAD_ROOT.resolve()) and path.is_file() and path.stat().st_size > 0
+    except (OSError, ValueError, RuntimeError):
+        return False
 
 
 def fmt(doc):
@@ -59,6 +74,7 @@ def fmt(doc):
         return None
     out = projection(doc, {"title", "version", "category", "description", "effective_date", "applies_to", "status", "content", "created_at", "updated_at", "acknowledgement_count", "file_name"})
     out["has_attachment"] = bool(doc.get("file_url"))
+    out["acknowledgement_available"] = doc.get("status") == "Active" and readable_policy(doc)
     if isinstance(out.get("file_name"), str): out["file_name"] = out["file_name"].replace(chr(92), "/").split("/")[-1]
     return out
 
@@ -83,19 +99,27 @@ async def create_policy(policy: PolicyCreate, request: Request):
         "id": str(uuid.uuid4()),
         "tenant_id": tenant_of(user),
         **policy.model_dump(),
-        "status": "Active",
+        "status": policy.status,
         "acknowledgement_count": 0,
         "file_url": None,
         "file_name": None,
-        "content": None,
+        "content": policy.content,
         "created_by": user["id"],
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
+    if doc["status"] == "Active" and not readable_policy(doc):
+        raise HTTPException(422, "Readable policy content is required before publication")
     async with integrity_write(db):
         await audit(db, user, "policy.created", doc["id"])
         result = await db.policies.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
+    if doc["status"] == "Active":
+        await notify_publication(db, doc)
+    return doc
+
+
+async def notify_publication(db, doc):
     try:
         from automation.engine import automation_engine
         await automation_engine.fire_event("policy_updated", {"policy_id": doc["id"]})
@@ -104,7 +128,7 @@ async def create_policy(policy: PolicyCreate, request: Request):
     try:
         from utils.email_triggers import fire_and_forget
         active_emps = await db.employees.find(
-            {"tenant_id": tenant_of(user), "lifecycle_state": {"$in": ["Active", "Probation"]}}
+            {"tenant_id": tenant_of(doc), "lifecycle_state": {"$in": ["Active", "Probation"]}}
         ).to_list(500)
         for emp in active_emps:
             if emp.get("work_email"):
@@ -117,7 +141,7 @@ async def create_policy(policy: PolicyCreate, request: Request):
                                       })
     except Exception:
         pass
-    return doc
+
 
 
 @router.post("/{policy_id}/upload")
@@ -186,8 +210,13 @@ async def acknowledge_policy(policy_id: str, request: Request):
     version = str(p.get("version") or "legacy")
     key = hashlib.sha256(f"{tenant_of(user)}:{p['_id']}:{version}:{user['id']}".encode()).hexdigest()
     async with integrity_write(db):
+        current = await policy_record(db, user, policy_id)
+        if current != p:
+            raise HTTPException(409, "Policy changed; refresh before acknowledging")
         existing = await db.policy_acknowledgements.find_one({"_id": "policy-ack:" + key})
         if existing: return {"message": "Already acknowledged", "already_done": True}
+        if p.get("status") != "Active" or not readable_policy(p):
+            raise HTTPException(409, "Readable published policy content is required before acknowledgement")
         doc = {"_id": "policy-ack:" + key, "id": str(uuid.uuid4()), "tenant_id": tenant_of(user),
             "policy_id": str(p.get("id") or p['_id']), "policy_storage_id": str(p['_id']), "policy_version": version,
             "employee_id": user["id"], "employee_email": user.get("email"), "signature": body["signature"],
@@ -227,13 +256,16 @@ async def update_policy(policy_id: str, request: Request):
     if body.get("content") != existing.get("content") and "content" in body and body.get("version", existing.get("version")) == existing.get("version"):
         raise HTTPException(409, "Policy content changes require a new version")
     async with integrity_write(db):
+        current = await find_linked_record(db.policies, policy_id, user)
+        if current != existing:
+            raise HTTPException(409, "Policy changed; refresh before updating")
+        prospective = {**existing, **body}
+        if prospective.get("status") == "Active" and not readable_policy(prospective):
+            raise HTTPException(422, "Readable policy content is required before publication")
         await audit(db, user, "policy.updated", existing["_id"])
         result = await db.policies.find_one_and_update({"_id": existing["_id"]}, {"$set": body}, return_document=True)
     if not result:
         raise HTTPException(status_code=404, detail="Policy not found")
-    try:
-        from automation.engine import automation_engine
-        await automation_engine.fire_event("policy_updated", {"policy_id": policy_id})
-    except Exception:
-        pass
+    if result.get("status") == "Active" and (existing.get("status") != "Active" or existing.get("version") != result.get("version")):
+        await notify_publication(db, result)
     return fmt(result)

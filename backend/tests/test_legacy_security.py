@@ -198,7 +198,7 @@ def test_policy_audience_and_private_paths_are_not_exposed(sut):
 
 def test_policy_acknowledgement_is_versioned_and_idempotent(sut):
     db,_,as_role,_=sut
-    row=add(db.policies,id="policy",title="Policy",status="Active",applies_to=["all"],version="1")
+    row=add(db.policies,id="policy",title="Policy",status="Active",applies_to=["all"],version="1",content="Approved synthetic policy text")
     client=as_role("employee")
     for _ in range(2): assert client.post("/api/policies/policy/acknowledge",json={"signature":"Synthetic"}).status_code==200
     row["version"]="2"
@@ -401,3 +401,106 @@ def test_ai_recognition_and_task_actions_recheck_target_scope(sut):
     with pytest.raises(HTTPException):
         asyncio.run(ai_actions.execute_mark_task(db,{"task_id":"private-task"},manager))
     assert not db.recognitions.docs and not db.tasks.writes
+
+
+# QA follow-up regressions: all records below are in-memory synthetic fixtures.
+def test_calendar_excludes_past_and_out_of_window_onboarding(sut):
+    db, _, as_role, _ = sut
+    today = datetime.now(timezone.utc).date()
+    for name, days in [("past", -1), ("today", 0), ("near", 2), ("far", 91)]:
+        add(db.employees, id=name, full_name=name, lifecycle_state="Onboarding",
+            start_date=(today + timedelta(days=days)).isoformat())
+    response = as_role("hr_admin").get("/api/calendar?days_ahead=90")
+    assert response.status_code == 200, response.text
+    names = {row['title'] for row in response.json()}
+    assert 'Onboarding: today' in names and 'Onboarding: near' in names
+    assert 'Onboarding: past' not in names and 'Onboarding: far' not in names
+
+
+@pytest.mark.parametrize("day,month,expected_month", [(1, 10, 10), (19, 10, 11), (19, 12, 1)])
+def test_compliance_upcoming_deadlines_roll_forward(sut, monkeypatch, day, month, expected_month):
+    class Fixed(datetime):
+        @classmethod
+        def now(cls, tz=None): return cls(2026, month, day, tzinfo=tz)
+    monkeypatch.setattr(compliance, 'datetime', Fixed)
+    response = sut[2]("hr_admin").get('/api/compliance/deadlines')
+    assert response.status_code == 200
+    for key in ('paye_deadline', 'nssf_sha_deadline'):
+        parsed = datetime.fromisoformat(response.json()[key])
+        assert parsed.month == expected_month
+        assert parsed.year == (2027 if month == 12 and day == 19 else 2026)
+
+
+@pytest.mark.parametrize("legacy", [True, False])
+def test_health_deduction_label_matches_calculation_basis(sut, legacy):
+    rates = {'nhif_rates': [{'min_kes': 70000, 'max_kes': 79999, 'amount_kes': 1400}]} if legacy else {}
+    with patch('routes.masters_settings.get_setting', AsyncMock(return_value=rates)):
+        response = sut[2]('hr_admin').get('/api/compliance/paye-calculator?gross_salary=75000')
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result['requires_finance_review'] is True
+    assert result['sha_kes'] == (1400 if legacy else 2062.5)
+    assert result['health_deduction_basis'] == ('legacy_nhif_table' if legacy else 'percentage')
+    assert ('not SHA' in result['health_deduction_label']) == legacy
+
+
+@pytest.mark.parametrize('content', [None, '', '   '])
+def test_blank_published_policy_cannot_be_acknowledged(sut, content):
+    db, _, as_role, _ = sut
+    row = add(db.policies, id='blank', status='Active', applies_to=['all'], content=content, version='1')
+    result = as_role('employee').post('/api/policies/blank/acknowledge', json={'signature': 'Synthetic'})
+    assert result.status_code == 409
+    assert not db.policy_acknowledgements.docs
+    assert policies.fmt(row)['acknowledgement_available'] is False
+
+
+def test_missing_or_external_policy_file_cannot_enable_acknowledgement(sut, tmp_path):
+    db, _, as_role, _ = sut
+    add(db.policies, id='missing', status='Active', applies_to=['all'], file_url=str(tmp_path/'missing.pdf'), version='1')
+    assert as_role('employee').post('/api/policies/missing/acknowledge', json={'signature': 'Synthetic'}).status_code == 409
+    assert not db.policy_acknowledgements.docs
+
+
+def test_policy_draft_does_not_notify_or_publish_without_readable_content(sut):
+    db, _, as_role, _ = sut
+    with patch.object(policies, 'notify_publication', AsyncMock()) as notify:
+        result = as_role('hr_admin').post('/api/policies', json={'title':'Synthetic', 'version':'1', 'category':'Other', 'effective_date':'2026-10-19'})
+        assert result.status_code == 200, result.text
+        assert result.json()['status'] == 'Draft'
+        notify.assert_not_awaited()
+        ref = result.json()['id']
+        assert as_role('employee').get('/api/policies/'+ref).status_code == 403
+        assert as_role('hr_admin').put('/api/policies/'+ref, json={'status':'Active'}).status_code == 422
+        notify.assert_not_awaited()
+        published = as_role('hr_admin').put('/api/policies/'+ref, json={'status':'Active','content':'Full approved synthetic policy text','version':'2'})
+        assert published.status_code == 200, published.text
+        assert published.json()['acknowledgement_available'] is True
+        notify.assert_awaited_once()
+
+
+@pytest.mark.parametrize('gross', ['-1', 'nan', 'inf'])
+def test_calculator_rejects_invalid_gross(sut, gross):
+    assert sut[2]('hr_admin').get('/api/compliance/paye-calculator?gross_salary='+gross).status_code == 422
+
+
+def test_policy_publication_notifies_only_after_readable_publication(sut):
+    db, _, as_role, _ = sut
+    with patch('utils.email_triggers.fire_and_forget', AsyncMock()) as email:
+        result = as_role('hr_admin').post('/api/policies', json={'title':'Approved synthetic', 'version':'1', 'category':'Other', 'effective_date':'2026-10-19','status':'Active','content':'Approved full policy text'})
+        assert result.status_code == 200, result.text
+        assert email.await_count > 0
+
+
+def test_pipeline_keeps_closed_legacy_and_unclassified_records(sut):
+    db, _, as_role, _ = sut
+    add(db.candidates, id='offer', current_stage='Offered', status='Active', department='Operations')
+    add(db.candidates, id='closed', current_stage='Rejected', status='Rejected', department='Operations')
+    add(db.candidates, id='legacy', current_stage='Legacy intake', status='Active', department='Operations')
+    add(db.candidates, id='missing', status='Active', department='Operations')
+    result = as_role('hr_admin').get('/api/recruitment/pipeline')
+    assert result.status_code == 200, result.text
+    buckets = result.json()
+    for key in ('Offer Made', 'Rejected', 'Legacy intake', 'Unclassified'): assert buckets[key]['count'] == 1
+    executive = as_role('executive').get('/api/recruitment/pipeline').json()
+    assert sum(b['count'] for b in executive.values()) == 4
+    assert all(not b['candidates'] for b in executive.values())

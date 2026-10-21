@@ -30,6 +30,30 @@ def solver_aliases(record):
     return list(aliases)
 
 
+def validate_directory_identities(records):
+    """Validate canonical aliases against a complete tenant-scoped snapshot.
+
+    Match the string/ObjectId lookup rules of find_solver without issuing two
+    database queries for every row. Never use this with a filtered snapshot.
+    """
+    by_alias = {}
+    for record in records:
+        for field in ("id", "_id"):
+            value = record.get(field)
+            if isinstance(value, (str, ObjectId)):
+                by_alias.setdefault(value, set()).add(record["_id"])
+    for record in records:
+        reference = solver_key(record)
+        aliases = [reference]
+        if ObjectId.is_valid(reference):
+            aliases.append(ObjectId(reference))
+        matches = set()
+        for alias in aliases:
+            matches.update(by_alias.get(alias, ()))
+        if matches != {record["_id"]}:
+            raise HTTPException(409, "Solver not found or identity needs review")
+
+
 def normalize_phone(value):
     if isinstance(value, int) and not isinstance(value, bool):
         value = str(value)

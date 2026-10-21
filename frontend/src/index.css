@@ -168,3 +168,19 @@ code {
         border-bottom-color: inherit;
     }
 }
+
+
+/* Keep navigation usable without squeezing phone-sized content. */
+@media (max-width: 767px) {
+  .portal-sidebar-expanded {
+    position: fixed;
+    inset: 0 auto 0 0;
+    max-width: 85vw;
+    height: 100dvh;
+    overflow-y: auto;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.18);
+    z-index: 60;
+  }
+  .portal-main { padding: 16px !important; }
+}
+[role="button"]:focus-visible { outline: 2px solid #FF353F; outline-offset: 3px; }

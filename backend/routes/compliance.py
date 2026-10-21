@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException, Request
+from math import isfinite
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from database import get_db
 from utils.auth import get_current_user
 import uuid
@@ -73,9 +74,15 @@ async def record_statutory_payment(request: Request):
 
 
 @router.get("/paye-calculator")
-async def calculate_paye(request: Request, gross_salary: float = 50000):
+async def calculate_paye(request: Request, gross_salary: str = "50000"):
     user = await get_current_user(request)
     module_access(user, "M19")
+    try:
+        gross_salary = float(gross_salary)
+    except (TypeError, ValueError):
+        raise HTTPException(422, "Gross salary must be a finite non-negative number")
+    if not isfinite(gross_salary) or gross_salary < 0:
+        raise HTTPException(422, "Gross salary must be a finite non-negative number")
     # Pull live rates from Masters Settings (Section 12 lookups + organisation rates).
     from routes.masters_settings import get_setting
     org = await get_setting("organisation") or {}
@@ -114,13 +121,16 @@ async def calculate_paye(request: Request, gross_salary: float = 50000):
 
     # NHIF (now SHIF/SHA) — table lookup if rates configured, else 2.75% fallback
     sha = 0.0
+    health_deduction_basis = "percentage"
     if nhif_rates:
         for r in nhif_rates:
             if float(r.get("min_kes", 0)) <= gross_salary <= float(r.get("max_kes", 0)):
                 sha = float(r.get("amount_kes", 0))
+                health_deduction_basis = "legacy_nhif_table"
                 break
         if sha == 0.0:
             sha = gross_salary * 0.0275
+            health_deduction_basis = "percentage"
     else:
         sha = gross_salary * 0.0275
 
@@ -132,6 +142,9 @@ async def calculate_paye(request: Request, gross_salary: float = 50000):
         "nssf_employee_kes": round(total_nssf, 2),
         "nssf_employer_pct": nssf_employer_pct,
         "sha_kes": round(sha, 2),
+        "health_deduction_basis": health_deduction_basis,
+        "health_deduction_label": "Legacy NHIF table (not SHA)" if health_deduction_basis == "legacy_nhif_table" else "SHA estimate (2.75%)",
+        "requires_finance_review": True,
         "total_deductions_kes": round(paye + total_nssf + sha, 2),
         "net_pay_kes": round(net_pay, 2),
         "personal_relief_applied": personal_relief,
@@ -160,14 +173,14 @@ async def get_upcoming_deadlines(request: Request):
     if user["role"] not in ["finance", "hr_admin", "hr_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     module_access(user, "M19")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone(timedelta(hours=3)))
     year = now.year
     month = now.month
     next_month = month + 1 if month < 12 else 1
     next_year = year if month < 12 else year + 1
     return {
-        "nssf_sha_deadline": f"{year}-{month:02d}-15",
-        "paye_deadline": f"{year}-{month:02d}-09",
+        "nssf_sha_deadline": f"{year}-{month:02d}-15" if now.day <= 15 else f"{next_year}-{next_month:02d}-15",
+        "paye_deadline": f"{year}-{month:02d}-09" if now.day <= 9 else f"{next_year}-{next_month:02d}-09",
         "nssf_sha_next": f"{next_year}-{next_month:02d}-15",
         "paye_next": f"{next_year}-{next_month:02d}-09",
         "annual_policy_audit": f"{year}-01-31",

@@ -56,7 +56,7 @@ async def get_calendar_events(request: Request, days_ahead: int = 90):
     if not 1 <= days_ahead <= 366:
         raise HTTPException(422, "Calendar range must be 1 to 366 days")
     from datetime import timedelta
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone(timedelta(hours=3)))
     end_date = (now + timedelta(days=days_ahead)).isoformat()[:10]
     start_date = now.isoformat()[:10]
 
@@ -116,7 +116,7 @@ async def get_calendar_events(request: Request, days_ahead: int = 90):
     onboarding_emps = visible_onboarding
     for emp in onboarding_emps:
         start = emp.get("start_date", "")
-        if start:
+        if isinstance(start, str) and start_date <= start[:10] <= end_date:
             all_events.append({
                 "id": f"onb-{str(emp.get('id', str(emp['_id'])))}",
                 "title": f"Onboarding: {emp.get('full_name', '')}",

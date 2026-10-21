@@ -11,7 +11,7 @@ import MfaSecurity from '../pages/MfaSecurity';
 export default function Layout() {
   const { user } = useAuth();
   const unreadCount = useNotifications()?.unreadCount;
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.matchMedia?.('(max-width: 767px)').matches ?? false);
   const [aiOpen, setAiOpen] = useState(false);
 
   if (user === undefined) {
@@ -45,8 +45,8 @@ export default function Layout() {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#F5F5F5', fontFamily: 'Nunito Sans, sans-serif' }}>
       <Sidebar collapsed={sidebarCollapsed} onToggle={setSidebarCollapsed} onAIToggle={() => setAiOpen(p => !p)} aiOpen={aiOpen} />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', marginRight: aiOpen ? '380px' : 0, transition: 'margin-right 0.3s' }}>
-        <main style={{ flex: 1, overflowY: 'auto', padding: '24px', maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', marginRight: aiOpen ? '380px' : 0, transition: 'margin-right 0.3s' }}>
+        <main className="portal-main" style={{ flex: 1, overflowY: 'auto', padding: '24px', maxWidth: '1400px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
           <Outlet />
         </main>
       </div>

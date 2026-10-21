@@ -168,7 +168,7 @@ export default function Employees() {
         </div>
         {canEdit && (
           <div style={{ display: 'flex', gap: '8px' }}>
-            {user?.role === 'hr_admin' && (
+            {process.env.NODE_ENV === 'development' && user?.role === 'hr_admin' && (
               <button data-testid="seed-demo-employees-btn" onClick={handleSeedDemo} disabled={seeding} style={{ padding: '10px 18px', backgroundColor: 'transparent', color: '#191919', border: '1px solid #191919', cursor: seeding ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial', opacity: seeding ? 0.6 : 1 }}>
                 {seeding ? 'Generating...' : '⚡ Generate Demo Employees'}
               </button>

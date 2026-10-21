@@ -12,6 +12,7 @@ from utils.employee_integrity import tenant_query, tenant_of, integrity_write
 from utils.solver_access import (solver_access, authorize_solver, find_solver, own_solver, solver_view,
                                  solver_key, solver_aliases, manager_fields, solver_identity_write)
 from utils.solver_access import audit_solver, HR_ROLES
+from utils.solver_access import validate_directory_identities
 from utils import solver_workflows as workflow
 
 router = APIRouter(prefix="/solvers", tags=["solvers"])
@@ -72,10 +73,11 @@ async def directory_records(db, user):
     query = tenant_query(tenant_of(user))
     if entry.get("scope") == "own_record":
         own = await own_solver(db, user)
-        query = {"$and": [query, {"_id": own["_id"]}]}
+        # own_solver already checks canonical ambiguity and account ownership
+        # against the entire tenant, including records outside this scope.
+        return entry, [own]
     records = await db.solvers.find(query).sort("full_name", 1).to_list(None)
-    for record in records:
-        await find_solver(db, solver_key(record), user)
+    validate_directory_identities(records)
     return entry, records
 
 
@@ -189,7 +191,7 @@ async def update_solver(solver_id: str, upd: SolverUpdate, request: Request):
     supplied = upd.model_dump(exclude_none=True)
     await solver_access(db, user, write=True)
     manager_fields(user, supplied)
-    if supplied.get("lifecycle_state") and supplied["lifecycle_state"] not in SOLVER_STATES:
+    if "lifecycle_state" in supplied and supplied["lifecycle_state"] not in SOLVER_STATES:
         raise HTTPException(422, "Invalid Solver lifecycle state")
     async with integrity_write(db):
         original = await authorize_solver(db, user, solver_id, write=True)

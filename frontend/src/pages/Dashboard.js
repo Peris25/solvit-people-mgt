@@ -240,7 +240,7 @@ export default function Dashboard() {
           {/* Zone 4: Quick Stats Bar */}
           <div data-testid="quick-stats-bar" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '8px' }}>
             <KPI_TILE testId="stat-active-employees" label="Active FTE" value={stats?.active} color="#22C55E" onClick={() => navigate('/employees')} />
-            <KPI_TILE testId="stat-active-solvers"  label="Solvers" value={stats?.active_solvers} color="#8B5CF6" onClick={() => navigate('/solvers')} />
+            <KPI_TILE testId="stat-active-solvers"  label="Active Solvers" value={stats?.active_solvers} color="#8B5CF6" onClick={() => navigate('/solvers')} />
             <KPI_TILE testId="stat-onboarding"     label="Onboarding" value={stats?.onboarding} color="#3B82F6" onClick={() => navigate('/onboarding')} />
             <KPI_TILE testId="stat-attrition"      label="Attrition" value={attrition ? `${attrition.pct}%` : '—'} sub={`Target ≤${attrition?.target_pct ?? 10}%`} color={attrition && attrition.pct > 10 ? '#FF353F' : '#22C55E'} onClick={() => navigate('/retention')} />
             <KPI_TILE testId="stat-overdue-tasks"  label="Open Tasks" value={stats?.open_tasks} color={(stats?.open_tasks || 0) > 0 ? '#FF353F' : '#191919'} onClick={() => navigate('/my-tasks')} />

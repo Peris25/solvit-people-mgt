@@ -65,7 +65,7 @@ export default function Compliance() {
                 { label: 'Gross Salary', value: paye.gross_salary_kes, color: '#191919' },
                 { label: 'PAYE (Income Tax)', value: paye.paye_kes, color: '#FF353F' },
                 { label: 'NSSF (Employee)', value: paye.nssf_employee_kes, color: '#F97316' },
-                { label: 'SHA (2.75%)', value: paye.sha_kes, color: '#F97316' },
+                { label: paye.health_deduction_label || 'Health deduction (verify basis)', value: paye.sha_kes, color: '#F97316' },
                 { label: 'Total Deductions', value: paye.total_deductions_kes, color: '#FF353F' },
                 { label: 'Net Pay', value: paye.net_pay_kes, color: '#22C55E' },
               ].map(s => (
@@ -76,7 +76,7 @@ export default function Compliance() {
               ))}
             </div>
           )}
-          <p style={{ fontSize: '11px', color: '#525252', marginTop: '16px', fontStyle: 'italic' }}>Personal relief KES 2,400/month applied. Calculations per Kenya Income Tax Act Cap 470 (2023 rates), NSSF Act 2013 and Social Health Insurance Act 2023.</p>
+          <p role="note" style={{ fontSize: '12px', color: '#525252', marginTop: '16px' }}>Informational estimate using configured and historical rates. Finance must verify effective statutory rules before payroll use. Legacy NHIF table values are not SHA percentage calculations. This screen does not process payroll.</p>
         </div>
       ) : tab === 'remit' ? (
         <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>

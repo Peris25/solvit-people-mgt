@@ -12,15 +12,18 @@ export default function Recruitment() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ full_name: '', email: '', position_applied: '', department: 'Operations', role_level: 'L2', candidate_type: 'FTE', source: 'Direct' });
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => { load(); }, []);
 
   const load = async () => {
     setLoading(true);
+    setError('');
     try {
       const res = await api.getRecruitmentPipeline();
       setPipeline(res.data);
-    } finally { setLoading(false); }
+    } catch { setError('Recruitment could not be loaded. Please retry.'); }
+    finally { setLoading(false); }
   };
 
   const save = async (e) => {
@@ -38,23 +41,26 @@ export default function Recruitment() {
     load();
   };
 
+  const stages = [...STAGES, ...Object.keys(pipeline).filter(stage => !STAGES.includes(stage))];
   const totalCandidates = Object.values(pipeline).reduce((s, v) => s + (v?.count || 0), 0);
+  const closedCount = ['Rejected', 'Withdrawn', 'Offer Accepted'].reduce((sum, stage) => sum + (pipeline[stage]?.count || 0), 0);
 
   return (
     <div data-testid="recruitment-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '24px' }}>
         <div>
           <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', margin: 0 }}>Recruitment Pipeline</h1>
-          <p style={{ color: '#525252', fontSize: '13px', margin: 0, marginTop: '4px' }}>{totalCandidates} active candidates</p>
+          <p style={{ color: '#525252', fontSize: '13px', margin: 0, marginTop: '4px' }}>{totalCandidates} total candidates - {closedCount} in closed or accepted stages</p>
         </div>
         {['hr_admin', 'hr_manager'].includes(user?.role) && (
           <button data-testid="add-candidate-btn" onClick={() => setShowForm(true)} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>+ Add Candidate</button>
         )}
       </div>
 
-      {loading ? <div style={{ padding: '48px', textAlign: 'center' }}>Loading...</div> : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-          {STAGES.slice(0, 4).map(stage => {
+      {error && <p role="alert">{error} <button onClick={load}>Retry</button></p>}
+      {loading ? <div style={{ padding: '48px', textAlign: 'center' }}>Loading...</div> : error ? null : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: '12px' }}>
+          {stages.map(stage => {
             const stageData = pipeline[stage] || { candidates: [], count: 0 };
             return (
               <div key={stage} style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
@@ -69,13 +75,14 @@ export default function Recruitment() {
                       <div style={{ fontSize: '11px', color: '#525252', margin: '2px 0' }}>{c.position_applied}</div>
                       <div style={{ fontSize: '10px', color: '#9CA3AF' }}>{c.department} · {c.role_level}</div>
                       <div style={{ display: 'flex', gap: '4px', marginTop: '8px' }}>
-                        {STAGES.indexOf(stage) < STAGES.length - 3 && (
+                        {['hr_admin', 'hr_manager'].includes(user?.role) && (!c.status || c.status === 'Active') && STAGES.indexOf(stage) >= 0 && STAGES.indexOf(stage) < 5 && (
                           <button onClick={() => moveStage(c.id, STAGES[STAGES.indexOf(stage) + 1])} style={{ padding: '3px 8px', fontSize: '10px', border: '1px solid #22C55E', backgroundColor: 'transparent', color: '#22C55E', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>→ Next</button>
                         )}
-                        <button onClick={() => moveStage(c.id, 'Rejected')} style={{ padding: '3px 8px', fontSize: '10px', border: '1px solid #FF353F', backgroundColor: 'transparent', color: '#FF353F', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>✗ Reject</button>
+                        {['hr_admin', 'hr_manager'].includes(user?.role) && (!c.status || c.status === 'Active') && !['Rejected', 'Withdrawn', 'Offer Accepted'].includes(stage) && <button onClick={() => moveStage(c.id, 'Rejected')} style={{ padding: '3px 8px', fontSize: '10px', border: '1px solid #FF353F', backgroundColor: 'transparent', color: '#FF353F', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>✗ Reject</button>}
                       </div>
                     </div>
                   ))}
+                  {stageData.count > 0 && stageData.candidates.length === 0 && <p>Aggregate counts only for your role.</p>}
                   {stageData.count === 0 && <div style={{ textAlign: 'center', padding: '20px', color: '#9CA3AF', fontSize: '11px' }}>No candidates</div>}
                 </div>
               </div>

@@ -203,6 +203,7 @@ export default function Performance() {
 
       {error && <div role="alert">{error} <button onClick={load}>Retry</button></div>}
       {['hr_admin', 'hr_manager'].includes(user?.role) && <CycleConfiguration cycles={cycles} onUpdated={load} />}
+      <p style={{ fontSize: '12px', color: '#525252' }}>Talent-density component weights below describe the aggregate dashboard metric, not an individual review score. Each review uses its approved cycle policy.</p>
       {/* Talent Density Score banner (correction §3) */}
       {talentDensity && (
         <div data-testid="talent-density-card" style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '18px 22px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap' }}>

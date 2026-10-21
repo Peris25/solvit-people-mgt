@@ -117,7 +117,7 @@ export default function Forms() {
       {loading ? <div style={{ padding: '48px', textAlign: 'center' }}>Loading...</div> : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
           {filtered.map(f => (
-            <div key={f.id} data-testid={`form-${f.id}`} onClick={() => openForm(f)} style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '16px', cursor: 'pointer', transition: 'border-color 0.15s' }}
+            <div key={f.id} role="button" tabIndex={0} aria-label={`Open ${f.title}`} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openForm(f); } }} data-testid={`form-${f.id}`} onClick={() => openForm(f)} style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '16px', cursor: 'pointer', transition: 'border-color 0.15s' }}
               onMouseEnter={e => e.currentTarget.style.borderColor = '#FF353F'}
               onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(25,25,25,0.08)'}
             >

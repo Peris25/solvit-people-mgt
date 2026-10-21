@@ -220,6 +220,7 @@ export const deleteAllocation = (id) => api.delete(`/budget/allocations/${id}`);
 export const getPolicies = () => api.get('/policies');
 export const getPolicy = (id) => api.get(`/policies/${id}`);
 export const createPolicy = (data) => api.post('/policies', data);
+export const updatePolicy = (id, data) => api.put(`/policies/${id}`, data);
 export const acknowledgePolicy = (id, data) => api.post(`/policies/${id}/acknowledge`, data);
 export const uploadPolicyFile = (id, formData) => api.post(`/policies/${id}/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
 export const policyDownloadUrl = (id) => { const base = (process.env.REACT_APP_BACKEND_URL || '').replace(/\/$/, ''); return `${base}/api/policies/${id}/download`; };

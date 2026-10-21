@@ -109,20 +109,16 @@ async def get_pipeline(request: Request):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     scope = await recruitment_scope(db, user)
-    pipeline_agg = [
-        {"$match": {"$and": [scope, {"status": "Active"}]}},
-        {"$group": {"_id": "$current_stage", "candidates": {"$push": "$$ROOT"}, "count": {"$sum": 1}}}
-    ]
-    results = await db.candidates.aggregate(pipeline_agg).to_list(20)
-    pipeline_view = {}
-    for stage in PIPELINE_STAGES:
-        pipeline_view[stage] = {"candidates": [], "count": 0}
-    for r in results:
-        stage = r["_id"]
-        pipeline_view[stage] = {
-            "candidates": [candidate_view(c, user) for c in r["candidates"]] if user["role"] != "executive" else [],
-            "count": r["count"]
-        }
+    # Keep closed and legacy-stage records reachable without rewriting them.
+    candidates = await db.candidates.find(scope).sort("created_at", -1).to_list(None)
+    pipeline_view = {stage: {"candidates": [], "count": 0} for stage in PIPELINE_STAGES}
+    for candidate in candidates:
+        saved = candidate.get("current_stage")
+        stage = STAGE_ALIASES.get(saved, saved) if isinstance(saved, str) and saved.strip() else "Unclassified"
+        bucket = pipeline_view.setdefault(stage, {"candidates": [], "count": 0})
+        bucket["count"] += 1
+        if user["role"] != "executive":
+            bucket["candidates"].append(candidate_view(candidate, user))
     return pipeline_view
 
 

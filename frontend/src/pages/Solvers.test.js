@@ -75,3 +75,53 @@ test('an account switch hides the prior response while the next account loads', 
   useAuth.mockReturnValue({ user: { id: 'other-account', role: 'employee' } }); await render();
   expect(container.textContent).not.toContain('Private prior record'); expect(container.textContent).not.toContain('Register Solver');
 });
+
+const statusFixture = async (role = 'hr_admin', canManage = true) => {
+  useAuth.mockReturnValue({ user: { id: 'synthetic', role } });
+  api.getSolverStats.mockResolvedValue({ data: { can_manage: canManage } });
+  api.getSolvers.mockResolvedValue({ data: [{ id: 'one', full_name: 'Synthetic Solver', lifecycle_state: 'Active' }] });
+  await render();
+};
+
+test('HR changes status using only the existing authorized update endpoint', async () => {
+  await statusFixture();
+  api.updateSolver.mockResolvedValue({ data: {} });
+  await act(async () => container.querySelector('[data-testid="edit-solver-one"]').click());
+  expect(container.querySelector('#solver-status').value).toBe('Active');
+  await change(container.querySelector('#solver-status'), 'Inactive');
+  await act(async () => container.querySelector('[role="dialog"] form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(api.updateSolver).toHaveBeenCalledWith('one', { lifecycle_state: 'Inactive' });
+  expect(container.querySelector('[role="dialog"]')).toBeNull();
+});
+
+test.each(['employee', 'solver', 'solvers_manager', 'finance', 'it_admin'])('%s cannot see HR status editor', async role => {
+  await statusFixture(role);
+  expect(container.querySelector('[data-testid="edit-solver-one"]')).toBeNull();
+});
+
+test('HR with revoked management permission cannot edit status', async () => {
+  await statusFixture('hr_admin', false);
+  expect(container.querySelector('[data-testid="edit-solver-one"]')).toBeNull();
+});
+
+test('saving unchanged status does not write a record', async () => {
+  await statusFixture('hr_manager');
+  await act(async () => container.querySelector('[data-testid="edit-solver-one"]').click());
+  await act(async () => container.querySelector('[role="dialog"] form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(api.updateSolver).not.toHaveBeenCalled();
+});
+
+test('status errors remain visible and reactivation cannot bypass verification', async () => {
+  await statusFixture();
+  api.updateSolver.mockRejectedValue({ response: { data: { detail: 'Status update denied' } } });
+  await act(async () => container.querySelector('[data-testid="edit-solver-one"]').click());
+  await change(container.querySelector('#solver-status'), 'Suspended');
+  await act(async () => container.querySelector('[role="dialog"] form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(container.querySelector('[role="alert"]').textContent).toBe('Status update denied');
+  expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+  api.getSolvers.mockResolvedValue({ data: [{ id: 'one', full_name: 'Synthetic Solver', lifecycle_state: 'Inactive' }] });
+  await act(async () => Array.from(container.querySelectorAll('button')).find(b => b.textContent === 'Cancel').click());
+  await change(container.querySelector('[data-testid="search-solvers"]'), 'Synthetic');
+  await act(async () => container.querySelector('[data-testid="edit-solver-one"]').click());
+  expect(container.querySelector('#solver-status option[value="Active"]').disabled).toBe(true);
+});

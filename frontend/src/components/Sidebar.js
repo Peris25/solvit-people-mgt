@@ -169,7 +169,7 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
         <button data-testid="solvit-logo-mark" onClick={() => onToggle(false)} style={{ background: theme === 'dark' ? '#FFFFFF' : 'transparent', border: 'none', padding: theme === 'dark' ? '4px 6px' : '0', cursor: 'pointer', marginBottom: '12px' }}>
           <img src="/solvit-logo.png" alt="Solvit" style={{ height: '24px', width: 'auto', objectFit: 'contain', display: 'block' }} />
         </button>
-        <button data-testid="sidebar-expand" onClick={() => onToggle(false)} style={{ background: 'none', border: 'none', color: tk.sidebarMuted, cursor: 'pointer', padding: '8px' }}>
+        <button aria-label="Expand navigation" data-testid="sidebar-expand" onClick={() => onToggle(false)} style={{ background: 'none', border: 'none', color: tk.sidebarMuted, cursor: 'pointer', padding: '8px' }}>
           <Menu size={18} />
         </button>
       </div>
@@ -177,7 +177,7 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
   }
 
   return (
-    <div style={{ width: '240px', backgroundColor: tk.sidebarBg, display: 'flex', flexDirection: 'column', minHeight: '100vh', fontFamily: 'Nunito Sans, sans-serif', flexShrink: 0, borderRightWidth: '1px', borderRightStyle: 'solid', borderRightColor: tk.sidebarBorder }}>
+    <div className="portal-sidebar-expanded" style={{ width: '240px', backgroundColor: tk.sidebarBg, display: 'flex', flexDirection: 'column', minHeight: '100vh', fontFamily: 'Nunito Sans, sans-serif', flexShrink: 0, borderRightWidth: '1px', borderRightStyle: 'solid', borderRightColor: tk.sidebarBorder }}>
       {/* Logo */}
       <div style={{ padding: '20px 20px 14px', borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: tk.sidebarBorder }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
@@ -198,7 +198,7 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
             </div>
             <div style={{ color: tk.sidebarSubtle, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.18em', fontFamily: 'Barlow', fontWeight: 700 }}>People Platform</div>
           </div>
-          <button data-testid="sidebar-collapse" onClick={() => onToggle(true)} style={{ background: 'none', border: 'none', color: tk.sidebarSubtle, cursor: 'pointer', padding: '4px', flexShrink: 0 }}>
+          <button aria-label="Collapse navigation" data-testid="sidebar-collapse" onClick={() => onToggle(true)} style={{ background: 'none', border: 'none', color: tk.sidebarSubtle, cursor: 'pointer', padding: '4px', flexShrink: 0 }}>
             <ChevronLeft size={16} />
           </button>
         </div>
