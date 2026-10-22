@@ -105,7 +105,7 @@ export default function Employees() {
   const saveEmployee = async (e) => {
     e.preventDefault();
     setSaving(true); setError('');
-    if (!form.line_manager_id && !form.is_board_chair && (!selected || form.line_manager_id !== selected.line_manager_id)) {
+    if (!form.line_manager_id && !form.is_board_chair && !form.reports_to_board && (!selected || form.line_manager_id !== selected.line_manager_id)) {
       setError('Line Manager is required for approval routing. Please select one.');
       setSaving(false);
       return;
@@ -157,6 +157,7 @@ export default function Employees() {
   };
 
   const openEdit = (emp) => {
+    setError('');
     setSelected(emp);
     setForm({ ...emp, role_level: emp.role_level ?? emp.job_level ?? '',
       lifecycle_state: emp.lifecycle_state ?? emp.employment_status ?? emp.status ?? '',
@@ -340,7 +341,8 @@ export default function Employees() {
                     excludeId={selected?.id}
                     placeholder="Select line manager (required for approval routing)..."
                     onChange={(emp) => setForm(p => ({ ...p, line_manager_id: emp.id }))}
-                    required={!form.is_board_chair}
+                    required={!form.is_board_chair && !form.reports_to_board}
+                    disabled={!!form.reports_to_board}
                   />
                   <div style={{ fontSize: '10px', color: '#525252', marginTop: '4px', fontStyle: 'italic' }}>
                     Every employee must have a Line Manager. This drives leave / training / performance approval routing.
@@ -349,6 +351,9 @@ export default function Employees() {
               </div>
               {!selected && user?.role === 'hr_admin' && <label style={{ display: 'block', fontSize: '12px', marginTop: '12px' }}>
                 <input type="checkbox" checked={!!form.is_board_chair} onChange={e => setForm(p => ({ ...p, is_board_chair: e.target.checked, line_manager_id: e.target.checked ? '' : p.line_manager_id }))} /> Reporting apex (Board Chair; no line manager required)
+              </label>}
+              {canEdit && form.role_title?.trim().toLowerCase() === 'managing director' && <label style={{ display: 'block', fontSize: '12px', marginTop: '12px' }}>
+                <input type="checkbox" checked={!!form.reports_to_board} onChange={e => setForm(p => ({ ...p, reports_to_board: e.target.checked, line_manager_id: e.target.checked ? null : p.line_manager_id }))} /> Managing Director reports to Board of Directors (no FTE line manager)
               </label>}
               {departmentError && <div role="status" style={{ fontSize: '12px', marginTop: '12px' }}>{departmentError}</div>}
               {error && <div data-testid="employee-lm-error" style={{ color: '#FF353F', fontSize: '12px', marginTop: '12px', padding: '8px', border: '1px solid #FF353F', backgroundColor: 'rgba(255,53,63,0.05)' }}>{error}</div>}

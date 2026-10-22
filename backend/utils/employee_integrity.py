@@ -145,6 +145,12 @@ async def integrity_write(db):
 
 
 async def validate_manager(db, manager_id, employee=None, tenant="solvit"):
+    if employee and employee.get("reports_to_board") is True:
+        if str(employee.get("role_title") or "").strip().casefold() != "managing director":
+            raise HTTPException(422, "Only the Managing Director can use the Board reporting root.")
+        if manager_id:
+            raise HTTPException(422, "Board reporting cannot also name an employee manager.")
+        return None
     if not manager_id:
         if employee and employee.get("is_board_chair") is True:
             return None

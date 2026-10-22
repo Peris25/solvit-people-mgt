@@ -8,6 +8,7 @@ from fastapi import HTTPException
 
 from routes import employees
 from .integrity_fakes import Collection, Database, account, employee
+from utils.employee_integrity import validate_manager
 
 
 def remove(db, target, user=None, name=None):
@@ -90,3 +91,32 @@ def test_creation_rejects_missing_new_hire_date_or_invalid_date(start, existing)
             asyncio.run(employees.create_employee(payload, SimpleNamespace()))
     assert error.value.status_code == 422
     assert not db.employees.docs
+
+
+def test_hr_can_replace_cyclic_md_link_with_explicit_board_reporting():
+    md = employee("md", role_title="Managing Director", line_manager_id="hr-employee")
+    hr = employee("hr-employee", line_manager_id="md")
+    db = Database([md, hr])
+    with patch.object(employees, "get_db", return_value=db), patch.object(employees, "get_current_user", AsyncMock(return_value={"id": "hr", "role": "hr_admin"})):
+        result = asyncio.run(employees.update_employee("md", employees.EmployeeUpdate(reports_to_board=True, line_manager_id=None), SimpleNamespace()))
+    assert result["line_manager_id"] is None
+    assert result["reports_to_board"] is True
+    assert db.employees.docs[1]["line_manager_id"] == "md"
+    assert asyncio.run(validate_manager(db, "md", employee("new"))) == "md"
+    assert db.audit_log.docs
+
+
+@pytest.mark.parametrize("title,manager", [("IT Support", None), ("Managing Director", "boss")])
+def test_board_root_cannot_bypass_ordinary_reporting_requirements(title, manager):
+    with pytest.raises(HTTPException):
+        asyncio.run(validate_manager(Database(), manager, employee(role_title=title, reports_to_board=True)))
+
+
+def test_line_manager_cannot_set_board_reporting_flag():
+    md = employee("md", role_title="Managing Director", line_manager_id="boss")
+    db = Database([md, employee("boss")])
+    with patch.object(employees, "get_db", return_value=db), patch.object(employees, "get_current_user", AsyncMock(return_value={"id": "manager", "role": "line_manager", "employee_id": "boss"})), patch.object(employees, "authorize_employee", AsyncMock()):
+        with pytest.raises(HTTPException) as error:
+            asyncio.run(employees.update_employee("md", employees.EmployeeUpdate(reports_to_board=True, line_manager_id=None), SimpleNamespace()))
+    assert error.value.status_code == 403
+    assert not db.employees.writes

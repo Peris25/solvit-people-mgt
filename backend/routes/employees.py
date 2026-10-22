@@ -44,6 +44,7 @@ class EmployeeCreate(BaseModel):
     # (which sits at the apex of the reporting tree).
     line_manager_id: Optional[str] = None
     is_board_chair: bool = False
+    reports_to_board: bool = False
     start_date: Optional[str] = None
     existing_employee: bool = False
     employment_type: str = "Full_Time"
@@ -74,6 +75,7 @@ class EmployeeUpdate(BaseModel):
     is_md: Optional[bool] = None
     reports_to_md: Optional[bool] = None
     reports_to_finance_ops: Optional[bool] = None
+    reports_to_board: Optional[bool] = None
 
 
 def fmt(doc):
@@ -96,7 +98,7 @@ def employee_view(doc, user):
         fields = {"id", "_id", "full_name", "preferred_name", "work_email", "department", "role_title",
                   "role_level", "job_level", "start_date", "employment_type", "lifecycle_state",
                   "line_manager_id", "line_manager_name", "probation_end_date", "is_md", "is_board_chair",
-                  "reports_to_md", "reports_to_finance_ops"}
+                  "reports_to_md", "reports_to_finance_ops", "reports_to_board"}
         if employee_key(doc) == user.get("employee_id"):
             fields |= {"personal_email", "phone_number", "national_id_number", "kra_pin", "nssf_number", "sha_number",
                        "bank_name", "bank_branch", "bank_account_number", "bank_account", "mpesa_number",
@@ -659,7 +661,7 @@ async def update_employee(employee_id: str, upd: EmployeeUpdate, request: Reques
             my_id = await _my_employee_id(db, user)
             if not my_id or not is_direct_report(current, user):
                 raise HTTPException(403, "Access denied")
-            if upd.model_fields_set & {"line_manager_id", "work_email", "is_md", "reports_to_md", "reports_to_finance_ops"}:
+            if upd.model_fields_set & {"line_manager_id", "work_email", "is_md", "reports_to_md", "reports_to_finance_ops", "reports_to_board"}:
                 raise HTTPException(403, "HR must change identity or reporting relationships.")
             protected = {"role_title", "role_level", "department", "employment_type", "start_date", "lifecycle_state", "profile_photo_url",
                          "current_salary_kes", "national_id_number", "kra_pin", "nssf_number", "sha_number"}
@@ -678,7 +680,11 @@ async def update_employee(employee_id: str, upd: EmployeeUpdate, request: Reques
                     await preserve_employee_account_link(db, current, email, user)
                 # Linked account login email, password and sessions remain unchanged.
                 update_data.update(work_email=email, work_email_normalized=email)
-        if "line_manager_id" in upd.model_fields_set:
+        if "reports_to_board" in upd.model_fields_set or (current.get("reports_to_board") and "role_title" in upd.model_fields_set):
+            proposed = {**current, **update_data}
+            manager = upd.line_manager_id if "line_manager_id" in upd.model_fields_set else current.get("line_manager_id")
+            update_data["line_manager_id"] = await validate_manager(db, manager, proposed, tenant_of(user))
+        elif "line_manager_id" in upd.model_fields_set:
             if upd.line_manager_id != current.get("line_manager_id"):
                 update_data["line_manager_id"] = await validate_manager(db, upd.line_manager_id, current, tenant_of(user))
             else:

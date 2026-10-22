@@ -27,3 +27,10 @@ test.each([
   await act(async () => container.querySelector('[data-testid="profile-tab-timeline"]').click());
   expect(container.textContent).toContain('No timeline events');
 });
+
+test('displays explicit Board reporting without inventing an employee manager', async () => {
+  api.getEmployeeProfile.mockResolvedValue({ data: { employee: { id: 'md', full_name: 'Example MD', reports_to_board: true, line_manager_id: null }, timeline: [] } });
+  await act(async () => root.render(<EmployeeProfile />));
+  expect(container.textContent).toContain('Board of Directors');
+  expect(container.textContent).not.toContain('Manager not found');
+});

@@ -59,6 +59,17 @@ test('structured API validation errors remain readable without crashing the empl
   expect(container.querySelector('form')).not.toBeNull();
 });
 
+test('HR can explicitly record the Managing Director reporting to the Board', async () => {
+  api.getEmployees.mockResolvedValue({ data: [{ id: 'md', full_name: 'Example MD', role_title: 'Managing Director', line_manager_id: 'wrong-manager' }] });
+  api.getAllMastersSettings.mockResolvedValue({ data: {} });
+  api.updateEmployee.mockResolvedValue({ data: {} });
+  await act(async () => root.render(<Employees />));
+  await act(async () => [...container.querySelectorAll('button')].find(b => b.textContent === 'Edit').click());
+  await act(async () => container.querySelector('form input[type="checkbox"]').click());
+  await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(api.updateEmployee).toHaveBeenCalledWith('md', expect.objectContaining({ reports_to_board: true, line_manager_id: null }));
+});
+
 test.each([
   ['HR & People', false, false], ['HR_People', false, false],
   ['Retired Department', false, false], [undefined, false, false],

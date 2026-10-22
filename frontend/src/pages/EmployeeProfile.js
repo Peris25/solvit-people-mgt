@@ -76,7 +76,7 @@ export default function EmployeeProfile({ selfService = false }) {
               <Stat label="Phone" value={e.phone_number || '—'} />
               <Stat label="Started" value={fmtDate(e.start_date)} />
               {['hr_admin', 'hr_manager', 'finance'].includes(user?.role) && <Stat label="Salary" value={fmtKES(e.current_salary_kes)} />}
-              <Stat label="Manager" value={e.line_manager_id ? (e.line_manager_name || 'Manager not found') : '—'} />
+              <Stat label="Manager" value={e.reports_to_board ? 'Board of Directors' : e.line_manager_id ? (e.line_manager_name || 'Manager not found') : '—'} />
               <Stat label="Last Score" value={e.last_performance_score ?? '—'} />
               {e.flight_risk_level && <Stat label="Flight Risk" value={<span style={{ color: e.flight_risk_level === 'Critical' ? '#FF353F' : e.flight_risk_level === 'High' ? '#F97316' : e.flight_risk_level === 'Elevated' ? '#FCD34D' : '#22C55E', fontWeight: 900 }}>{e.flight_risk_level}</span>} />}
             </div>
