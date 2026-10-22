@@ -19,7 +19,7 @@ from utils.employee_integrity import (
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 
-LIFECYCLE_STATES = ["Candidate", "Onboarding", "Probation", "Active", "On_Leave", "PIP", "Realignment", "Exiting", "Exited"]
+LIFECYCLE_STATES = ["Candidate", "Onboarding", "Probation", "Active", "Inactive", "On_Leave", "PIP", "Realignment", "Suspended", "Notice_Period", "Exiting", "Exited"]
 DEPARTMENTS = ["Operations", "Commercial & Business Development", "Finance", "Technology", "HR & People"]
 ROLE_LEVELS = ["L1", "L2", "L3", "L4", "L5"]
 EMPLOYMENT_TYPES = ["Full_Time", "Solver", "Consultant"]
@@ -122,7 +122,7 @@ async def bulk_transition(request: Request):
     if not employee_ids or not new_state:
         raise HTTPException(status_code=400, detail="employee_ids and lifecycle_state required")
     db = get_db()
-    valid_states = ["Onboarding", "Probation", "Active", "On_Leave", "PIP", "Suspended", "Notice_Period", "Exiting", "Exited"]
+    valid_states = [state for state in LIFECYCLE_STATES if state != "Candidate"]
     if new_state not in valid_states:
         raise HTTPException(status_code=400, detail=f"Invalid state. Must be one of: {valid_states}")
     updated = 0
@@ -565,6 +565,8 @@ async def create_employee(emp: EmployeeCreate, request: Request):
     user = await get_current_user(request)
     if user["role"] not in ["hr_admin", "hr_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    if emp.lifecycle_state and emp.lifecycle_state not in LIFECYCLE_STATES:
+        raise HTTPException(422, "Invalid employee status")
     db = get_db()
     if emp.is_board_chair and user["role"] != "hr_admin":
         raise HTTPException(403, "Only HR Admin may create the reporting apex.")
@@ -690,6 +692,8 @@ async def update_employee(employee_id: str, upd: EmployeeUpdate, request: Reques
             else:
                 update_data.pop("line_manager_id", None)
         if "lifecycle_state" in update_data:
+            if update_data["lifecycle_state"] != current.get("lifecycle_state") and update_data["lifecycle_state"] not in LIFECYCLE_STATES:
+                raise HTTPException(422, "Invalid employee status")
             if current.get("offboarding_started_at") and update_data["lifecycle_state"] != current.get("lifecycle_state"):
                 raise HTTPException(409, "Use the authorized offboarding workflow to change this lifecycle state.")
             if update_data["lifecycle_state"] != current.get("lifecycle_state"):

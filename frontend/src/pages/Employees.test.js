@@ -12,25 +12,21 @@ let container, root;
 beforeEach(() => { container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container); });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); jest.clearAllMocks(); });
 
-test('demo generation is unavailable even in development and removal requires confirmation', async () => {
-  api.getEmployees.mockResolvedValue({ data: [{ id: 'extra', full_name: 'Example Employee' }] });
+test('employee rows offer only Edit and HR can select the supported statuses', async () => {
+  api.getEmployees.mockResolvedValue({ data: [{ id: 'example', full_name: 'Example Employee', lifecycle_state: 'Active', line_manager_id: 'boss' }] });
   api.getAllMastersSettings.mockResolvedValue({ data: {} });
-  const environment = process.env.NODE_ENV;
-  try {
-    process.env.NODE_ENV = 'development';
-    await act(async () => root.render(<Employees />));
-  } finally { process.env.NODE_ENV = environment; }
+  await act(async () => root.render(<Employees />));
   expect(container.textContent).not.toMatch(/generate demo employees/i);
-  const button = [...container.querySelectorAll('button')].find(b => b.textContent === 'Remove');
-  await act(async () => button.click());
-  expect(api.removeEmployee).not.toHaveBeenCalled();
-  expect(container.querySelector('[role="dialog"]').textContent).toContain('Example Employee');
-  await act(async () => [...container.querySelectorAll('button')].find(b => b.textContent === 'Cancel').click());
-  expect(container.querySelector('[role="dialog"]')).toBeNull();
-  await act(async () => button.click());
-  api.removeEmployee.mockResolvedValue({ data: { status: 'removed' } });
-  await act(async () => [...container.querySelectorAll('button')].find(b => b.textContent === 'Remove employee').click());
-  expect(api.removeEmployee).toHaveBeenCalledWith('extra', 'Example Employee');
+  const row = container.querySelector('[data-testid="emp-row-example"]');
+  expect([...row.querySelectorAll('button')].map(b => b.textContent)).toEqual(['Edit']);
+  await act(async () => row.querySelector('button').click());
+  const status = container.querySelector('[data-testid="employee-lifecycle_state"]');
+  expect(status.disabled).toBe(false);
+  expect([...status.options].map(o => o.value)).toEqual(expect.arrayContaining(['Active', 'Inactive', 'Onboarding', 'Probation', 'PIP', 'Suspended', 'On_Leave', 'Notice_Period', 'Exiting', 'Exited']));
+  api.updateEmployee.mockResolvedValue({ data: {} });
+  await act(async () => { status.value = 'Inactive'; status.dispatchEvent(new Event('change', { bubbles: true })); });
+  await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(api.updateEmployee).toHaveBeenCalledWith('example', expect.objectContaining({ lifecycle_state: 'Inactive' }));
 });
 
 test('existing employee mode allows unknown start date and role level', async () => {

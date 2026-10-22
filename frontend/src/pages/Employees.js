@@ -5,7 +5,7 @@ import StatusBadge from '../components/StatusBadge';
 import EmployeePicker from '../components/EmployeePicker';
 import * as api from '../services/api';
 
-const LIFECYCLE_STATES = ['Onboarding', 'Probation', 'Active', 'On_Leave', 'PIP', 'Realignment', 'Exiting', 'Exited'];
+const LIFECYCLE_STATES = ['Active', 'Inactive', 'Onboarding', 'Probation', 'On_Leave', 'PIP', 'Realignment', 'Suspended', 'Notice_Period', 'Exiting', 'Exited'];
 const ROLE_LEVELS = ['L1', 'L2', 'L3', 'L4', 'L5', 'B1a', 'B1b'];
 
 const fmtKES = (n) => n ? `KES ${Number(n).toLocaleString('en-KE')}` : '—';
@@ -36,9 +36,6 @@ export default function Employees() {
   const [showBulkTraining, setShowBulkTraining] = useState(false);
   const [bulkTraining, setBulkTraining] = useState({ training_name: '', provider: 'Internal', delivery_method: 'Internal', cost_kes: '', duration_days: 1, business_justification: '' });
   const [bulkBusy, setBulkBusy] = useState(false);
-  const [pendingRemoval, setPendingRemoval] = useState(null);
-  const [removing, setRemoving] = useState(false);
-  const [removalError, setRemovalError] = useState('');
 
   const toggleSelect = (id) => setSelectedIds(prev => {
     const next = new Set(prev);
@@ -46,16 +43,6 @@ export default function Employees() {
     return next;
   });
   const toggleSelectAll = () => setSelectedIds(prev => prev.size === employees.length ? new Set() : new Set(employees.map(e => e.id)));
-
-  const handleBulkTransition = async (newState) => {
-    if (!window.confirm(`Transition ${selectedIds.size} employees to ${newState}?`)) return;
-    setBulkBusy(true);
-    try {
-      await api.bulkTransitionEmployees([...selectedIds], newState);
-      setSelectedIds(new Set());
-      await loadEmployees();
-    } finally { setBulkBusy(false); }
-  };
 
   const handleBulkTraining = async (e) => {
     e.preventDefault();
@@ -135,27 +122,6 @@ export default function Employees() {
     } finally { setSaving(false); }
   };
 
-  const handleTransition = async (empId, state) => {
-    try {
-      await api.transitionEmployee(empId, state);
-      loadEmployees();
-    } catch (err) {
-      alert(err.response?.data?.detail || 'Transition failed');
-    }
-  };
-
-  const handleRemove = async (emp) => {
-    setRemoving(true); setRemovalError('');
-    try {
-      await api.removeEmployee(emp.id, emp.full_name);
-      setSelectedIds(prev => { const next = new Set(prev); next.delete(emp.id); return next; });
-      setPendingRemoval(null);
-      await loadEmployees();
-    } catch (err) {
-      setRemovalError(employeeError(err, 'Employee could not be removed'));
-    } finally { setRemoving(false); }
-  };
-
   const openEdit = (emp) => {
     setError('');
     setSelected(emp);
@@ -187,9 +153,6 @@ export default function Employees() {
         <div data-testid="bulk-action-bar" style={{ padding: '10px 16px', marginBottom: '12px', backgroundColor: '#191919', color: '#fff', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
           <strong style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.12em' }}>{selectedIds.size} selected</strong>
           <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)' }}>Bulk action:</span>
-          {['Probation', 'Active', 'On_Leave', 'Suspended', 'PIP', 'Notice_Period', 'Exiting'].map(s => (
-            <button key={s} disabled={bulkBusy} onClick={() => handleBulkTransition(s)} data-testid={`bulk-transition-${s}`} style={{ padding: '4px 10px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '11px', fontFamily: 'Arial', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>→ {s.replace('_', ' ')}</button>
-          ))}
           <button data-testid="bulk-assign-training-btn" onClick={() => setShowBulkTraining(true)} style={{ padding: '4px 12px', backgroundColor: '#22C55E', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '11px', fontFamily: 'Arial', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>+ Assign Training</button>
           <button onClick={() => setSelectedIds(new Set())} style={{ marginLeft: 'auto', padding: '4px 10px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '11px', fontFamily: 'Arial' }}>Clear</button>
         </div>
@@ -200,8 +163,8 @@ export default function Employees() {
         <input data-testid="search-employees" placeholder="Search name, email, role..." value={search} onChange={e => setSearch(e.target.value)}
           style={{ padding: '8px 12px', border: '1px solid rgba(25,25,25,0.15)', fontSize: '13px', width: '240px', fontFamily: 'Arial', outline: 'none' }} />
         <select data-testid="filter-state" value={filterState} onChange={e => setFilterState(e.target.value)} style={{ padding: '8px 12px', border: '1px solid rgba(25,25,25,0.15)', fontSize: '13px', fontFamily: 'Arial', outline: 'none' }}>
-          <option value="">All States</option>
-          {LIFECYCLE_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+          <option value="">All Statuses</option>
+          {LIFECYCLE_STATES.map(s => <option key={s} value={s}>{s.replaceAll('_', ' ')}</option>)}
         </select>
         <select data-testid="filter-dept" value={filterDept} onChange={e => setFilterDept(e.target.value)} style={{ padding: '8px 12px', border: '1px solid rgba(25,25,25,0.15)', fontSize: '13px', fontFamily: 'Arial', outline: 'none' }}>
           <option value="">All Departments</option>
@@ -220,7 +183,7 @@ export default function Employees() {
                     <input type="checkbox" data-testid="bulk-select-all" checked={selectedIds.size === employees.length && employees.length > 0} onChange={toggleSelectAll} />
                   </th>
                 )}
-                {['Name', 'Email', 'Role', 'Dept', 'Level', 'Start Date', 'Salary', 'State', 'Actions'].map(h => (
+                {['Name', 'Email', 'Role', 'Dept', 'Level', 'Start Date', 'Salary', 'Status', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', borderBottom: '1px solid rgba(25,25,25,0.08)', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -248,18 +211,6 @@ export default function Employees() {
                       {canEdit && (
                         <>
                           <button onClick={(ev) => { ev.stopPropagation(); openEdit(emp); }} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700, transition: 'all 0.15s' }}>Edit</button>
-                          {user?.role === 'hr_admin' && (
-                            <button onClick={() => { setPendingRemoval(emp); setRemovalError(''); }} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #DC2626', backgroundColor: 'transparent', color: '#DC2626', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>Remove</button>
-                          )}
-                          {emp.lifecycle_state === 'Onboarding' && (
-                            <button onClick={(ev) => { ev.stopPropagation(); handleTransition(emp.id, 'Probation'); }} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #3B82F6', backgroundColor: 'transparent', color: '#3B82F6', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>→ Probation</button>
-                          )}
-                          {emp.lifecycle_state === 'Probation' && (
-                            <button onClick={(ev) => { ev.stopPropagation(); handleTransition(emp.id, 'Active'); }} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #22C55E', backgroundColor: 'transparent', color: '#22C55E', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>→ Active</button>
-                          )}
-                          {emp.lifecycle_state === 'Active' && (
-                            <button onClick={(ev) => { ev.stopPropagation(); handleTransition(emp.id, 'Exiting'); }} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #F97316', backgroundColor: 'transparent', color: '#F97316', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>→ Exiting</button>
-                          )}
                         </>
                       )}
                     </div>
@@ -274,15 +225,6 @@ export default function Employees() {
         )}
       </div>
 
-      {pendingRemoval && <div role="dialog" aria-modal="true" aria-labelledby="remove-employee-title" style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-        <div style={{ backgroundColor: '#fff', padding: '24px', maxWidth: '480px', width: '100%' }}>
-          <h3 id="remove-employee-title">Remove {pendingRemoval.full_name}?</h3>
-          <p>This removes the employee from the roster and has no in-app undo. Accounts and historical records will not be deleted. Linked accounts and direct reports must be reviewed first.</p>
-          {removalError && <p role="alert" style={{ color: '#DC2626' }}>{removalError}</p>}
-          <button disabled={removing} onClick={() => setPendingRemoval(null)}>Cancel</button>{' '}
-          <button disabled={removing} onClick={() => handleRemove(pendingRemoval)} style={{ backgroundColor: '#DC2626', color: '#fff', padding: '8px 16px', border: 0 }}>{removing ? 'Removing...' : 'Remove employee'}</button>
-        </div>
-      </div>}
       {/* Add/Edit Modal */}
       {showForm && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
@@ -313,15 +255,15 @@ export default function Employees() {
                   { key: 'department', label: 'Department', options: departmentOptions },
                   { key: 'role_level', label: 'Role Level', options: ROLE_LEVELS },
                   { key: 'employment_type', label: 'Employment Type', options: ['Full_Time', 'Part_Time', 'Fixed_Term'] },
-                  { key: 'lifecycle_state', label: 'Lifecycle State', options: LIFECYCLE_STATES },
+                  { key: 'lifecycle_state', label: 'Status', options: LIFECYCLE_STATES },
                 ].map(f => (
                   <div key={f.key}>
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>{f.label}</label>
-                    <select required={f.key === 'department' && !selected} data-testid={`employee-${f.key}`} value={form[f.key] || ''} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
+                    <select disabled={f.key === 'lifecycle_state' && !!selected && user?.role !== 'hr_admin'} required={f.key === 'department' && !selected} data-testid={`employee-${f.key}`} value={form[f.key] || ''} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
                       style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', boxSizing: 'border-box', outline: 'none' }}>
                       {f.key === 'department' && <option value="">Select department</option>}
                       {f.key !== 'department' && !form[f.key] && <option value="">Not specified</option>}
-                      {[...new Set([...f.options, ...(typeof form[f.key] === 'string' && form[f.key] ? [form[f.key]] : [])])].map(o => <option key={o} value={o}>{o}</option>)}
+                      {[...new Set([...f.options, ...(typeof form[f.key] === 'string' && form[f.key] ? [form[f.key]] : [])])].map(o => <option key={o} value={o}>{f.key === 'lifecycle_state' ? o.replaceAll('_', ' ') : o}</option>)}
                     </select>
                   </div>
                 ))}
