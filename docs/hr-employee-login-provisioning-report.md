@@ -10,6 +10,7 @@ The user approved this limited HR permission expansion on 29 October 2026. Revie
 - HR may link an existing ordinary Employee account, preserving its password, role and activation state. Existing manager, HR, Finance, executive, Board, IT and custom-role accounts require IT administration. No existing passwords are reset.
 - Preserve tenant boundaries, unique identity checks, eligibility checks, audit history, Board-only visibility and the persistent integrity lock. HR review responses omit internal account IDs. Switching account or role clears previously displayed review data.
 - Initial passwords remain password-form inputs protected by the existing minimum-length/common-password policy. No default password, real credentials or invitations are hardcoded, logged or added to this report. This change does not introduce Microsoft integration or automatic email delivery.
+- The HR readiness review can prepare up to 50 unambiguous missing accounts for a single operator-confirmed batch. The form lists recipients and takes one password entry; it calls the existing guarded endpoint sequentially, reports per-account outcomes, clears the password afterwards and stops on an expired/unconfirmed session. Partial conflicts remain visible; rerun readiness before retrying. This introduces no bulk database endpoint or automatic account creation on page load.
 
 ## Rollout
 
@@ -22,7 +23,8 @@ The user approved this limited HR permission expansion on 29 October 2026. Revie
 ## Validation
 
 - Full backend: 1,221 passed, 321 existing integration/environment skips, five existing warnings.
-- Full frontend: 229 passed across 31 suites.
+- Full frontend: 233 passed across 31 suites after the operator-confirmed batch option.
+- Frontend coverage includes identity review before batch creation, duplicate selection removal, partial failures, existing password preservation and session-expiry stop behavior.
 - Strict production build, Python compilation and whitespace checks passed.
 - Backend verification covers limited role access, new Employee-only accounts, mandatory password change, privileged-account protection, idempotent linking, password preservation and HR Board visibility. Existing first-login, refresh-token, employee-isolation and module regressions are included in the full suite.
 - No production accounts or configuration were changed while preparing this proposal.

@@ -62,3 +62,19 @@ test('review errors are retryable and account switching hides previous employee 
   await render(<EmployeeLoginReview />);
   expect(container.textContent).not.toContain('Prior private record');
 });
+
+test('HR can prepare only unambiguous missing accounts and must confirm creation separately', async () => {
+  useAuth.mockReturnValue({ user: { id: 'hr', role: 'hr_admin' } });
+  const onPrepare = jest.fn();
+  api.getEmployeeLoginReview.mockResolvedValue({ data: [
+    { record_id: 'one', employee_id: 'one', full_name: 'Example One', work_email: 'one@example.test', status: 'Needs review', issues: ['No login account found'] },
+    { record_id: 'two', employee_id: 'two', status: 'Needs review', issues: ['No login account found', 'Employee identifier is duplicated'] },
+    { record_id: 'three', employee_id: 'three', status: 'Linked', issues: [] },
+  ] });
+  await render(<EmployeeLoginReview onPrepareAccounts={onPrepare} />);
+  await act(async () => container.querySelector('button').click());
+  const prepare = [...container.querySelectorAll('button')].find(button => button.textContent === 'Prepare 1 missing employee accounts');
+  await act(async () => prepare.click());
+  expect(onPrepare).toHaveBeenCalledWith([{ id: 'one', full_name: 'Example One', work_email: 'one@example.test' }]);
+  expect(api.provisionEmployeeAccount).not.toHaveBeenCalled();
+});

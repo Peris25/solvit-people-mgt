@@ -39,6 +39,9 @@ export default function Employees() {
   const [bulkTraining, setBulkTraining] = useState({ training_name: '', provider: 'Internal', delivery_method: 'Internal', cost_kes: '', duration_days: 1, business_justification: '' });
   const [bulkBusy, setBulkBusy] = useState(false);
   const [showLogins, setShowLogins] = useState(false);
+  const [accountSelection, setAccountSelection] = useState([]);
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [accountReviewVersion, setAccountReviewVersion] = useState(0);
 
   const toggleSelect = (id) => setSelectedIds(prev => {
     const next = new Set(prev);
@@ -143,7 +146,7 @@ export default function Employees() {
         </div>
         {canEdit && (
           <div style={{ display: 'flex', gap: '8px' }}>
-            {user?.role === 'hr_admin' && <button type="button" onClick={() => setShowLogins(value => !value)} aria-expanded={showLogins} style={{ padding: '10px 18px', backgroundColor: 'transparent', border: '1px solid #191919', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>Employee logins</button>}
+            {user?.role === 'hr_admin' && <button type="button" disabled={accountBusy} onClick={() => setShowLogins(value => !value)} aria-expanded={showLogins} style={{ padding: '10px 18px', backgroundColor: 'transparent', border: '1px solid #191919', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>Employee logins</button>}
             <button data-testid="export-employees-csv" onClick={() => api.downloadCSV('employees')} style={{ padding: '10px 18px', backgroundColor: 'transparent', color: '#191919', border: '1px solid #191919', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>↓ CSV</button>
             <button data-testid="add-employee-btn" onClick={() => { setSelected(null); setShowForm(true); }} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>
               + Add Employee
@@ -153,8 +156,8 @@ export default function Employees() {
       </div>
 
       {showLogins && user?.role === 'hr_admin' && <section aria-label="Employee login administration" style={{ border: '1px solid rgba(25,25,25,0.15)', marginBottom: '20px' }}>
-        <EmployeeAccountForm />
-        <EmployeeLoginReview />
+        <EmployeeAccountForm key={accountSelection.map(employee => employee.id).join('|') || 'single'} selectedEmployees={accountSelection} onClearSelection={() => setAccountSelection([])} onBusyChange={setAccountBusy} onSaved={() => setAccountReviewVersion(value => value + 1)} />
+        <EmployeeLoginReview key={accountReviewVersion} disabled={accountBusy} onPrepareAccounts={setAccountSelection} />
       </section>}
       {/* Bulk action bar */}
       {selectedIds.size > 0 && canEdit && (

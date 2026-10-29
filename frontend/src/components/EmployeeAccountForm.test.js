@@ -36,3 +36,48 @@ test('displays a safe duplicate conflict without resetting or creating another a
   expect(container.textContent).toContain('Employee has conflicting accounts.');
   expect(api.provisionEmployeeAccount).toHaveBeenCalledTimes(1);
 });
+
+const batchEmployees = [{ id: 'one', full_name: 'Example One', work_email: 'one@example.test' }, { id: 'two', full_name: 'Example Two', work_email: 'two@example.test' }];
+const enterInitialPassword = async () => {
+  const input = container.querySelector('[data-testid="account-initial-password"]');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Synthetic-staff-setup');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+};
+
+test('batch setup reviews identities, deduplicates selection and clears the single entered password', async () => {
+  api.provisionEmployeeAccount.mockResolvedValueOnce({ data: { id: 'user-one', created: true } }).mockResolvedValueOnce({ data: { id: 'user-two', created: false } });
+  const onSaved = jest.fn();
+  await act(async () => root.render(<EmployeeAccountForm selectedEmployees={[...batchEmployees, batchEmployees[0]]} onSaved={onSaved} />));
+  expect(container.textContent).toContain('Review these 2 employees');
+  expect(container.textContent).toContain('one@example.test');
+  await enterInitialPassword();
+  await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(api.provisionEmployeeAccount.mock.calls.map(call => call[0].employee_id)).toEqual(['one', 'two']);
+  expect(container.textContent).toContain('1 created; 1 linked; 0 need review');
+  expect(container.textContent).toContain('Existing password and role preserved');
+  expect(container.querySelector('input[type="password"]').value).toBe('');
+  expect(onSaved).toHaveBeenCalledTimes(1);
+});
+
+test('partial batch conflicts are reported without stopping independent eligible employees', async () => {
+  api.provisionEmployeeAccount.mockRejectedValueOnce({ response: { data: { detail: 'IT Admin must manage this account.' } } }).mockResolvedValueOnce({ data: { id: 'two', created: true } });
+  await act(async () => root.render(<EmployeeAccountForm selectedEmployees={batchEmployees} />));
+  await enterInitialPassword();
+  await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(container.textContent).toContain('Example One: Needs review');
+  expect(container.textContent).toContain('Example Two: Created');
+  expect(container.textContent).toContain('1 created; 0 linked; 1 need review');
+  expect(container.textContent).not.toContain('Synthetic-staff-setup');
+});
+
+test('batch setup stops if the session expires and leaves remaining records unprocessed', async () => {
+  api.provisionEmployeeAccount.mockResolvedValue({ status: 401, data: null });
+  await act(async () => root.render(<EmployeeAccountForm selectedEmployees={batchEmployees} />));
+  await enterInitialPassword();
+  await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(api.provisionEmployeeAccount).toHaveBeenCalledTimes(1);
+  expect(container.textContent).toContain('Session expired');
+  expect(container.textContent).toContain('2 need review or remain unprocessed');
+});
