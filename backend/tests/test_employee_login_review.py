@@ -56,8 +56,8 @@ def test_review_excludes_solvers_and_other_tenants():
     assert [row["employee_id"] for row in rows] == ["staff"]
 
 
-@pytest.mark.parametrize("role", ["employee", "line_manager", "hr_admin", "finance", "solver"])
-def test_review_endpoint_requires_it_admin(role):
+@pytest.mark.parametrize("role", ["employee", "line_manager", "hr_manager", "finance", "solver"])
+def test_review_endpoint_rejects_roles_outside_account_administration(role):
     with patch.object(access, "get_current_user", AsyncMock(return_value={"id": "user", "role": role})):
         with pytest.raises(HTTPException) as error:
             run(access.review_employee_logins(request()))

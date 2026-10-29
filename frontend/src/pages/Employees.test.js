@@ -12,6 +12,17 @@ let container, root;
 beforeEach(() => { container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container); });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); jest.clearAllMocks(); });
 
+test('HR account setup reuses the dedicated form without exposing role administration', async () => {
+  api.getEmployees.mockResolvedValue({ data: [] });
+  api.getAllMastersSettings.mockResolvedValue({ data: {} });
+  await act(async () => root.render(<Employees />));
+  await act(async () => [...container.querySelectorAll('button')].find(b => b.textContent === 'Employee logins').click());
+  expect(container.querySelector('[data-testid="employee-account-form"]')).not.toBeNull();
+  expect(container.textContent).toContain('Check employee logins');
+  expect(container.textContent).not.toContain('User Role Assignments');
+  expect(container.querySelector('input[type="password"]').value).toBe('');
+});
+
 test('employee rows offer only Edit and HR can select the supported statuses', async () => {
   api.getEmployees.mockResolvedValue({ data: [{ id: 'example', full_name: 'Example Employee', lifecycle_state: 'Active', line_manager_id: 'boss' }] });
   api.getAllMastersSettings.mockResolvedValue({ data: {} });

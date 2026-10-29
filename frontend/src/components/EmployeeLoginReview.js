@@ -7,14 +7,14 @@ export default function EmployeeLoginReview() {
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  if (user?.role !== 'it_admin') return null;
-  const rows = result?.accountId === user.id ? result.rows : null;
+  if (!['it_admin', 'hr_admin'].includes(user?.role)) return null;
+  const rows = result?.accountId === user.id && result?.role === user.role ? result.rows : null;
   const review = async () => {
     setBusy(true); setError(''); setResult(null);
     try {
       const response = await api.getEmployeeLoginReview();
       if (!Array.isArray(response.data)) throw new Error('Unavailable');
-      setResult({ accountId: user.id, rows: response.data });
+      setResult({ accountId: user.id, role: user.role, rows: response.data });
     } catch {
       setError('Could not review employee logins. Please retry.');
     } finally { setBusy(false); }

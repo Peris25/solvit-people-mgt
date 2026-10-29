@@ -236,8 +236,8 @@ def test_demo_destruction_requires_explicit_development_flags():
         with pytest.raises(HTTPException): require_demo_data_access()
 
 
-def test_account_endpoint_retains_it_admin_permissions():
-    with patch.object(access, "get_current_user", AsyncMock(return_value={"role": "hr_admin"})):
+def test_account_endpoint_rejects_non_provisioning_roles():
+    with patch.object(access, "get_current_user", AsyncMock(return_value={"role": "hr_manager"})):
         with pytest.raises(HTTPException) as error:
             run(access.create_employee_account(access.EmployeeAccountRequest(employee_id="staff"), None))
     assert error.value.status_code == 403

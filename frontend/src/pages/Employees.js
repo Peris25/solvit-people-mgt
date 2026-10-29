@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import StatusBadge from '../components/StatusBadge';
 import EmployeePicker from '../components/EmployeePicker';
+import EmployeeAccountForm from '../components/EmployeeAccountForm';
+import EmployeeLoginReview from '../components/EmployeeLoginReview';
 import * as api from '../services/api';
 
 const LIFECYCLE_STATES = ['Active', 'Inactive', 'Onboarding', 'Probation', 'On_Leave', 'PIP', 'Realignment', 'Suspended', 'Notice_Period', 'Exiting', 'Exited'];
@@ -36,6 +38,7 @@ export default function Employees() {
   const [showBulkTraining, setShowBulkTraining] = useState(false);
   const [bulkTraining, setBulkTraining] = useState({ training_name: '', provider: 'Internal', delivery_method: 'Internal', cost_kes: '', duration_days: 1, business_justification: '' });
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [showLogins, setShowLogins] = useState(false);
 
   const toggleSelect = (id) => setSelectedIds(prev => {
     const next = new Set(prev);
@@ -140,6 +143,7 @@ export default function Employees() {
         </div>
         {canEdit && (
           <div style={{ display: 'flex', gap: '8px' }}>
+            {user?.role === 'hr_admin' && <button type="button" onClick={() => setShowLogins(value => !value)} aria-expanded={showLogins} style={{ padding: '10px 18px', backgroundColor: 'transparent', border: '1px solid #191919', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>Employee logins</button>}
             <button data-testid="export-employees-csv" onClick={() => api.downloadCSV('employees')} style={{ padding: '10px 18px', backgroundColor: 'transparent', color: '#191919', border: '1px solid #191919', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>↓ CSV</button>
             <button data-testid="add-employee-btn" onClick={() => { setSelected(null); setShowForm(true); }} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>
               + Add Employee
@@ -148,6 +152,10 @@ export default function Employees() {
         )}
       </div>
 
+      {showLogins && user?.role === 'hr_admin' && <section aria-label="Employee login administration" style={{ border: '1px solid rgba(25,25,25,0.15)', marginBottom: '20px' }}>
+        <EmployeeAccountForm />
+        <EmployeeLoginReview />
+      </section>}
       {/* Bulk action bar */}
       {selectedIds.size > 0 && canEdit && (
         <div data-testid="bulk-action-bar" style={{ padding: '10px 16px', marginBottom: '12px', backgroundColor: '#191919', color: '#fff', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>

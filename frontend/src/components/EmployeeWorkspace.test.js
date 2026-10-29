@@ -35,8 +35,8 @@ test('ordinary employees cannot open account review or invoke its API', async ()
   expect(container.textContent).toBe(''); expect(api.getEmployeeLoginReview).not.toHaveBeenCalled();
 });
 
-test('IT can identify missing accounts without creating accounts or changing roles', async () => {
-  useAuth.mockReturnValue({ user: { id: 'it', role: 'it_admin' } });
+test.each(['it_admin', 'hr_admin'])('%s can identify missing accounts without creating accounts or changing roles', async role => {
+  useAuth.mockReturnValue({ user: { id: 'actor', role } });
   api.getEmployeeLoginReview.mockResolvedValue({ data: [{ record_id: 'one', employee_id: 'one', full_name: 'Synthetic FTE', status: 'Needs review', issues: ['No login account found'] }] });
   await render(<EmployeeLoginReview />);
   await act(async () => container.querySelector('button').click());
@@ -55,6 +55,9 @@ test('review errors are retryable and account switching hides previous employee 
   expect(container.textContent).not.toContain('private details');
   await act(async () => container.querySelector('button').click());
   expect(container.textContent).toContain('Prior private record');
+  useAuth.mockReturnValue({ user: { id: 'it', role: 'hr_admin' } });
+  await render(<EmployeeLoginReview />);
+  expect(container.textContent).not.toContain('Prior private record');
   useAuth.mockReturnValue({ user: { id: 'another', role: 'it_admin' } });
   await render(<EmployeeLoginReview />);
   expect(container.textContent).not.toContain('Prior private record');

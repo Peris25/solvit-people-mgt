@@ -41,6 +41,8 @@ async def employee_login_review(db, actor):
         if kind not in ("Full_Time", None, ""):
             continue
         key = employee_key(employee)
+        if actor.get("role") == "hr_admin" and employee.get("board_only") and key != actor.get("employee_id"):
+            continue
         aliases = {key, str(employee["_id"])}
         email = str(employee.get("work_email") or "").strip().lower()
         candidates = [u for u in users if (str(u.get("employee_id") or "") in aliases
@@ -73,6 +75,8 @@ async def employee_login_review(db, actor):
                        "account_id": str(user["_id"]) if user else None,
                        "must_change_password": bool(user.get("must_change_password")) if user else None,
                        "status": "Needs review" if issues else "Linked", "issues": issues})
+        if actor.get("role") == "hr_admin":
+            result[-1].pop("account_id", None)
     return result
 
 
@@ -99,6 +103,8 @@ async def provision_employee_account(db, employee_id, password, actor):
             raise HTTPException(409, "Employee has conflicting accounts. Request an integrity review.")
         existing = next(iter(accounts.values()), None)
         if existing:
+            if actor.get("role") == "hr_admin" and existing.get("role") != "employee":
+                raise HTTPException(403, "IT Admin must manage existing privileged or manager accounts. Password and role were preserved.")
             if tenant_of(existing) != tenant or existing.get("account_type") in ("system", "solver", "board"):
                 raise HTTPException(409, "Account is not eligible for employee linking.")
             link = existing.get("employee_id")

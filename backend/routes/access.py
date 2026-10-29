@@ -336,15 +336,15 @@ class EmployeeAccountRequest(BaseModel):
 @router.get("/employee-login-review")
 async def review_employee_logins(request: Request):
     actor = await get_current_user(request)
-    if actor.get("role") != "it_admin":
-        raise HTTPException(403, "IT Admin only")
+    if actor.get("role") not in {"it_admin", "hr_admin"}:
+        raise HTTPException(403, "IT Admin or HR Admin only")
     return await employee_login_review(get_db(), actor)
 
 
 @router.post("/users/employee-account")
 async def create_employee_account(body: EmployeeAccountRequest, request: Request):
     actor = await get_current_user(request)
-    if actor.get("role") != "it_admin":
-        raise HTTPException(403, "IT Admin only")
+    if actor.get("role") not in {"it_admin", "hr_admin"}:
+        raise HTTPException(403, "IT Admin or HR Admin only")
     password = body.initial_password.get_secret_value() if body.initial_password else None
     return await provision_employee_account(get_db(), body.employee_id, password, actor)
