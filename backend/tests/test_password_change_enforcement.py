@@ -409,7 +409,7 @@ def test_normal_refresh_does_not_revoke_an_unexpired_access_token(session):
 def test_only_minimal_auth_handlers_are_exempt_and_global_gate_covers_new_routes(session):
     client, _, user = session
     exempt_auth = {endpoint.__name__ for endpoint in SESSION_EXEMPT_ENDPOINTS if endpoint.__module__ == auth_routes.__name__}
-    assert exempt_auth == {"login", "logout", "refresh_token", "get_me", "change_password"}
+    assert exempt_auth == {"login", "logout", "refresh_token", "get_me", "change_password", "forgot_password", "reset_password"}
 
     async def unguarded_probe(request: Request):
         raise AssertionError("A restricted session reached an unguarded business handler")

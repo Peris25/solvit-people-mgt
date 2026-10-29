@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Request, Response, BackgroundTasks
+from pydantic import BaseModel, SecretStr, Field
 from datetime import datetime, timezone
 from bson import ObjectId
 from database import get_db
@@ -42,6 +42,30 @@ class RegisterRequest(BaseModel):
 class PasswordChangeRequest(BaseModel):
     current_password: str
     new_password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(max_length=254)
+
+
+class ResetPasswordRequest(BaseModel):
+    token: SecretStr
+    new_password: SecretStr
+
+
+@router.post("/password/forgot")
+async def forgot_password(body: ForgotPasswordRequest, request: Request, background_tasks: BackgroundTasks):
+    from utils.password_recovery import request_reset
+    return await request_reset(get_db(), body.email, client_ip(request), background_tasks)
+
+
+@router.post("/password/reset")
+async def reset_password(body: ResetPasswordRequest, request: Request, response: Response):
+    from utils.password_recovery import complete_reset
+    result = await complete_reset(get_db(), body.token.get_secret_value(), body.new_password.get_secret_value(), client_ip(request))
+    response.delete_cookie("access_token", **_COOKIE_KW)
+    response.delete_cookie("refresh_token", **_COOKIE_KW)
+    return result
 
 
 @router.post("/login")

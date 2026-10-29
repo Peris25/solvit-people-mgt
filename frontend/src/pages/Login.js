@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
@@ -72,6 +72,7 @@ export default function Login() {
             />
           </div>
           {error && <div data-testid="login-error" style={{ color: '#FF353F', fontSize: '13px', marginBottom: '16px', padding: '8px 12px', border: '1px solid #FF353F', backgroundColor: 'rgba(255,53,63,0.05)' }}>{error}</div>}
+          <p style={{ margin: '0 0 16px', fontSize: '13px' }}><Link to="/forgot-password">Forgot password?</Link></p>
           <button
             data-testid="login-submit"
             type="submit" disabled={loading}

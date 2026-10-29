@@ -172,6 +172,7 @@ async def send_email(
     template_key: Optional[str] = None,
     context: Optional[dict] = None,
     retry_count: int = 0,
+    sensitive: bool = False,
 ) -> dict:
     if not outbound_email_enabled():
         return await suppressed_email(db, template_key)
@@ -180,7 +181,7 @@ async def send_email(
         return {"status": "skipped", "message": "no recipient"}
 
     is_formal = template_key in FORMAL_TEMPLATE_KEYS
-    mode, bucket = await _resolve_smtp(db, is_formal)
+    mode, bucket = await _resolve_smtp(db, is_formal or sensitive)
     if not bucket:
         await _log_skip(db, to, "email delivery not configured", template_key)
         return {"status": "skipped", "message": "email delivery not configured"}
@@ -253,7 +254,7 @@ async def send_email(
     except OutboundEmailDisabled:
         return await suppressed_email(db, template_key)
     except Exception as e:
-        err = str(e)
+        err = "Sensitive email delivery failed" if sensitive else str(e)
         await db.email_log.insert_one({
             "tenant_id": "solvit", "to": to, "subject": subject,
             "template_key": template_key, "mode": mode, "status": "failed",
@@ -261,6 +262,8 @@ async def send_email(
             "sent_at": datetime.now(timezone.utc).isoformat(),
         })
         # Queue a retry if not exhausted
+        if sensitive:
+            return {"status": "failed", "error": err}
         if retry_count < len(RETRY_DELAYS_MIN):
             await _queue_retry(db, to, template_key, ctx, subject, html, retry_count)
         else:

@@ -4,6 +4,7 @@ import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
+import { ForgotPassword, ResetPassword } from './pages/PasswordRecovery';
 import Dashboard from './pages/RoleDashboard';
 import Employees from './pages/Employees';
 import Organogram from './pages/Organogram';
@@ -54,6 +55,8 @@ export default function App() {
           <ErrorToast />
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/apply/:rid" element={<PublicSolverApply />} />
           <Route path="/" element={<Layout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />

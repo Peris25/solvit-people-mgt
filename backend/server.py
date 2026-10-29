@@ -55,10 +55,11 @@ from reminders.engine import reminder_engine
 from utils.auth import require_password_change_completed
 
 # Exempt actual registered handlers, never a URL/header supplied by a client.
-# These five auth routes only authenticate, recover credentials or end sessions.
+# These minimal auth routes only authenticate, recover credentials or end sessions.
 _AUTH_RECOVERY_ROUTES = {("/auth/login", "POST"), ("/auth/logout", "POST"),
                          ("/auth/refresh", "POST"), ("/auth/me", "GET"),
-                         ("/auth/password/change", "POST")}
+                         ("/auth/password/change", "POST"), ("/auth/password/forgot", "POST"),
+                         ("/auth/password/reset", "POST")}
 SESSION_EXEMPT_ENDPOINTS = {route.endpoint for route in auth_router.routes
                             if any((route.path, method) in _AUTH_RECOVERY_ROUTES for method in route.methods)}
 SESSION_EXEMPT_ENDPOINTS.update(route.endpoint for route in mfa_router.routes
