@@ -1,3 +1,4 @@
+import PasswordInput from '../components/PasswordInput';
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../services/api';
@@ -66,9 +67,9 @@ export function ResetPassword() {
       <p>Use at least 12 characters and choose a password you have not used before. This does not change your account permissions or MFA requirements.</p>
       <form onSubmit={submit}>
         <label htmlFor="recovery-password">New password</label>
-        <input id="recovery-password" type="password" autoComplete="new-password" required minLength={12} maxLength={72} value={password} onChange={event => setPassword(event.target.value)} style={inputStyle} disabled={busy} />
+        <PasswordInput id="recovery-password" type="password" autoComplete="new-password" required minLength={12} maxLength={72} value={password} onChange={event => setPassword(event.target.value)} style={inputStyle} disabled={busy} />
         <label htmlFor="recovery-confirmation">Confirm new password</label>
-        <input id="recovery-confirmation" type="password" autoComplete="new-password" required minLength={12} maxLength={72} value={confirmation} onChange={event => setConfirmation(event.target.value)} style={inputStyle} disabled={busy} />
+        <PasswordInput id="recovery-confirmation" type="password" autoComplete="new-password" required minLength={12} maxLength={72} value={confirmation} onChange={event => setConfirmation(event.target.value)} style={inputStyle} disabled={busy} />
         {error && <p role="alert">{error}</p>}
         <button type="submit" disabled={busy} style={buttonStyle}>{busy ? 'Updating...' : 'Reset password'}</button>
       </form>

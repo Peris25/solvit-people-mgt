@@ -1,3 +1,4 @@
+import PasswordInput from '../components/PasswordInput';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
@@ -69,7 +70,7 @@ export default function MfaSecurity({ required = false }) {
           {!status.configured ? <p>MFA setup is awaiting IT configuration. Contact IT support before your enrollment deadline.</p> : <>
             {status.mfa_enrolled && <p>To replace your authenticator or recovery codes, sign in with MFA within the last 5 minutes and confirm your password. The old authenticator stays active until the new one is confirmed.</p>}
             <label htmlFor="mfa-password">Current password</label>
-            <input id="mfa-password" type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required style={input} />
+            <PasswordInput id="mfa-password" type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required style={input} />
             <button style={button} disabled={busy} type="submit">{status.mfa_enrolled ? 'Replace authenticator' : 'Set up authenticator'}</button>
             {status.mfa_enrolled && <button type="button" disabled={busy || !password} onClick={() => run(async () => { setCodes((await rotateRecoveryCodes(password)).recovery_codes); })}>Replace recovery codes</button>}
           </>}
@@ -80,7 +81,7 @@ export default function MfaSecurity({ required = false }) {
           <form onSubmit={event => { event.preventDefault(); run(async () => { await resetMfa(target, password, reference); setTarget(''); setReference(''); setMessage('Reset recorded. The account must sign in and enroll again.'); }); }}>
             <label htmlFor="mfa-target">Login account ID</label><input id="mfa-target" required value={target} onChange={event => setTarget(event.target.value)} style={input} />
             <label htmlFor="mfa-reference">Approved support reference</label><input id="mfa-reference" required minLength={8} maxLength={200} value={reference} onChange={event => setReference(event.target.value)} style={input} />
-            <label htmlFor="mfa-admin-password">Your current password</label><input id="mfa-admin-password" required type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} style={input} />
+            <label htmlFor="mfa-admin-password">Your current password</label><PasswordInput id="mfa-admin-password" required type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} style={input} />
             <button disabled={busy} style={button}>Reset this account's MFA</button>
           </form>
         </details>}

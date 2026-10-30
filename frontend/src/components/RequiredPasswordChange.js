@@ -1,3 +1,4 @@
+import PasswordInput from './PasswordInput';
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
@@ -35,11 +36,11 @@ export default function RequiredPasswordChange({ required = true }) {
         <p>{required ? 'Set a new password before accessing the People System.' : 'Use your current password to choose a new password.'} You will need to sign in again after saving.</p>
         <form onSubmit={submit}>
           <label htmlFor="required-current-password">Current password</label>
-          <input id="required-current-password" type="password" autoComplete="current-password" required value={currentPassword} onChange={event => setCurrentPassword(event.target.value)} style={inputStyle} />
+          <PasswordInput id="required-current-password" type="password" autoComplete="current-password" required value={currentPassword} onChange={event => setCurrentPassword(event.target.value)} style={inputStyle} />
           <label htmlFor="required-new-password">New password</label>
-          <input id="required-new-password" type="password" autoComplete="new-password" required minLength={12} value={newPassword} onChange={event => setNewPassword(event.target.value)} style={inputStyle} />
+          <PasswordInput id="required-new-password" type="password" autoComplete="new-password" required minLength={12} value={newPassword} onChange={event => setNewPassword(event.target.value)} style={inputStyle} />
           <label htmlFor="required-confirm-password">Confirm new password</label>
-          <input id="required-confirm-password" type="password" autoComplete="new-password" required value={confirmation} onChange={event => setConfirmation(event.target.value)} style={inputStyle} />
+          <PasswordInput id="required-confirm-password" type="password" autoComplete="new-password" required value={confirmation} onChange={event => setConfirmation(event.target.value)} style={inputStyle} />
           <p>Use at least 12 characters and a password you have not used before.</p>
           {error && <p role="alert" style={{ color: '#B91C1C' }}>{error}</p>}
           <button type="submit" disabled={busy} style={{ padding: '10px 16px', backgroundColor: '#FF353F', color: '#fff', border: 0 }}>{busy ? 'Saving...' : 'Save password'}</button>

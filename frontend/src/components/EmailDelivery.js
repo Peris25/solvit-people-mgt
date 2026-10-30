@@ -1,3 +1,4 @@
+import PasswordInput from './PasswordInput';
 /**
  * EmailDelivery — Testing (Mailtrap) / Production (Office 365) toggle.
  * Embedded in Settings page; IT Admin only edit, HR Admin view active mode.
@@ -99,7 +100,7 @@ export default function EmailDelivery() {
               {['STARTTLS','SSL','None'].map(o => <option key={o}>{o}</option>)}
             </select>
           ) : (
-            <input
+            <PasswordInput
               data-testid={`${mode}-${f}`}
               disabled={!canEdit}
               type={f === 'password' ? 'password' : (f === 'smtp_port' ? 'number' : 'text')}

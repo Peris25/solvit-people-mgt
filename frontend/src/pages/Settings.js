@@ -1,3 +1,4 @@
+import PasswordInput from '../components/PasswordInput';
 import React, { useState, useEffect } from 'react';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -124,7 +125,7 @@ export default function Settings() {
               )}
               <div style={{ marginBottom: '20px' }}>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>API Key</label>
-                <input data-testid="llm-api-key" type="password" value={form.llm_api_key || ''} onChange={e => setForm(p => ({ ...p, llm_api_key: e.target.value }))} placeholder="sk-..." style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', outline: 'none', boxSizing: 'border-box' }} />
+                <PasswordInput data-testid="llm-api-key" type="password" value={form.llm_api_key || ''} onChange={e => setForm(p => ({ ...p, llm_api_key: e.target.value }))} placeholder="sk-..." style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', outline: 'none', boxSizing: 'border-box' }} />
                 <p style={{ fontSize: '11px', color: '#525252', marginTop: '4px' }}>Your API key is stored securely and never exposed in the UI.</p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>

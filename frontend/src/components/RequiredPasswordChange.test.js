@@ -41,7 +41,7 @@ test.each(['employee', 'hr_admin', 'it_admin', 'solver'])('restricted %s sees on
   expect(container.querySelector('[data-testid="private-outlet"]')).toBeNull();
   expect(container.querySelector('[data-testid="sidebar"]')).toBeNull();
   expect(container.querySelector('[data-testid="tour"]')).toBeNull();
-  await act(async () => container.querySelector('button[type="button"]').click());
+  await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === 'Sign out').click());
   expect(logout).toHaveBeenCalledTimes(1);
 });
 

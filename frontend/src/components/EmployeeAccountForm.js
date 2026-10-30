@@ -1,3 +1,4 @@
+import PasswordInput from './PasswordInput';
 import React, { useState } from 'react';
 import EmployeePicker from './EmployeePicker';
 import * as api from '../services/api';
@@ -63,7 +64,7 @@ export default function EmployeeAccountForm({ onSaved, selectedEmployees = [], o
         onChange={employee => { setEmployeeId(employee.id); setPassword(''); setMessage(''); }} />}
       <label style={{ display: 'block', fontSize: '12px', marginTop: '10px' }}>
         Initial password (new accounts only)
-        <input data-testid="account-initial-password" type="password" autoComplete="new-password" value={password}
+        <PasswordInput data-testid="account-initial-password" type="password" autoComplete="new-password" value={password}
           disabled={busy} required={!!batch.length} minLength={12} onChange={event => setPassword(event.target.value)}
           style={{ display: 'block', padding: '8px', marginTop: '4px', width: '100%', boxSizing: 'border-box' }} />
       </label>

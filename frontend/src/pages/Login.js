@@ -1,3 +1,4 @@
+import PasswordInput from '../components/PasswordInput';
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -64,7 +65,7 @@ export default function Login() {
           </div>
           <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#525252', marginBottom: '6px' }}>Password</label>
-            <input
+            <PasswordInput
               data-testid="login-password"
               type="password" value={password} onChange={e => setPassword(e.target.value)}
               placeholder="••••••••"
