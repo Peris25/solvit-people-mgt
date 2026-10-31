@@ -1,3 +1,4 @@
+import LeaveHistory from '../components/LeaveHistory';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import StatusBadge from '../components/StatusBadge';
 import EmployeePicker from '../components/EmployeePicker';
@@ -249,6 +250,7 @@ export default function Leave() {
       <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid rgba(25,25,25,0.1)', marginBottom: '20px' }}>
         <TabButton id="my" label="My Applications" Icon={ClipboardList} />
         {hasTeam && <TabButton id="team" label="Team Leave" Icon={UsersIcon} />}
+        {isHR && <TabButton id="history" label="Historical records" Icon={ClipboardList} />}
         <TabButton id="calendar" label="Calendar" Icon={CalendarIcon} />
         <TabButton id="rollover" label="Rollover" Icon={RotateCcw} />
       </div>
@@ -258,6 +260,7 @@ export default function Leave() {
         <>
           {tab === 'my' && <RequestsTable rows={myRequests} withdraw={withdraw} edit={openForm} review={openReview} saving={saving} testId="my-applications" />}
           {tab === 'team' && hasTeam && <RequestsTable rows={teamRequests} withdraw={withdraw} review={openReview} saving={saving} testId="team-leave" />}
+          {tab === 'history' && isHR && <LeaveHistory key={accountKey} rows={requests.filter(row => row.historical_import)} onSaved={load} />}
           {tab === 'calendar' && <LeaveCalendar calendar={calendar} year={calYear} month={calMonth} setYear={setCalYear} setMonth={setCalMonth} />}
           {tab === 'rollover' && <RolloverPanel rollover={rollover} />}
         </>
@@ -402,7 +405,7 @@ function RequestsTable({ rows, withdraw, review, edit, saving, testId }) {
               <td style={{ padding: '10px 14px' }}>
                 {(r.approval_stage || r.can_reject) && <button disabled={saving} onClick={() => review(r)} style={btnGhost}>Review</button>}
                 {r.can_cancel && <button disabled={saving} onClick={() => withdraw(r)} style={btnGhost}>Withdraw</button>}
-                {edit && ['Pending_Manager', 'Pending_HR', 'Discussion_Requested', 'Pending'].includes(r.status) && <button disabled={saving} onClick={() => edit(r)} style={btnGhost}>Supporting information</button>}
+                {edit && !r.historical_import && ['Pending_Manager', 'Pending_HR', 'Discussion_Requested', 'Pending'].includes(r.status) && <button disabled={saving} onClick={() => edit(r)} style={btnGhost}>Supporting information</button>}
 
               </td>
             </tr>

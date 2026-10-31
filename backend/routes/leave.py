@@ -103,6 +103,29 @@ async def create_leave_request(lr: LeaveRequest, request: Request):
     return await create(get_db(), user, lr.model_dump(), balance_loader)
 
 
+# HR history routes retain source units and never run live approval automation.
+from utils.leave_history import HistoricalBatch, HistoricalCorrection
+
+
+@router.post("/history/preview")
+async def preview_history(body: HistoricalBatch, request: Request):
+    from utils.leave_history import prepare
+    rows, digest = await prepare(get_db(), await get_current_user(request), body)
+    return {"rows": [{key: value for key, value in row.items() if key != "_id"} for row in rows], "preview_digest": digest}
+
+
+@router.post("/history/import")
+async def import_history(body: HistoricalBatch, request: Request):
+    from utils.leave_history import import_rows
+    return await import_rows(get_db(), await get_current_user(request), body)
+
+
+@router.put("/history/{record_id}")
+async def correct_history(record_id: str, body: HistoricalCorrection, request: Request):
+    from utils.leave_history import correct
+    return await correct(get_db(), await get_current_user(request), record_id, body)
+
+
 @router.post("/preview")
 async def preview_leave(lr: LeaveRequest, request: Request, request_id: Optional[str] = None):
     from utils.leave_policy import preview

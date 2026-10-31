@@ -19,7 +19,10 @@ from .test_employee_integrity_mongo import local_database
 
 
 @pytest.fixture(autouse=True)
-def fixed_date(monkeypatch): monkeypatch.setattr(policy, "today", lambda: date(2026, 10, 14)); monkeypatch.setattr(workflow, "today", lambda: date(2026, 10, 14))
+def fixed_date(monkeypatch):
+    monkeypatch.setattr(policy, "today", lambda: date(2026, 10, 14))
+    monkeypatch.setattr(workflow, "today", lambda: date(2026, 10, 14))
+    monkeypatch.setattr(workflow, "stamp", lambda: "2026-10-14T09:00:00+00:00")
 
 
 def fixture():

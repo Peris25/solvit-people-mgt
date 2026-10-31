@@ -458,3 +458,8 @@ export const getSolverCompetencies = id => api.get(`/solver-assessments/solvers/
 export const recordSolverCompetency = (id, data) => api.post(`/solver-assessments/solvers/${id}/competencies`, data);
 
 export const downloadSolverAssessmentEvidence = (id, documentId) => api.get(`/solver-assessments/attempts/${id}/documents/${documentId}/download`, { responseType: 'blob' });
+
+// Historical source transcription is restricted to HR on the server.
+export const previewLeaveHistory = data => api.post('/leave/history/preview', data);
+export const importLeaveHistory = data => api.post('/leave/history/import', data);
+export const correctLeaveHistory = (id, data) => api.put(`/leave/history/${encodeURIComponent(id)}`, data);

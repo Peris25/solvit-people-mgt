@@ -68,6 +68,11 @@ async def balances(db, employee):
                                     balance_label="Legacy derived estimate")
         result.update(source="legacy_derived", year=now.year, accrued_annual=accrued,
                       warning="No saved balance snapshot. Existing derived figures are retained; new contract/policy estimates do not replace them. HR verification is required.")
+    if candidates:
+        imported = await db.leave_requests.find({"$and": [scope, {"historical_import": True}]}).to_list(None)
+        if any(str(row.get("start_date", "")).startswith(str(now.year)) for row in imported):
+            result["historical_balance_review"] = True
+            result["warning"] += " Historical source entries are present; HR must reconcile the snapshot before new annual requests."
     result["annual_days_remaining"] = result.get("Annual", {}).get("remaining")
     result["sick_days_remaining"] = result.get("Sick", {}).get("remaining")
     try:

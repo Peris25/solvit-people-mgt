@@ -26,7 +26,7 @@ def own(employee, user): return employee_key(employee) == user.get("employee_id"
 
 
 async def stage_for(db, user, record):
-    if record.get("status") not in {"Pending_Manager", "Pending_HR"}:
+    if record.get("historical_import") or record.get("status") not in {"Pending_Manager", "Pending_HR"}:
         return None
     try:
         employee = await authorize_employee(db, user, record.get("employee_id"), "M18", approve=True)
@@ -70,7 +70,8 @@ async def view(db, user, record):
               "manager_decision", "manager_reason", "manager_decided_at", "manager_decided_by", "hr_decision", "hr_reason",
               "hr_decided_at", "approval_history", "policy_version", "supporting_document_id", "supporting_document_present",
               "document_verified", "expected_delivery_date", "birth_date", "family_relationship", "sick_pay", "emergency_sick",
-              "extended_sick_followup_required", "compassionate_paid_days", "compassionate_unpaid_days", "flag_hr_attention"}
+              "extended_sick_followup_required", "compassionate_paid_days", "compassionate_unpaid_days", "flag_hr_attention",
+              "historical_import", "revision", "day_basis", "resumption_date", "source_reference"}
     result = {key: value for key, value in result.items() if key in fields}
     result["approval_history"] = [{key: value for key, value in entry.items()
                                    if key in {"stage", "actor_id", "actor_role", "at", "decision", "reason", "handover_reviewed", "policy_review_confirmed", "document_verified"}
@@ -79,10 +80,16 @@ async def view(db, user, record):
     result["approval_stage"] = await stage_for(db, user, record)
     result["can_reject"] = result["approval_stage"] is not None or (user.get("role") in HR and not own(employee, user) and record.get("status") in PENDING)
     result["can_cancel"] = own(employee, user) and record.get("status") in PENDING and isinstance(record.get("start_date"), str) and record["start_date"] > today().isoformat()
+    if record.get("historical_import"):
+        result["can_reject"] = False
+        result["can_cancel"] = False
+        result["can_correct_history"] = user.get("role") in HR
     return result
 
 
 async def availability(db, employee, balance, exclude=None):
+    if balance.get("historical_balance_review"):
+        raise HTTPException(409, "HR must reconcile historical leave against the saved balance snapshot")
     if balance.get("source") == "stored_snapshot" and balance.get("year") is None:
         raise HTTPException(409, "An undated balance snapshot requires approved HR reconciliation")
     value = (balance.get("Annual") or {}).get("remaining")
@@ -225,6 +232,8 @@ async def decide(db, user, reference, body, balance_loader):
     async with integrity_write(db):
         current = await find_linked_record(db.leave_requests, reference, user)
         employee = await authorize_employee(db, user, current.get("employee_id"), "M18", approve=True)
+        if current.get("historical_import"):
+            raise HTTPException(409, "Historical records require the HR correction workflow")
         if own(employee, user):
             raise HTTPException(403, "Employees cannot approve or reject their own requests")
         reject_identity_changes(body, current)
@@ -310,6 +319,8 @@ async def supplement(db, user, reference, body):
     async with integrity_write(db):
         current = await find_linked_record(db.leave_requests, reference, user)
         employee = await authorize_employee(db, user, current.get("employee_id"), "M18", write=True)
+        if current.get("historical_import"):
+            raise HTTPException(409, "Historical records require the HR correction workflow")
         if not own(employee, user) and user.get("role") not in HR:
             raise HTTPException(403, "Only the employee or HR may supplement this request")
         if current.get("status") not in PENDING:
@@ -341,6 +352,8 @@ async def cancel(db, user, reference, reason):
     async with integrity_write(db):
         current = await find_linked_record(db.leave_requests, reference, user)
         employee = await authorize_employee(db, user, current.get("employee_id"), "M18", write=True)
+        if current.get("historical_import"):
+            raise HTTPException(409, "Historical records require the HR correction workflow")
         if not own(employee, user):
             raise HTTPException(403, "Only the employee may withdraw their pending request")
         if current.get("status") == "Cancelled":
