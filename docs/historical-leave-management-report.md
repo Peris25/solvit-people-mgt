@@ -42,3 +42,9 @@ The workbook's omitted October summands are retained as individual entries, not 
 Publish the matching frontend and backend before importing. Import through authenticated HR UI only; verify exact employee matches and source totals in preview. Preserve source documents outside Git. No database migration or new production index is required; deterministic `_id` provides import identity uniqueness.
 
 Do not claim data import complete until the production UI confirms it and the resulting records are reloaded. Existing snapshots, if present, require explicit HR balance reconciliation before annual requests resume; this release does not supply a blanket snapshot overwrite action. No other departments are imported automatically.
+
+## Remaining department source batches
+
+Prepared 45 further entries for 12 current FTEs: Account Management 28, Operations 10, IT Support 6 and Human Resources 1. Leadership has no source leave entries; no zero-day/artificial records are created. Source bookings extending into early November of the current year are accepted without fabricating a live approval workflow. Source units including 1.75 days are preserved and editable. Future calendar years remain disallowed through this source-transcription route. No employee employment dates or saved balance snapshots are changed.
+
+Follow-up validation: 59 targeted backend tests passed, one existing integration skip; all 247 frontend tests passed; strict CI build passed. Production data completion is verified in the authenticated HR view after each batch.

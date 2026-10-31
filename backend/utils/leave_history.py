@@ -45,8 +45,8 @@ class HistoricalFields(BaseModel):
 
     @model_validator(mode="after")
     def period(self):
-        if self.end_date < self.start_date or self.end_date > date.today():
-            raise ValueError("Historical dates must be ordered and not in the future")
+        if self.end_date < self.start_date or self.end_date.year > date.today().year:
+            raise ValueError("Source dates must be ordered and belong to the current or an earlier calendar year")
         if self.start_date.year != self.end_date.year:
             raise ValueError("Split historical leave spanning calendar years")
         if self.working_days > (self.end_date - self.start_date).days + 1:

@@ -134,3 +134,12 @@ def test_audit_failure_prevents_import_write():
     {"working_days": 4}, {"status": "Invented"}, {"end_date": "2025-01-01"}, {"employee_id": "forged"}])
 def test_bad_values_and_identity_fields_are_rejected(changes):
     with pytest.raises(ValidationError): history.HistoricalRow(**row(**changes))
+
+
+def test_existing_current_year_bookings_and_quarter_units_are_preserved():
+    from datetime import date
+    year = date.today().year
+    parsed = history.HistoricalRow(**row(start_date=f"{year}-12-01", end_date=f"{year}-12-02", working_days=1.75))
+    assert parsed.working_days == 1.75 and parsed.end_date == date(year, 12, 2)
+    with pytest.raises(ValidationError):
+        history.HistoricalRow(**row(start_date=f"{year+1}-12-01", end_date=f"{year+1}-12-02"))
