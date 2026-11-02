@@ -48,3 +48,9 @@ Do not claim data import complete until the production UI confirms it and the re
 Prepared 45 further entries for 12 current FTEs: Account Management 28, Operations 10, IT Support 6 and Human Resources 1. Leadership has no source leave entries; no zero-day/artificial records are created. Source bookings extending into early November of the current year are accepted without fabricating a live approval workflow. Source units including 1.75 days are preserved and editable. Future calendar years remain disallowed through this source-transcription route. No employee employment dates or saved balance snapshots are changed.
 
 Follow-up validation: 59 targeted backend tests passed, one existing integration skip; all 247 frontend tests passed; strict CI build passed. Production data completion is verified in the authenticated HR view after each batch.
+
+## Visible historical Edit correction
+
+The original action was a real button but inherited reset styling; its correction form rendered beneath the long history table, making clicks appear ineffective. The action now has an explicit bordered button and opens a centered native modal dialog through a React portal. Native modal focus containment, Escape/Cancel handling, focus restoration and scroll locking keep the editor immediately reachable. Validation and server errors remain in the dialog; save/revision/authorization semantics are unchanged. Controls are disabled while saving, and no additional dependencies were introduced.
+
+Validation: all 248 frontend tests across 34 suites passed, including dialog opening, cancellation without writes, confirmed save and server-error retention. Strict CI and normal production builds passed; whitespace check passed. The backend and stored leave records are unchanged by this UI release.

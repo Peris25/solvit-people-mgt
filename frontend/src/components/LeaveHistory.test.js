@@ -6,7 +6,8 @@ import * as api from '../services/api';
 jest.mock('../services/api', () => ({ correctLeaveHistory: jest.fn(), previewLeaveHistory: jest.fn(), importLeaveHistory: jest.fn() }));
 global.IS_REACT_ACT_ENVIRONMENT = true;
 let container, root;
-beforeEach(() => { container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container); jest.clearAllMocks(); });
+
+beforeEach(() => { HTMLDialogElement.prototype.showModal = jest.fn(function () { this.setAttribute('open', ''); }); container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container); jest.clearAllMocks(); });
 afterEach(() => { act(() => root.unmount()); container.remove(); });
 const row = { id: 'synthetic-leave', revision: 1, employee_name: 'Synthetic employee', leave_type: 'Annual', start_date: '2026-01-05', end_date: '2026-01-06', working_days: 1.5, status: 'Recorded', day_basis: 'Recorded units', can_correct_history: true };
 const button = text => [...container.querySelectorAll('button')].find(element => element.textContent === text);
@@ -28,14 +29,15 @@ test('HR correction preserves identity and revision, requires reason, and refres
   const saved = jest.fn(); api.correctLeaveHistory.mockResolvedValue({ data: { id: row.id } });
   act(() => root.render(<LeaveHistory rows={[row]} onSaved={saved} />));
   act(() => button('Edit historical record').click());
-  expect(container.querySelector('input[aria-label="Historical reason"]').required).toBe(true);
-  expect(container.querySelector('[aria-label="Historical employee_id"]')).toBeNull();
+  expect(document.body.querySelector('dialog[open]').textContent).toContain('Synthetic employee');
+  expect(document.body.querySelector('input[aria-label="Historical reason"]').required).toBe(true);
+  expect(document.body.querySelector('[aria-label="Historical employee_id"]')).toBeNull();
   act(() => {
-    const input = container.querySelector('input[aria-label="Historical reason"]');
+    const input = document.body.querySelector('input[aria-label="Historical reason"]');
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Source checked by HR');
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
-  await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  await act(async () => document.body.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
   expect(api.correctLeaveHistory).toHaveBeenCalledWith(row.id, expect.objectContaining({ revision: 1, working_days: 1.5, status: 'Recorded', reason: 'Source checked by HR' }));
   expect(saved).toHaveBeenCalledTimes(1);
   expect(container.textContent).toContain('Historical record corrected.');
@@ -46,8 +48,21 @@ test('failed correction stays open and reports error without claiming success', 
   const saved = jest.fn();
   act(() => root.render(<LeaveHistory rows={[row]} onSaved={saved} />));
   act(() => button('Edit historical record').click());
-  await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
-  expect(container.querySelector('[role="alert"]').textContent).toContain('Record changed');
-  expect(container.querySelector('form')).not.toBeNull();
+  await act(async () => document.body.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(document.body.querySelector('[role="alert"]').textContent).toContain('Record changed');
+  expect(document.body.querySelector('form')).not.toBeNull();
   expect(saved).not.toHaveBeenCalled();
+});
+
+
+test('Edit opens a modal immediately and Cancel closes it without writing', () => {
+  act(() => root.render(<LeaveHistory rows={[row]} onSaved={jest.fn()} />));
+  const trigger = button('Edit historical record');
+  expect(trigger.style.border).toContain('solid');
+  act(() => trigger.click());
+  expect(document.body.querySelector('dialog[open]')).not.toBeNull();
+  expect(container.querySelector('form')).toBeNull();
+  act(() => [...document.body.querySelectorAll('button')].find(element => element.textContent === 'Cancel').click());
+  expect(document.body.querySelector('dialog[open]')).toBeNull();
+  expect(api.correctLeaveHistory).not.toHaveBeenCalled();
 });
