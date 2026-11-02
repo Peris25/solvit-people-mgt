@@ -74,12 +74,13 @@ async def view(db, user, record):
               "historical_import", "revision", "day_basis", "resumption_date", "source_reference"}
     result = {key: value for key, value in result.items() if key in fields}
     result["approval_history"] = [{key: value for key, value in entry.items()
-                                   if key in {"stage", "actor_id", "actor_role", "at", "decision", "reason", "handover_reviewed", "policy_review_confirmed", "document_verified"}
+                                   if key in {"stage", "actor_id", "actor_role", "at", "decision", "reason", "handover_reviewed", "policy_review_confirmed", "document_verified", "hr_override"}
                                    and isinstance(value, (str, bool, int, float))}
                                   for entry in result.get("approval_history", []) if isinstance(entry, dict)]
     result["approval_stage"] = await stage_for(db, user, record)
     result["can_reject"] = result["approval_stage"] is not None or (user.get("role") in HR and not own(employee, user) and record.get("status") in PENDING)
     result["can_cancel"] = own(employee, user) and record.get("status") in PENDING and isinstance(record.get("start_date"), str) and record["start_date"] > today().isoformat()
+    result["can_hr_override"] = user.get("role") in HR and not own(employee, user) and not record.get("historical_import") and record.get("status") in PENDING
     if record.get("historical_import"):
         result["can_reject"] = False
         result["can_cancel"] = False
@@ -170,7 +171,7 @@ async def notify(db, record, event):
 async def audit(db, user, record, action):
     try:
         await db.audit_logs.insert_one({"id": str(uuid.uuid4()), "tenant_id": tenant_of(user), "actor_id": user["id"],
-                                        "action": action, "entity_type": "leave", "entity_id": record["id"], "created_at": stamp()})
+                                        "action": action, "entity_type": "leave", "entity_id": record["id"], "created_at": stamp(), "hr_override": bool((record.get("approval_history") or [{}])[-1].get("hr_override"))})
     except Exception:
         raise HTTPException(503, {"code": "leave_saved_audit_failed", "request_id": record["id"],
                                   "message": "Leave was saved. Operator audit review is required before retrying."})
@@ -227,6 +228,13 @@ async def create(db, user, payload, balance_loader):
 
 async def decide(db, user, reference, body, balance_loader):
     decision = body.get("decision")
+    override = body.get("hr_override", False)
+    if not isinstance(override, bool):
+        raise HTTPException(422, "HR override must be a boolean")
+    if override and (user.get("role") not in HR or decision != "Approve"):
+        raise HTTPException(403, "Only HR may directly approve leave")
+    if override and len(str(body.get("reason") or "").strip()) < 5:
+        raise HTTPException(422, "A reason is required for direct HR approval")
     if decision not in {"Approve", "Reject", "Discussion"}:
         raise HTTPException(422, "Invalid leave decision")
     async with integrity_write(db):
@@ -239,8 +247,8 @@ async def decide(db, user, reference, body, balance_loader):
         reject_identity_changes(body, current)
         history = list(current.get("approval_history", []))
         last = history[-1] if history else {}
-        stage = body.get("stage") or await stage_for(db, user, current)
-        replay = last.get("actor_id") == user["id"] and last.get("decision") == decision and last.get("reason", "") == body.get("reason", "") and last.get("stage") in {"manager", "hr"} and (not body.get("stage") or body["stage"] == last.get("stage"))
+        stage = "hr" if override else body.get("stage") or await stage_for(db, user, current)
+        replay = last.get("actor_id") == user["id"] and last.get("decision") == decision and last.get("reason", "") == body.get("reason", "") and bool(last.get("hr_override")) == override and last.get("stage") in {"manager", "hr"} and (not body.get("stage") or body["stage"] == last.get("stage"))
         if replay:
             result = current
         else:
@@ -248,7 +256,7 @@ async def decide(db, user, reference, body, balance_loader):
                 raise HTTPException(409, "This leave request is no longer awaiting a decision")
             if decision == "Reject" and user.get("role") in HR:
                 stage = "hr"
-            elif stage != await stage_for(db, user, current) or stage is None:
+            elif not override and (stage != await stage_for(db, user, current) or stage is None):
                 raise HTTPException(403, "This approval stage is assigned to a different reviewer")
             if decision == "Approve":
                 if current.get("policy_version") != VERSION:
@@ -269,7 +277,7 @@ async def decide(db, user, reference, body, balance_loader):
                         deadline -= timedelta(days=1)
                     else:
                         raise HTTPException(409, "The working calendar requires HR review")
-                    reviewed = today() if stage == "manager" else day(current["manager_decided_at"][:10])
+                    reviewed = today() if stage == "manager" or override else day(current["manager_decided_at"][:10])
                     if reviewed > deadline:
                         raise HTTPException(422, "Manager handover sign-off must be completed by the last working day before leave")
                 if stage == "hr":
@@ -288,7 +296,7 @@ async def decide(db, user, reference, body, balance_loader):
             now = stamp()
             status = "Rejected" if decision == "Reject" else "Discussion_Requested" if decision == "Discussion" else "Pending_HR" if stage == "manager" else "Approved"
             history.append({"stage": stage, "actor_id": user["id"], "actor_role": user["role"], "at": now, "decision": decision,
-                            "reason": body.get("reason", ""), "handover_reviewed": body.get("handover_reviewed") is True,
+                            "reason": body.get("reason", ""), "hr_override": override, "handover_reviewed": body.get("handover_reviewed") is True,
                             "policy_review_confirmed": body.get("policy_review_confirmed") is True, "document_verified": body.get("document_verified") is True})
             update = {"status": status, "approval_history": history, "updated_at": now,
                       f"{stage}_decision": decision, f"{stage}_reason": body.get("reason", ""),

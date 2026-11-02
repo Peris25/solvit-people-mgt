@@ -8,7 +8,7 @@ import * as api from '../services/api';
 jest.mock('../context/AuthContext');
 jest.mock('../services/api');
 jest.mock('react-router-dom', () => ({ useNavigate: () => jest.fn(), useLocation: () => ({ pathname: '/dashboard' }) }));
-jest.mock('../context/NotificationContext', () => ({ useNotifications: () => ({ items: [], unreadCount: 0 }) }));
+jest.mock('../context/NotificationContext', () => ({ useNotifications: () => ({ items: [], unreadCount: 0, refresh: jest.fn() }) }));
 jest.mock('../context/ThemeContext', () => ({ useTheme: () => ({ theme: 'light', toggle: jest.fn() }), themeTokens: () => ({}) }));
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
@@ -28,6 +28,16 @@ test('FTE navigation includes authorized self-service and colleague information,
   for (const route of ['employees', 'roles-permissions', 'data-import', 'compensation', 'reporting', 'retention', 'masters']) {
     expect(container.querySelector(`[data-testid="nav-${route}"]`)).toBeNull();
   }
+});
+
+test('notification dropdown is anchored inside the left viewport edge', async () => {
+  await render(<Sidebar collapsed={false} onToggle={jest.fn()} />);
+  await act(async () => container.querySelector('[data-testid="notif-bell"]').click());
+  const dropdown = container.querySelector('[data-testid="notif-dropdown"]');
+  expect(dropdown.style.left).toBe('8px');
+  expect(dropdown.style.right).toBe('');
+  expect(dropdown.style.width).toBe('320px');
+  expect(dropdown.style.maxWidth).toBe('calc(100vw - 16px)');
 });
 
 test('ordinary employees cannot open account review or invoke its API', async () => {

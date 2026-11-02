@@ -463,3 +463,5 @@ export const downloadSolverAssessmentEvidence = (id, documentId) => api.get(`/so
 export const previewLeaveHistory = data => api.post('/leave/history/preview', data);
 export const importLeaveHistory = data => api.post('/leave/history/import', data);
 export const correctLeaveHistory = (id, data) => api.put(`/leave/history/${encodeURIComponent(id)}`, data);
+
+export const approveRecordedLeaveHistory = data => api.post('/leave/history/approve-recorded', data);

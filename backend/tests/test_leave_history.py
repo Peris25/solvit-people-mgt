@@ -143,3 +143,48 @@ def test_existing_current_year_bookings_and_quarter_units_are_preserved():
     assert parsed.working_days == 1.75 and parsed.end_date == date(year, 12, 2)
     with pytest.raises(ValidationError):
         history.HistoricalRow(**row(start_date=f"{year+1}-12-01", end_date=f"{year+1}-12-02"))
+
+
+def test_explicit_source_approval_updates_only_selected_recorded_history_with_audit():
+    db, actors = fixture(); import_one(db, actors["hr"])
+    record = db.leave_requests.docs[0]
+    body = history.RecordedApproval(targets=[{"id": record["id"], "revision": 1}], reason="HR confirmed recorded workbook leave")
+    assert run(history.approve_recorded(db, actors["hr"], body)) == {"approved": 1, "already_approved": 0}
+    assert record["status"] == "Approved" and record["revision"] == 2
+    assert db.audit_logs.docs[-1]["before"]["status"] == "Recorded"
+    assert run(history.approve_recorded(db, actors["hr"], body)) == {"approved": 0, "already_approved": 1}
+    assert not db.notifications.docs
+
+
+def test_bulk_confirmation_cannot_target_pending_or_live_records_or_other_employees_as_staff():
+    db, actors = fixture(); import_one(db, actors["hr"], status="Pending")
+    record = db.leave_requests.docs[0]
+    body = history.RecordedApproval(targets=[{"id": record["id"], "revision": 1}], reason="HR confirmed source")
+    for actor in [actors["staff"], actors["hr"]]:
+        with pytest.raises(HTTPException): run(history.approve_recorded(db, actor, body))
+    assert record["status"] == "Pending"
+
+
+def test_denied_display_choice_preserves_existing_rejected_storage_compatibility():
+    assert history.HistoricalRow(**row(status="Denied")).status == "Rejected"
+
+
+def test_source_approval_rejects_stale_revision_without_writing():
+    db, actors = fixture(); import_one(db, actors["hr"])
+    record = db.leave_requests.docs[0]
+    before = deepcopy(db.audit_logs.docs)
+    body = history.RecordedApproval(targets=[{"id": record["id"], "revision": 2}], reason="HR confirmed source")
+    with pytest.raises(HTTPException) as error:
+        run(history.approve_recorded(db, actors["hr"], body))
+    assert error.value.status_code == 409
+    assert record["status"] == "Recorded" and db.audit_logs.docs == before
+
+
+def test_source_approval_audit_failure_prevents_write():
+    db, actors = fixture(); import_one(db, actors["hr"])
+    record = db.leave_requests.docs[0]
+    db.audit_logs.insert_one = AsyncMock(side_effect=RuntimeError("synthetic audit outage"))
+    body = history.RecordedApproval(targets=[{"id": record["id"], "revision": 1}], reason="HR confirmed source")
+    with pytest.raises(RuntimeError):
+        run(history.approve_recorded(db, actors["hr"], body))
+    assert record["status"] == "Recorded" and record["revision"] == 1

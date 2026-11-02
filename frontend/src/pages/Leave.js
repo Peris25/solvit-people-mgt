@@ -1,3 +1,5 @@
+import EmployeeLeaveGroups from '../components/EmployeeLeaveGroups';
+import { leaveStatus } from '../utils/leaveDisplay';
 import LeaveHistory from '../components/LeaveHistory';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import StatusBadge from '../components/StatusBadge';
@@ -147,7 +149,7 @@ export default function Leave() {
   const decide = async decision => {
     setSaving(true); setError('');
     try {
-      const response = await api.leaveDecision(review.id, { ...checks, decision, stage: review.approval_stage || (isHR ? 'hr' : undefined) });
+      const response = await api.leaveDecision(review.id, { ...checks, decision, stage: checks.hr_override ? 'hr' : review.approval_stage || (isHR ? 'hr' : undefined) });
       if (!response.data?.id) throw new Error('The decision could not be confirmed. Refresh before retrying.');
       setReview(null); load(); notificationState?.refresh();
     } catch (err) { setError(message(err)); } finally { setSaving(false); }
@@ -354,11 +356,12 @@ export default function Leave() {
       {review && loadedFor === accountKey && <div role="dialog" aria-label="Review leave request" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100 }}>
         <div style={{ background: '#fff', width: '600px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', padding: '24px' }}>
           <h2>Review leave request</h2><p>{review.employee_name} · {review.leave_type} · {fmtPeriod(review.start_date, review.end_date)} · {review.working_days} working days</p>
-          <p>Status: {review.status}. Manager recommendation does not finalize leave; HR must approve next.</p>
+          <p>Status: {leaveStatus(review.status)}. HR may approve directly with a documented override reason.</p>
           {review.notes && <p style={{ whiteSpace: 'pre-wrap' }}>Handover: {review.notes}</p>}
           {review.supporting_document_id && <button style={btnGhost} onClick={() => downloadEvidence(review.supporting_document_id)}>Download restricted supporting document</button>}
           <label style={{ display: 'block', margin: '12px 0' }}><input type="checkbox" checked={checks.handover_reviewed} onChange={e => setChecks(p => ({ ...p, handover_reviewed: e.target.checked }))} /> Written handover reviewed and signed off (planned leave)</label>
-          {review.approval_stage === 'hr' && <>
+          {review.can_hr_override && <label style={{ display: 'block', margin: '12px 0' }}><input type="checkbox" checked={!!checks.hr_override} onChange={event => setChecks(previous => ({ ...previous, hr_override: event.target.checked }))} /> Approve directly as HR, overriding manager routing (reason required)</label>}
+          {(review.approval_stage === 'hr' || checks.hr_override) && <>
             <label style={{ display: 'block', margin: '12px 0' }}><input type="checkbox" checked={checks.policy_review_confirmed} onChange={e => setChecks(p => ({ ...p, policy_review_confirmed: e.target.checked }))} /> Contract eligibility, recorded balance and gazetted holiday calendar verified</label>
             <label style={{ display: 'block', margin: '12px 0' }}><input type="checkbox" checked={checks.document_verified} onChange={e => setChecks(p => ({ ...p, document_verified: e.target.checked }))} /> Supporting document verified where required</label>
           </>}
@@ -367,9 +370,8 @@ export default function Leave() {
           {error && <p role="alert">{error}</p>}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '16px' }}>
             <button style={btnGhost} onClick={() => setReview(null)}>Close</button>
-            {review.approval_stage && <button disabled={saving} style={btnRed} onClick={() => decide('Approve')}>{review.approval_stage === 'hr' ? 'HR final approval' : 'Recommend to HR'}</button>}
-            {review.can_reject && <button disabled={saving} style={btnGhost} onClick={() => decide('Reject')}>Reject</button>}
-            {review.approval_stage && <button disabled={saving} style={btnGhost} onClick={() => decide('Discussion')}>Request discussion</button>}
+            {(review.approval_stage || (review.can_hr_override && checks.hr_override)) && <button disabled={saving} style={btnRed} onClick={() => decide('Approve')}>{checks.hr_override ? 'Approve directly as HR' : review.approval_stage === 'hr' ? 'HR final approval' : 'Recommend to HR'}</button>}
+            {review.can_reject && <button disabled={saving} style={btnGhost} onClick={() => decide('Reject')}>Deny</button>}
           </div>
         </div>
       </div>}
@@ -382,7 +384,11 @@ const inp = { width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,
 const btnRed = { padding: '10px 22px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Barlow' };
 const btnGhost = { padding: '10px 20px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '12px', fontFamily: 'Nunito Sans, sans-serif' };
 
-function RequestsTable({ rows, withdraw, review, edit, saving, testId }) {
+function RequestsTable(props) {
+  return <EmployeeLeaveGroups rows={props.rows} renderRecords={rows => <LeaveRecordsTable {...props} rows={rows} />} />;
+}
+
+function LeaveRecordsTable({ rows, withdraw, review, edit, saving, testId }) {
   return (
     <div data-testid={testId} style={{ overflowX: 'auto', backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
@@ -401,9 +407,9 @@ function RequestsTable({ rows, withdraw, review, edit, saving, testId }) {
               <td style={{ padding: '10px 14px', color: '#525252' }}>{fmtPeriod(r.start_date, r.end_date)}</td>
               <td style={{ padding: '10px 14px', fontWeight: 700 }}>{r.working_days}</td>
               <td style={{ padding: '10px 14px', color: '#525252' }}>{r.handover_contact || '—'}</td>
-              <td style={{ padding: '10px 14px' }}><StatusBadge status={(r.status || '').replace('Pending_', '').replace('_', ' ')} small /></td>
+              <td style={{ padding: '10px 14px' }}><StatusBadge status={leaveStatus(r.status)} small /></td>
               <td style={{ padding: '10px 14px' }}>
-                {(r.approval_stage || r.can_reject) && <button disabled={saving} onClick={() => review(r)} style={btnGhost}>Review</button>}
+                {(r.approval_stage || r.can_reject || r.can_hr_override) && <button disabled={saving} onClick={() => review(r)} style={btnGhost}>Review</button>}
                 {r.can_cancel && <button disabled={saving} onClick={() => withdraw(r)} style={btnGhost}>Withdraw</button>}
                 {edit && !r.historical_import && ['Pending_Manager', 'Pending_HR', 'Discussion_Requested', 'Pending'].includes(r.status) && <button disabled={saving} onClick={() => edit(r)} style={btnGhost}>Supporting information</button>}
 

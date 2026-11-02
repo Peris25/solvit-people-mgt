@@ -54,3 +54,25 @@ Follow-up validation: 59 targeted backend tests passed, one existing integration
 The original action was a real button but inherited reset styling; its correction form rendered beneath the long history table, making clicks appear ineffective. The action now has an explicit bordered button and opens a centered native modal dialog through a React portal. Native modal focus containment, Escape/Cancel handling, focus restoration and scroll locking keep the editor immediately reachable. Validation and server errors remain in the dialog; save/revision/authorization semantics are unchanged. Controls are disabled while saving, and no additional dependencies were introduced.
 
 Validation: all 248 frontend tests across 34 suites passed, including dialog opening, cancellation without writes, confirmed save and server-error retention. Strict CI and normal production builds passed; whitespace check passed. The backend and stored leave records are unchanged by this UI release.
+
+## Employee grouping, simplified statuses and HR override
+
+Implemented 2 November 2026 following the user's explicit approval-policy change:
+
+- My applications, Team leave and Historical records are grouped into expandable employee sections, then Annual, Sick, Compassionate, Maternity, Paternity and Unpaid categories. Each category shows approved and pending day totals and preserves individual dated rows, fractional days and historical Edit actions. Canonical employee IDs keep people with identical names separate.
+- The leave UI uses Pending, Approved and Denied. Existing manager/HR routing stages remain internal and map to Pending; Rejected/legacy Cancelled map to Denied. Internal cancellation and historical audit events remain preserved rather than rewritten. Historical status editing offers only the three requested choices; Denied is stored as the compatible Rejected value.
+- HR Admin/HR Manager may explicitly approve another employee's live pending request directly, bypassing manager routing. The backend requires an override reason, module authorization, policy/balance/calendar review, applicable handover and document checks. Self-approval remains forbidden. The override flag, actor, reason and timestamp are retained in approval history; audit records flag the override. The normal manager-to-HR workflow remains available. No manager identity or decision is fabricated.
+- An HR-only source confirmation action accepts explicit historical IDs and revisions, preflights all selected entries, serializes writes and records audit intent before changing Recorded to Approved. It does not touch live applications, pending historical entries, dates, days, employee records or saved balance snapshots. Retries skip entries already approved. Conflicts require refresh; audit failures prevent the affected write. As with the existing import, unexpected interruption may leave partial progress and a persistent integrity lock requiring controlled operator recovery.
+- The notification dropdown is anchored to the sidebar's left edge with a viewport-limited width, correcting the off-screen clipping.
+
+### Files in this follow-up
+
+Backend: `routes/leave.py`, `utils/leave_history.py`, `utils/leave_workflow.py`, `tests/test_leave_history.py`, `tests/test_leave_management.py`.
+
+Frontend: `components/EmployeeLeaveGroups.js` and its tests, `utils/leaveDisplay.js`, `components/LeaveHistory.js` and its tests, `pages/Leave.js` and its tests, `components/Sidebar.js`, `components/EmployeeWorkspace.test.js`, `services/api.js`.
+
+### Validation and live-data boundary
+
+Complete backend: 1,274 passed, 321 existing environment/integration skips, five existing deprecation warnings. Tests use synthetic fixtures with outbound email and background jobs disabled. Complete frontend: 252 passed across 35 suites. Strict CI and normal production builds passed. Modified Python files compile successfully; whitespace and secret-pattern checks passed. No confidential workbook/import artifacts are staged.
+
+The preceding authenticated production verification found 78 imported entries: 30 Approved, one Pending and 47 Recorded. The requested source confirmation would produce 77 Approved and one Pending, retaining all day totals. This follow-up has **not yet changed those live statuses**. The deployment browser host is unavailable, and the native fallback failed to start; frontend publication and authenticated source confirmation remain blocked by that connection. No direct production database access is used as a substitute. Saved balance snapshots still require their separate approved reconciliation where flagged.

@@ -73,6 +73,19 @@ test('HR final review includes contract, calendar and document confirmations', a
   expect(container.textContent).toContain('HR final approval');
 });
 
+test('HR can select direct approval with reason and policy confirmations while manager routing remains pending', async () => {
+  useAuth.mockReturnValue({ user: { ...user, role: 'hr_admin' } });
+  api.getLeaveRequests.mockResolvedValue({ data: [{ ...row, employee_id: 'report', can_cancel: false, can_hr_override: true }] });
+  api.leaveDecision.mockResolvedValue({ data: { id: row.id, status: 'Approved' } });
+  await render(); await act(async () => container.querySelector('[data-testid="leave-tab-team"]').click());
+  await click('Review');
+  const override = [...container.querySelectorAll('label')].find(label => label.textContent.includes('overriding manager routing')).querySelector('input');
+  await act(async () => override.click());
+  expect(container.textContent).toContain('Contract eligibility');
+  await click('Approve directly as HR');
+  expect(api.leaveDecision).toHaveBeenCalledWith(row.id, expect.objectContaining({ hr_override: true, stage: 'hr', decision: 'Approve' }));
+});
+
 test('switching accounts clears the previous employee history while loading', async () => {
   await render(); let resolve;
   api.getLeaveRequests.mockReturnValue(new Promise(r => { resolve = r; }));

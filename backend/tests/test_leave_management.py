@@ -49,6 +49,34 @@ def budget(): return AsyncMock(return_value={"Annual": {"remaining": 21}, "year"
 def run(coro): return asyncio.run(coro)
 
 
+def test_hr_direct_approval_requires_reason_and_policy_checks_and_records_override():
+    db, actors = fixture(); loader = budget()
+    with patch("utils.email_service.send_email", AsyncMock()), patch("automation.engine.automation_engine.fire_event", AsyncMock()):
+        row = run(workflow.create(db, actors["staff"], payload(), loader))
+        assert run(workflow.view(db, actors["hr"], db.leave_requests.docs[0]))["can_hr_override"]
+        body = {"decision": "Approve", "hr_override": True, "stage": "hr", "reason": "Manager unavailable; HR reviewed request", "handover_reviewed": True, "policy_review_confirmed": True}
+        with pytest.raises(HTTPException): run(workflow.decide(db, actors["hr"], row["id"], {**body, "reason": ""}, loader))
+        with pytest.raises(HTTPException): run(workflow.decide(db, actors["hr"], row["id"], {**body, "policy_review_confirmed": False}, loader))
+        approved = run(workflow.decide(db, actors["hr"], row["id"], body, loader))
+        replay = run(workflow.decide(db, actors["hr"], row["id"], body, loader))
+    assert approved["status"] == replay["status"] == "Approved"
+    assert len(approved["approval_history"]) == 2
+    assert approved["approval_history"][-1]["hr_override"] is True
+    assert db.audit_logs.docs[-1]["hr_override"] is True
+    assert db.employees.docs[0]["line_manager_id"] == "boss"
+
+
+def test_employee_manager_and_self_cannot_forge_hr_override():
+    db, actors = fixture(); loader = budget()
+    with patch("utils.email_service.send_email", AsyncMock()), patch("automation.engine.automation_engine.fire_event", AsyncMock()):
+        row = run(workflow.create(db, actors["staff"], payload(), loader))
+        body = {"decision": "Approve", "hr_override": True, "reason": "Forged override", "handover_reviewed": True, "policy_review_confirmed": True}
+        for actor in [actors["staff"], actors["boss"], {**actors["staff"], "role": "hr_admin"}]:
+            with pytest.raises(HTTPException) as error: run(workflow.decide(db, actor, row["id"], body, loader))
+            assert error.value.status_code == 403
+    assert db.leave_requests.docs[0]["status"] == "Pending_Manager"
+
+
 @pytest.mark.parametrize("start,end,holidays,expected", [
     ("2026-10-16", "2026-10-18", (), 1.5), ("2026-10-16", "2026-10-18", ("2026-10-16",), 0.5),
     ("2026-10-18", "2026-10-18", (), 0), ("2026-10-19", "2026-10-23", (), 5),

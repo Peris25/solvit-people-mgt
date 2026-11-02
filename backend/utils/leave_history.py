@@ -32,6 +32,8 @@ class HistoricalFields(BaseModel):
     @field_validator("status")
     @classmethod
     def state(cls, value):
+        if value == "Denied":
+            value = "Rejected"
         if value not in {"Approved", "Pending", "Recorded", "Rejected", "Cancelled"}:
             raise ValueError("Invalid historical status")
         return value
@@ -69,6 +71,44 @@ class HistoricalBatch(BaseModel):
 class HistoricalCorrection(HistoricalFields):
     revision: int = Field(ge=1)
     reason: str = Field(min_length=5, max_length=1000)
+
+
+class RecordedTarget(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(min_length=1, max_length=100)
+    revision: int = Field(ge=1)
+
+
+class RecordedApproval(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    targets: list[RecordedTarget] = Field(min_length=1, max_length=200)
+    reason: str = Field(min_length=5, max_length=1000)
+
+
+async def approve_recorded(db, user, body):
+    """Explicit HR source confirmation; never edits live pending applications."""
+    require_hr(user)
+    if len(body.reason.strip()) < 5 or len({target.id for target in body.targets}) != len(body.targets):
+        raise HTTPException(422, "Unique records and a confirmation reason are required")
+    async with integrity_write(db):
+        records = []
+        for target in body.targets:
+            record = await find_linked_record(db.leave_requests, target.id, user)
+            await authorize_employee(db, user, record.get("employee_id"), "M18", write=True)
+            if not record.get("historical_import"):
+                raise HTTPException(409, "Only imported Recorded history may be confirmed here")
+            if record.get("status") == "Approved":
+                continue  # Safe retry after a partial import/connection interruption.
+            if record.get("status") != "Recorded" or record.get("revision") != target.revision:
+                raise HTTPException(409, "A source record changed. Refresh before confirming")
+            records.append(record)
+        for record in records:
+            candidate = {**record, "status": "Approved", "revision": record["revision"] + 1, "updated_at": stamp()}
+            await history_audit(db, user, candidate, "leave.history.source_approved", {key: record.get(key) for key in HistoricalFields.model_fields}, body.reason)
+            result = await db.leave_requests.update_one({"_id": record["_id"], "revision": record["revision"], "status": "Recorded"}, {"$set": {"status": "Approved", "revision": candidate["revision"], "updated_at": candidate["updated_at"]}})
+            if result.modified_count != 1:
+                raise HTTPException(409, "Source record changed. Refresh before retrying")
+        return {"approved": len(records), "already_approved": len(body.targets) - len(records)}
 
 
 def require_hr(user):

@@ -104,7 +104,13 @@ async def create_leave_request(lr: LeaveRequest, request: Request):
 
 
 # HR history routes retain source units and never run live approval automation.
-from utils.leave_history import HistoricalBatch, HistoricalCorrection
+from utils.leave_history import HistoricalBatch, HistoricalCorrection, RecordedApproval
+
+
+@router.post("/history/approve-recorded")
+async def approve_recorded_history(body: RecordedApproval, request: Request):
+    from utils.leave_history import approve_recorded
+    return await approve_recorded(get_db(), await get_current_user(request), body)
 
 
 @router.post("/history/preview")
