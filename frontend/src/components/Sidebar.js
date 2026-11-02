@@ -97,6 +97,12 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
   const { items: notifications, unreadCount: unread, loading: notificationsLoading, error: notificationError, refresh: refreshNotifications, markRead: saveRead, markAllRead } = useNotifications();
   const [readError, setReadError] = useState('');
   const [showNotif, setShowNotif] = useState(false);
+  const panelNotifications = notifications.filter(item => !['hr_admin', 'hr_manager'].includes(user?.role) || item.link || item.category === 'Announcements')
+    .slice().sort((a, b) => Number(!!b.action) - Number(!!a.action));
+  const openNotification = async item => {
+    await markRead(item.id);
+    if (item.link) { navigate(item.link); setShowNotif(false); }
+  };
 
   const markRead = async (id) => {
     setReadError('');
@@ -231,25 +237,27 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
           </button>
         </div>
         {showNotif && (
-          <div data-testid="notif-dropdown" style={{ position: 'absolute', top: '60px', left: '8px', width: '320px', maxWidth: 'calc(100vw - 16px)', backgroundColor: '#fff', color: '#191919', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 200, maxHeight: '420px', display: 'flex', flexDirection: 'column' }}>
+          <div className="sidebar-notifications" data-testid="notif-dropdown" style={{ position: 'absolute', top: '60px', left: '8px', width: '360px', maxWidth: 'calc(100vw - 16px)', backgroundColor: '#fff', color: '#191919', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 200, maxHeight: '420px', display: 'flex', flexDirection: 'column' }}>
+            <style>{'@media (min-width: 601px) { .sidebar-notifications { left: 224px !important; top: 0 !important; max-width: calc(100vw - 240px) !important; } }'}</style>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <strong style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Notifications {unread > 0 && <span style={{ color: '#FF353F' }}>· {unread}</span>}</strong>
-              {unread > 0 && <button data-testid="mark-all-read" onClick={markAllRead} style={{ background: 'none', border: 'none', color: '#FF353F', cursor: 'pointer', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Mark shown read</button>}
+              {unread > 0 && <button data-testid="mark-all-read" onClick={markAllRead} style={{ background: 'none', border: 'none', color: '#FF353F', cursor: 'pointer', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Mark recent read</button>}
+              <button aria-label="Close notifications" onClick={() => setShowNotif(false)} style={{ border: 0, background: '#fff', padding: '8px', cursor: 'pointer' }}>×</button>
             </div>
             <div style={{ overflowY: 'auto', flex: 1 }}>
               {(notificationError || readError) && <div role="alert" style={{ padding: '16px' }}>{notificationError || readError}</div>}
               <button onClick={() => { navigate('/notifications'); setShowNotif(false); }} style={{ width: '100%', minHeight: '44px', background: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer' }}>Open Notification Centre</button>
-              {notificationsLoading ? <div role="status" style={{ padding: '24px' }}>Loading notifications…</div> : !notificationError && notifications.length === 0 ? (
-                <div style={{ padding: '32px', textAlign: 'center', color: '#9CA3AF', fontSize: '12px' }}>No notifications</div>
-              ) : notifications.slice(0, 20).map(n => (
-                <div key={n.id} data-testid={`notif-${n.id}`} onClick={() => markRead(n.id)} style={{ padding: '12px 16px', borderBottom: '1px solid rgba(25,25,25,0.05)', cursor: 'pointer', backgroundColor: n.is_read ? '#fff' : '#FEF2F2' }}>
+              {notificationsLoading ? <div role="status" style={{ padding: '24px' }}>Loading notifications…</div> : !notificationError && panelNotifications.length === 0 ? (
+                <div style={{ padding: '32px', textAlign: 'center', color: '#525252', fontSize: '12px' }}>No recent actions or announcements. View all updates in the Notification Centre.</div>
+              ) : panelNotifications.slice(0, 20).map(n => (
+                <button key={n.id} type="button" data-testid={`notif-${n.id}`} onClick={() => openNotification(n)} style={{ display: 'block', width: '100%', textAlign: 'left', border: 0, padding: '12px 16px', borderBottom: '1px solid rgba(25,25,25,0.05)', cursor: 'pointer', backgroundColor: n.is_read ? '#fff' : '#FEF2F2' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
                     <strong style={{ fontSize: '12px', color: '#191919', flex: 1 }}>{n.title}</strong>
                     {!n.is_read && <span style={{ width: '8px', height: '8px', backgroundColor: '#FF353F', borderRadius: '50%', flexShrink: 0, marginTop: '4px' }} />}
                   </div>
                   <p style={{ fontSize: '11px', color: '#525252', margin: '4px 0 0', lineHeight: 1.4 }}>{n.message}</p>
                   <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '4px' }}>{n.created_at ? new Date(n.created_at).toLocaleString('en-KE', { dateStyle: 'short', timeStyle: 'short' }) : ''}</div>
-                </div>
+                </button>
               ))}
             </div>
           </div>

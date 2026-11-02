@@ -49,6 +49,41 @@ def budget(): return AsyncMock(return_value={"Annual": {"remaining": 21}, "year"
 def run(coro): return asyncio.run(coro)
 
 
+def test_hr_receives_new_leave_review_with_safe_current_notification_preview():
+    from utils.notification_centre import list_inbox
+    db, actors = fixture(); db.notification_receipts = Collection()
+    with patch("utils.email_service.send_email", AsyncMock()), patch("automation.engine.automation_engine.fire_event", AsyncMock()):
+        created = run(workflow.create(db, actors["staff"], payload(notes="PRIVATE medical and banking information"), budget()))
+    inbox = run(list_inbox(db, actors["hr"]))
+    item = next(item for item in inbox["items"] if item["action"])
+    assert item["title"] == "Leave awaiting HR review"
+    assert "approve or deny" in item["message"] and "PRIVATE" not in str(inbox)
+    assert "view=team" in item["link"] and item["action"]["stage"] == "hr"
+    stored = db.leave_requests.docs[0]; stored["status"] = "Approved"
+    updated = run(list_inbox(db, actors["hr"]))["items"][0]
+    assert updated["title"] == "Leave approved" and updated["action"] is None
+
+
+def test_display_balance_increases_with_month_and_decreases_with_approved_usage_without_writes(monkeypatch):
+    from datetime import datetime, timezone
+    from utils import leave_balances
+    db, _ = fixture(); employee = db.employees.docs[0]
+    class Clock(datetime):
+        month_value = 10
+        @classmethod
+        def now(cls, tz=None): return datetime(2026, cls.month_value, 15, tzinfo=timezone.utc)
+    monkeypatch.setattr(leave_balances, "datetime", Clock)
+    with patch.object(leave, "_active_leave_types", AsyncMock(return_value=leave.LEAVE_TYPES)):
+        october = run(balances(db, employee))
+        Clock.month_value = 11
+        november = run(balances(db, employee))
+        db.leave_requests.docs = [{"_id": ObjectId(), "employee_id": "staff", "tenant_id": "solvit", "start_date": "2026-10-01", "leave_type": "Annual", "working_days": 2.5, "status": "Approved"}]
+        after_leave = run(balances(db, employee))
+    assert november["annual_available_to_request"] - october["annual_available_to_request"] == 1.75
+    assert november["annual_available_to_request"] - after_leave["annual_available_to_request"] == 2.5
+    assert db.leave_balances.writes == 0
+
+
 def test_hr_direct_approval_requires_reason_and_policy_checks_and_records_override():
     db, actors = fixture(); loader = budget()
     with patch("utils.email_service.send_email", AsyncMock()), patch("automation.engine.automation_engine.fire_event", AsyncMock()):

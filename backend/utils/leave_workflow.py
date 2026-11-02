@@ -134,7 +134,7 @@ async def notify(db, record, event):
     recipients = [("employee", record["employee_id"])]
     if record["status"] == "Pending_Manager":
         recipients.append(("employee", record["line_manager_id"]))
-    if record["status"] == "Pending_HR" or record.get("extended_sick_followup_required") or record.get("flag_hr_attention") or (record.get("sick_pay") or {}).get("unpaid_days", 0) > 0:
+    if record["status"] in {"Pending_Manager", "Pending_HR"} or record.get("extended_sick_followup_required") or record.get("flag_hr_attention") or (record.get("sick_pay") or {}).get("unpaid_days", 0) > 0:
         from utils.employee_integrity import resolve_user_employee
         covered = {reference for kind, reference in recipients if kind == "employee"}
         for role in ("hr_admin", "hr_manager"):

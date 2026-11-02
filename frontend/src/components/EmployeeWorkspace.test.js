@@ -4,16 +4,18 @@ import Sidebar from './Sidebar';
 import EmployeeLoginReview from './EmployeeLoginReview';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../services/api';
+import { useNotifications } from '../context/NotificationContext';
 
 jest.mock('../context/AuthContext');
 jest.mock('../services/api');
 jest.mock('react-router-dom', () => ({ useNavigate: () => jest.fn(), useLocation: () => ({ pathname: '/dashboard' }) }));
-jest.mock('../context/NotificationContext', () => ({ useNotifications: () => ({ items: [], unreadCount: 0, refresh: jest.fn() }) }));
+jest.mock('../context/NotificationContext', () => ({ useNotifications: jest.fn() }));
 jest.mock('../context/ThemeContext', () => ({ useTheme: () => ({ theme: 'light', toggle: jest.fn() }), themeTokens: () => ({}) }));
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
 let container, root;
 beforeEach(() => {
+  useNotifications.mockReturnValue({ items: [], unreadCount: 0, refresh: jest.fn() });
   container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container);
   useAuth.mockReturnValue({ user: { id: 'staff', role: 'employee', full_name: 'Synthetic', department: 'Finance' } });
 });
@@ -36,7 +38,7 @@ test('notification dropdown is anchored inside the left viewport edge', async ()
   const dropdown = container.querySelector('[data-testid="notif-dropdown"]');
   expect(dropdown.style.left).toBe('8px');
   expect(dropdown.style.right).toBe('');
-  expect(dropdown.style.width).toBe('320px');
+  expect(dropdown.style.width).toBe('360px');
   expect(dropdown.style.maxWidth).toBe('calc(100vw - 16px)');
 });
 
@@ -87,4 +89,22 @@ test('HR can prepare only unambiguous missing accounts and must confirm creation
   await act(async () => prepare.click());
   expect(onPrepare).toHaveBeenCalledWith([{ id: 'one', full_name: 'Example One', work_email: 'one@example.test' }]);
   expect(api.provisionEmployeeAccount).not.toHaveBeenCalled();
+});
+
+
+test('HR notification preview hides unlinked generic updates and opens an actionable leave record', async () => {
+  useAuth.mockReturnValue({ user: { id: 'hr', role: 'hr_admin' } });
+  const markRead = jest.fn().mockResolvedValue(undefined);
+  useNotifications.mockReturnValue({ items: [
+    { id: 'noise', category: 'System', title: 'Generic update', is_read: false },
+    { id: 'leave', category: 'Leave', title: 'Leave awaiting HR review', message: 'Review this request', link: '/leave?request=one&view=team', action: { kind: 'leave_review' }, is_read: false },
+  ], unreadCount: 2, refresh: jest.fn(), markRead });
+  await render(<Sidebar collapsed={false} onToggle={jest.fn()} />);
+  await act(async () => container.querySelector('[data-testid="notif-bell"]').click());
+  expect(container.querySelector('[data-testid="notif-noise"]')).toBeNull();
+  const item = container.querySelector('[data-testid="notif-leave"]');
+  expect(item.tagName).toBe('BUTTON');
+  await act(async () => item.click());
+  expect(markRead).toHaveBeenCalledWith('leave');
+  expect(container.querySelector('[data-testid="notif-dropdown"]')).toBeNull();
 });

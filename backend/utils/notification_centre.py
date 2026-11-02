@@ -206,8 +206,11 @@ async def related_link(db, user, row, category):
                 path += "&view=team"
             action = None
             if category != "Training":
-                from utils.leave_workflow import stage_for
+                from utils.leave_workflow import stage_for, HR, PENDING, own
                 stage = await stage_for(db, user, record)
+                if not stage and user.get("role") in HR and not own(employee, user) and not record.get("historical_import") and record.get("status") in PENDING:
+                    await authorize_employee(db, user, record.get("employee_id"), "M18", approve=True)
+                    stage = "hr"
                 if stage:
                     action = {"kind": "leave_review", "record_id": storage_key(record), "stage": stage}
             return path, action
@@ -219,6 +222,29 @@ async def related_link(db, user, row, category):
         # A deleted, ambiguous or inaccessible target must never become a link.
         pass
     return None, None
+
+
+async def leave_preview(db, user, row, action):
+    """Build useful previews from authorized current state, never stored free text."""
+    data = row.get("data") or {}
+    reference = data.get("leave_request_id") or row.get("leave_request_id")
+    try:
+        record = await find_linked_record(db.leave_requests, str(reference or ""), user)
+        employee = await authorize_employee(db, user, record.get("employee_id"), "M18")
+    except HTTPException:
+        return PREVIEWS["Leave"]
+    if action:
+        title = "Leave awaiting HR review" if user.get("role") in {"hr_admin", "hr_manager"} else "Leave awaiting manager review"
+        message = "A team member's leave request needs your review. Open it to approve or deny." if user.get("role") in {"hr_admin", "hr_manager"} else "A direct report's leave request needs your review. Open it to recommend approval or deny."
+    elif record.get("status") == "Approved":
+        title, message = "Leave approved", "Your leave request is approved." if employee_key(employee) == user.get("employee_id") else "A leave request you follow has been approved."
+    elif record.get("status") in {"Rejected", "Denied"}:
+        title, message = "Leave denied", "The leave request was denied. Open the record for details."
+    elif record.get("status") == "Cancelled":
+        title, message = "Leave withdrawn", "The leave request was withdrawn. No approval is needed."
+    else:
+        title, message = "Leave pending", "The leave request is awaiting review."
+    return title, message
 
 
 async def list_inbox(db, user, *, category=None, kind=None, read_status="all", offset=0, limit=50, personal_only=False):
@@ -250,6 +276,8 @@ async def list_inbox(db, user, *, category=None, kind=None, read_status="all", o
         category_value = category_of(row)
         link, action = await related_link(db, user, row, category_value)
         title, message = PREVIEWS[category_value]
+        if category_value in {"Leave", "Approvals"} and link:
+            title, message = await leave_preview(db, user, row, action)
         kind_value = "Approvals" if action else "Action required" if category_value in ("Onboarding", "Training", "Policies") else "Updates"
         created = date_value(row.get("created_at"))
         visible.append({"id": storage_key(row), "title": title, "message": message,
