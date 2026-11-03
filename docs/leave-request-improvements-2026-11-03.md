@@ -58,6 +58,13 @@ withdrawn entries remain in history and a new request can be submitted.
 
 ## Release verification
 
+Release `82435a9` was pushed to `main`. The automatic frontend run succeeded:
+https://github.com/Peris25/solvit-people-mgt/actions/runs/41624883719
+Public bundle checks confirmed Edit and resubmit and Days remaining are present.
+Render's new resubmission route changed from 404 during deployment to 401 for an
+unauthenticated request, confirming that it is present and authentication is enforced.
+No real employee record identifier, credentials or decision were used in that probe.
+
 Commit/push uses the approved automatic deployment setup. GitHub's frontend workflow
 must report successful tests, build, encrypted upload and public HTML/asset verification.
 Render separately auto-deploys backend changes. Confirm the new protected resubmission
