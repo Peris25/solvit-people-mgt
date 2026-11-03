@@ -1,5 +1,6 @@
 """Recipient-scoped inbox projections and per-account receipts for legacy events."""
 from datetime import datetime, timezone
+import asyncio
 import hashlib
 import json
 from urllib.parse import quote
@@ -260,18 +261,17 @@ async def list_inbox(db, user, *, category=None, kind=None, read_status="all", o
     ]}]}).to_list(None)
     receipts = await db.notification_receipts.find({"$and": [tenant_query(tenant_of(user)), {"user_id": user["id"]}]}).to_list(None)
     reads = {row.get("notification_id") for row in receipts if row.get("read_at")}
-    visible = []
-    for row in rows:
+    async def project_notification(row):
         if personal_only:
             data = row.get("data") or {}
             subjects = [ref for ref in (row.get("employee_id"), data.get("employee_id") if isinstance(data, dict) else None) if ref]
             if any(ref not in user_employee_aliases(user) for ref in subjects):
-                continue
+                return None
         try:
             await authorize_recipient(db, user, row)
         except HTTPException as error:
             if error.status_code in (403, 404):
-                continue
+                return None
             raise
         category_value = category_of(row)
         link, action = await related_link(db, user, row, category_value)
@@ -280,12 +280,16 @@ async def list_inbox(db, user, *, category=None, kind=None, read_status="all", o
             title, message = await leave_preview(db, user, row, action)
         kind_value = "Approvals" if action else "Action required" if category_value in ("Onboarding", "Training", "Policies") else "Updates"
         created = date_value(row.get("created_at"))
-        visible.append({"id": storage_key(row), "title": title, "message": message,
+        return {"id": storage_key(row), "title": title, "message": message,
                         "category": category_value, "kind": kind_value, "sender": "System" if row.get("rule_id") else "Solvit People",
                         "created_at": created.isoformat() if created else None, "link": link, "action": action,
                         # Legacy flags remain a baseline; new reads never change
                         # that shared flag, including for role broadcasts.
-                        "is_read": storage_key(row) in reads or row.get("is_read") is True or token(row.get("is_read")) in {"true", "1", "yes"} or date_value(row.get("read_at")) is not None})
+                        "is_read": storage_key(row) in reads or row.get("is_read") is True or token(row.get("is_read")) in {"true", "1", "yes"} or date_value(row.get("read_at")) is not None}
+    visible = []
+    for start in range(0, len(rows), 6):
+        batch = await asyncio.gather(*(project_notification(row) for row in rows[start:start + 6]))
+        visible.extend(item for item in batch if item is not None)
     visible.sort(key=lambda row: (row["created_at"] or "", row["id"]), reverse=True)
     unread = sum(not row["is_read"] for row in visible)
     filtered = [row for row in visible if (not category or row["category"] == category)

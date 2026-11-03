@@ -1,48 +1,48 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import { ForgotPassword, ResetPassword } from './pages/PasswordRecovery';
-import Dashboard from './pages/RoleDashboard';
-import Employees from './pages/Employees';
-import Organogram from './pages/Organogram';
-import StaffDirectory from './pages/StaffDirectory';
-import Solvers from './pages/Solvers';
-import SolverAssessments from './pages/SolverAssessments';
-import Recruitment from './pages/Recruitment';
-import Onboarding from './pages/Onboarding';
-import Performance from './pages/Performance';
-import Surveys from './pages/Surveys';
-import Retention from './pages/Retention';
-import LnD from './pages/LnD';
-import Projects from './pages/Projects';
-import Compensation from './pages/Compensation';
-import Recognition from './pages/Recognition';
-import Budget from './pages/Budget';
-import Policies from './pages/Policies';
-import Disciplinary from './pages/Disciplinary';
-import Calendar from './pages/Calendar';
-import Benefits from './pages/Benefits';
-import Reporting from './pages/Reporting';
-import Leave from './pages/Leave';
-import Compliance from './pages/Compliance';
-import Settings from './pages/Settings';
-import MastersSettings from './pages/MastersSettings';
-import Forms from './pages/Forms';
-import EmployeeProfile from './pages/EmployeeProfile';
-import MyTasks from './pages/MyTasks';
-import DataImport from './pages/DataImport';
-import RolesPermissions from './pages/RolesPermissions';
+const Dashboard = lazy(() => import('./pages/RoleDashboard'));
+const Employees = lazy(() => import('./pages/Employees'));
+const Organogram = lazy(() => import('./pages/Organogram'));
+const StaffDirectory = lazy(() => import('./pages/StaffDirectory'));
+const Solvers = lazy(() => import('./pages/Solvers'));
+const SolverAssessments = lazy(() => import('./pages/SolverAssessments'));
+const Recruitment = lazy(() => import('./pages/Recruitment'));
+const Onboarding = lazy(() => import('./pages/Onboarding'));
+const Performance = lazy(() => import('./pages/Performance'));
+const Surveys = lazy(() => import('./pages/Surveys'));
+const Retention = lazy(() => import('./pages/Retention'));
+const LnD = lazy(() => import('./pages/LnD'));
+const Projects = lazy(() => import('./pages/Projects'));
+const Compensation = lazy(() => import('./pages/Compensation'));
+const Recognition = lazy(() => import('./pages/Recognition'));
+const Budget = lazy(() => import('./pages/Budget'));
+const Policies = lazy(() => import('./pages/Policies'));
+const Disciplinary = lazy(() => import('./pages/Disciplinary'));
+const Calendar = lazy(() => import('./pages/Calendar'));
+const Benefits = lazy(() => import('./pages/Benefits'));
+const Reporting = lazy(() => import('./pages/Reporting'));
+const Leave = lazy(() => import('./pages/Leave'));
+const Compliance = lazy(() => import('./pages/Compliance'));
+const Settings = lazy(() => import('./pages/Settings'));
+const MastersSettings = lazy(() => import('./pages/MastersSettings'));
+const Forms = lazy(() => import('./pages/Forms'));
+const EmployeeProfile = lazy(() => import('./pages/EmployeeProfile'));
+const MyTasks = lazy(() => import('./pages/MyTasks'));
+const DataImport = lazy(() => import('./pages/DataImport'));
+const RolesPermissions = lazy(() => import('./pages/RolesPermissions'));
 import ErrorToast from './components/ErrorToast';
 import AccessGate from './components/AccessGate';
-import SolverRequisitions from './pages/SolverRequisitions';
-import IneligibleApplicants from './pages/IneligibleApplicants';
-import EligibleSolvers from './pages/EligibleSolvers';
-import PublicSolverApply from './pages/PublicSolverApply';
-import Notifications from './pages/Notifications';
-import Documents from './pages/Documents';
+const SolverRequisitions = lazy(() => import('./pages/SolverRequisitions'));
+const IneligibleApplicants = lazy(() => import('./pages/IneligibleApplicants'));
+const EligibleSolvers = lazy(() => import('./pages/EligibleSolvers'));
+const PublicSolverApply = lazy(() => import('./pages/PublicSolverApply'));
+const Notifications = lazy(() => import('./pages/Notifications'));
+const Documents = lazy(() => import('./pages/Documents'));
 import MfaSecurity from './pages/MfaSecurity';
 import { NotificationProvider } from './context/NotificationContext';
 
@@ -53,6 +53,7 @@ export default function App() {
         <NotificationProvider>
         <BrowserRouter>
           <ErrorToast />
+        <Suspense fallback={<div role="status" style={{ padding: '24px' }}>Loading page?</div>}>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -100,6 +101,7 @@ export default function App() {
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
+        </Suspense>
         </BrowserRouter>
         </NotificationProvider>
       </AuthProvider>

@@ -3,7 +3,9 @@ import re
 import uuid
 import asyncio
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
+from contextvars import ContextVar
+from copy import deepcopy
 from datetime import datetime, timezone
 
 from bson import ObjectId
@@ -65,18 +67,42 @@ async def email_matches(collection, field, email, tenant=None):
     return await collection.find(query).to_list(2)
 
 
+_read_employee_cache = ContextVar("read_employee_cache", default=None)
+
+
+@contextmanager
+def employee_read_snapshot():
+    """Memoize identity lookups within one read-only request, never across users.
+
+    Write routes deliberately do not enable this context. Permissions, account
+    status, session revocation and MFA remain fresh database checks.
+    """
+    token = _read_employee_cache.set({})
+    try:
+        yield
+    finally:
+        _read_employee_cache.reset(token)
+
+
 async def find_employee(db, reference, tenant="solvit"):
     if isinstance(reference, ObjectId):
         reference = str(reference)
     if not isinstance(reference, str) or not reference.strip():
         return None
+    cache = _read_employee_cache.get()
+    key = (id(db), tenant, reference)
+    if cache is not None and key in cache:
+        return deepcopy(cache[key])
     clauses = [{"id": reference}, {"_id": reference}]
     if ObjectId.is_valid(reference):
         clauses.extend([{"_id": ObjectId(reference)}, {"id": ObjectId(reference)}])
     rows = await db.employees.find({"$and": [tenant_query(tenant), {"$or": clauses}]}).to_list(2)
     if len(rows) > 1:
         raise HTTPException(409, "Employee reference is ambiguous. Request an integrity review.")
-    return rows[0] if rows else None
+    record = rows[0] if rows else None
+    if cache is not None:
+        cache[key] = deepcopy(record)
+    return record
 
 
 async def resolve_user_employee(db, user):

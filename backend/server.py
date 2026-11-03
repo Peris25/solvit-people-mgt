@@ -78,10 +78,14 @@ async def protect_application_session(request: Request):
         return
     from database import get_db
     from utils.access_matrix import request_permissions
-    async with request_permissions(get_db()):
-        if request.scope.get("endpoint") not in SESSION_EXEMPT_ENDPOINTS:
-            await require_password_change_completed(request)
-        yield
+    from contextlib import nullcontext
+    from utils.employee_integrity import employee_read_snapshot
+    # Read memoization is request-local; writes always read current identities.
+    with employee_read_snapshot() if request.method in {"GET", "HEAD"} else nullcontext():
+        async with request_permissions(get_db()):
+            if request.scope.get("endpoint") not in SESSION_EXEMPT_ENDPOINTS:
+                await require_password_change_completed(request)
+            yield
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
