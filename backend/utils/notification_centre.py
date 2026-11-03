@@ -156,6 +156,12 @@ async def related_link(db, user, row, category):
     if not isinstance(data, dict):
         return None, None
     try:
+        if data.get('public_solver_assessment_id'):
+            from utils.public_solver_assessments import hr, PUBLIC_KIND
+            hr(user)
+            if tenant_of(user) != 'solvit': return None, None
+            record = await db.public_solver_assessments.find_one({'id': data['public_solver_assessment_id'], 'tenant_id': 'solvit', 'kind': PUBLIC_KIND, 'publication_state': 'Ready'})
+            return ('/solver-assessments?application=' + quote(record['id'], safe=''), None) if record else (None, None)
         if data.get('solver_assessment_id'):
             from utils.solver_assessments import load
             await load(db, user, data['solver_assessment_id'])
@@ -278,6 +284,8 @@ async def list_inbox(db, user, *, category=None, kind=None, read_status="all", o
         title, message = PREVIEWS[category_value]
         if category_value in {"Leave", "Approvals"} and link:
             title, message = await leave_preview(db, user, row, action)
+        if link and isinstance(row.get("data"), dict) and row["data"].get("public_solver_assessment_id"):
+            title, message = "New Solver assessment received", "A new applicant assessment is ready for HR review. Open it to view the answers."
         kind_value = "Approvals" if action else "Action required" if category_value in ("Onboarding", "Training", "Policies") else "Updates"
         created = date_value(row.get("created_at"))
         return {"id": storage_key(row), "title": title, "message": message,

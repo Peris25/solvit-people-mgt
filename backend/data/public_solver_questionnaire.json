@@ -1,0 +1,239 @@
+{
+  "version": "motor-vehicle-2026-11-03-v1",
+  "title": "Motor Vehicle Solver Assessment",
+  "source_url": "https://forms.gle/omWVaTi8MTAJyyPQA",
+  "sections": [
+    {
+      "id": "introduction",
+      "title": "About you",
+      "questions": [
+        {
+          "id": "2073566651",
+          "label": "Name of Applicant",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "273984803",
+          "label": "Have you done valuation before?",
+          "type": "choice",
+          "required": false,
+          "options": [
+            "Yes",
+            "No"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "2066455216",
+      "title": "Assessment - Job Competency",
+      "questions": [
+        {
+          "id": "50079939",
+          "label": "Why is valuation done and what are the challenges you have faced so far?",
+          "type": "paragraph",
+          "required": false,
+          "unless_answer": {
+            "id": "273984803",
+            "value": "No"
+          }
+        }
+      ]
+    },
+    {
+      "id": "2010236164",
+      "title": "Assessment - Job Competency",
+      "questions": [
+        {
+          "id": "1849222290",
+          "label": "Why do you think valuation is done?  List all the reasons you think valuation is done and explain in detail",
+          "type": "paragraph",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "928633120",
+      "title": "Understanding of Vehicles",
+      "questions": [
+        {
+          "id": "805543727",
+          "label": "What are the main components of a car?",
+          "type": "paragraph",
+          "required": false
+        },
+        {
+          "id": "1637006446",
+          "label": "What do you think would determine the value of a car?",
+          "type": "paragraph",
+          "required": false
+        },
+        {
+          "id": "716318240",
+          "label": "How would you rate your knowledge of motor vehicles?",
+          "type": "scale",
+          "required": true,
+          "options": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5"
+          ],
+          "scale_labels": [
+            "Weak",
+            "Strong"
+          ]
+        },
+        {
+          "id": "132387007",
+          "label": "How would you gauge your knowledge of vehicles and their components?",
+          "type": "scale",
+          "required": true,
+          "options": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5"
+          ],
+          "scale_labels": [
+            "Poor",
+            "Excellent"
+          ]
+        },
+        {
+          "id": "420662639",
+          "label": "If above average in the question above, could you describe where the chassis number in a vehicle is?",
+          "type": "paragraph",
+          "required": false
+        },
+        {
+          "id": "1662165705",
+          "label": "Please describe where the engine number in a vehicle is.",
+          "type": "paragraph",
+          "required": false
+        },
+        {
+          "id": "794200901",
+          "label": "What is the difference between a vin plate and frame/ chassis number engraved on body?",
+          "type": "paragraph",
+          "required": false
+        },
+        {
+          "id": "1479512176",
+          "label": "Describe what tread-depth is.",
+          "type": "paragraph",
+          "required": false
+        },
+        {
+          "id": "95749010",
+          "label": "If you want to know how much a car has been used, what are some of the indicators?",
+          "type": "paragraph",
+          "required": false
+        },
+        {
+          "id": "807702581",
+          "label": "What do you look at if you want to know how far a vehicle has travelled?",
+          "type": "paragraph",
+          "required": false
+        },
+        {
+          "id": "1815119029",
+          "label": "What are some of the indicators of the condition of vehicles?",
+          "type": "paragraph",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "222559288",
+      "title": "Punctuality",
+      "questions": [
+        {
+          "id": "1049453214",
+          "label": "You are to meet a client at 9:00 am, It is 8:30 am. You think you'll be late. What do you do in this situation?",
+          "type": "paragraph",
+          "required": false
+        },
+        {
+          "id": "440201682",
+          "label": "You have arrived on time to meet a client at the time you had agreed to meet.  i.e. 9:00 am. The client is late. What do you do?",
+          "type": "paragraph",
+          "required": false
+        },
+        {
+          "id": "224998661",
+          "label": "On a scale of 1- 10 angry to happy, select the feeling that best describes how you feel when a meeting you're attending starts 15 minutes late.",
+          "type": "scale",
+          "required": true,
+          "options": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10"
+          ],
+          "scale_labels": [
+            "Angry ",
+            "Happy"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "680313400",
+      "title": "Presentation",
+      "questions": [
+        {
+          "id": "274161041",
+          "label": "Which factor doesn't affect your presentation?",
+          "type": "choice",
+          "required": true,
+          "options": [
+            "Grooming",
+            "Scent - how you smell?",
+            "How you speak?",
+            "Neatness",
+            "All the above affects presentablilty."
+          ]
+        },
+        {
+          "id": "545968819",
+          "label": "Who would you trust as a professional among the images shared below?",
+          "type": "choice",
+          "required": true,
+          "options": [
+            "1",
+            "2"
+          ],
+          "availability": "awaiting_source_images"
+        },
+        {
+          "id": "118079702",
+          "label": "You have arrived at a clients location and as you meet the client, how do you greet them? (Customer's name is Carol in this instance)",
+          "type": "paragraph",
+          "required": true
+        },
+        {
+          "id": "851205922",
+          "label": "You need a document from the client, how do you request the same from Carol? (recording)",
+          "type": "paragraph",
+          "required": true
+        },
+        {
+          "id": "1829908331",
+          "label": "You have finished inspecting the client's car, how would you release Carol? (recording)",
+          "type": "paragraph",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

@@ -100,3 +100,57 @@ async def record_competency(reference:str,request:Request):
 async def download_evidence(reference:str,document_id:str,request:Request):
     user=await get_current_user(request)
     return await service.download_evidence(get_db(),user,reference,document_id)
+
+
+# Only these three handlers are anonymous; existing assessment APIs stay protected.
+@router.get('/public/questionnaire')
+async def public_questionnaire():
+    from utils.public_solver_assessments import questionnaire
+    return JSONResponse(questionnaire(),headers=PRIVATE)
+
+
+@router.get('/public/challenge')
+async def public_challenge(request:Request):
+    from utils.public_solver_assessments import issue_challenge
+    from utils.security import client_ip, rate_limit
+    from fastapi import HTTPException
+    if rate_limit('public-solver-challenge:'+client_ip(request),30,600):
+        raise HTTPException(429,'Please wait before requesting another verification question')
+    return JSONResponse(issue_challenge(),headers=PRIVATE)
+
+
+@router.post('/public/submissions')
+async def public_submission(request:Request):
+    from utils.public_solver_assessments import submit
+    from utils.security import client_ip
+    from fastapi import HTTPException
+    # Bound streamed bodies even when Content-Length is missing or incorrect.
+    import json
+    raw=bytearray()
+    async for chunk in request.stream():
+        raw.extend(chunk)
+        if len(raw)>160_000: raise HTTPException(413,'Assessment submission is too large')
+    try: body=json.loads(raw)
+    except (ValueError,UnicodeDecodeError): raise HTTPException(422,'Invalid submission')
+    return JSONResponse(await submit(get_db(),body,client_ip(request)),status_code=201,headers=PRIVATE)
+
+
+@router.get('/applications')
+async def public_applications(request:Request):
+    from utils.public_solver_assessments import applications
+    user=await get_current_user(request)
+    return JSONResponse(await applications(get_db(),user),headers=PRIVATE)
+
+
+@router.get('/applications/{reference}')
+async def public_application(reference:str,request:Request):
+    from utils.public_solver_assessments import application
+    user=await get_current_user(request)
+    return JSONResponse(await application(get_db(),user,reference),headers=PRIVATE)
+
+
+@router.post('/applications/{reference}/review')
+async def review_public_application(reference:str,request:Request):
+    from utils.public_solver_assessments import review
+    user=await get_current_user(request)
+    return JSONResponse(await review(get_db(),user,reference,await request.json()),headers=PRIVATE)

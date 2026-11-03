@@ -19,6 +19,7 @@ beforeEach(() => {
   api.getSolverAssessmentAttempts.mockResolvedValue({ data: [] });
   api.getSolverAssessmentConfigurations.mockResolvedValue({ data: [] });
   api.getSolverAssessmentOptions.mockResolvedValue({ data: { assessors: [] } }); api.getSolvers.mockResolvedValue({ data: [] });
+  api.getPublicSolverApplications.mockResolvedValue({ data: [] });
   api.getSolverDocuments.mockResolvedValue({ data: [] });
   api.getSolverCompetencies.mockResolvedValue({ data: { items: [], legacy_notice: 'Legacy categories are not verified certifications.' } });
 });

@@ -62,6 +62,8 @@ _AUTH_RECOVERY_ROUTES = {("/auth/login", "POST"), ("/auth/logout", "POST"),
                          ("/auth/password/reset", "POST")}
 SESSION_EXEMPT_ENDPOINTS = {route.endpoint for route in auth_router.routes
                             if any((route.path, method) in _AUTH_RECOVERY_ROUTES for method in route.methods)}
+SESSION_EXEMPT_ENDPOINTS.update(route.endpoint for route in solver_assessments_router.routes
+    if route.path in {"/solver-assessments/public/questionnaire", "/solver-assessments/public/challenge", "/solver-assessments/public/submissions"})
 SESSION_EXEMPT_ENDPOINTS.update(route.endpoint for route in mfa_router.routes
     if route.path in {"/auth/mfa/status", "/auth/mfa/enroll", "/auth/mfa/confirm", "/auth/mfa/verify"})
 # Preserve the existing anonymous recruitment application surface.

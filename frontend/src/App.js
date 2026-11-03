@@ -45,6 +45,7 @@ const Notifications = lazy(() => import('./pages/Notifications'));
 const Documents = lazy(() => import('./pages/Documents'));
 import MfaSecurity from './pages/MfaSecurity';
 import { NotificationProvider } from './context/NotificationContext';
+import { SolverAssessmentAccess } from './pages/PublicSolverAssessment';
 
 export default function App() {
   return (
@@ -59,6 +60,7 @@ export default function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/apply/:rid" element={<PublicSolverApply />} />
+          <Route path="/solver-assessments" element={<SolverAssessmentAccess />}><Route index element={<SolverAssessments />} /></Route>
           <Route path="/" element={<Layout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
@@ -72,7 +74,6 @@ export default function App() {
             <Route path="benefits" element={<Benefits />} />
             <Route path="reporting" element={<Reporting />} />
             <Route path="solvers" element={<Solvers />} />
-            <Route path="solver-assessments" element={<SolverAssessments />} />
             <Route path="solver-requisitions" element={<SolverRequisitions />} />
             <Route path="solver-eligible" element={<EligibleSolvers />} />
             <Route path="solver-ineligible" element={<IneligibleApplicants />} />

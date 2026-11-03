@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Competencies from '../components/SolverCompetencies';
+import PublicSolverApplications from '../components/PublicSolverApplications';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../services/api';
 
@@ -68,6 +69,7 @@ function Workspace({ user }) {
     {loading && <p>Loading assessments...</p>}
     {!loading && !capabilities && <button onClick={() => setRevision(value => value + 1)}>Retry</button>}
     {capabilities && <>
+      {['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) && <PublicSolverApplications key={`${user.id}:${user.role}`} />}
       {capabilities.can_configure && <ConfigurationEditor configurations={configurations} canPublish={capabilities.can_publish} perform={perform} busy={busy} />}
       {capabilities.can_assign && <Assignment configurations={configurations} options={options} solvers={solvers} perform={perform} busy={busy} />}
       <section style={panel}>

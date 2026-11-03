@@ -466,3 +466,13 @@ export const importLeaveHistory = data => api.post('/leave/history/import', data
 export const correctLeaveHistory = (id, data) => api.put(`/leave/history/${encodeURIComponent(id)}`, data);
 
 export const approveRecordedLeaveHistory = data => api.post('/leave/history/approve-recorded', data);
+
+
+// Anonymous questionnaire uses a separate client: it never refreshes sessions or redirects to login.
+const publicAssessmentApi = axios.create({ baseURL: `${API}/api/solver-assessments/public`, withCredentials: false, timeout: 30000 });
+export const getPublicSolverQuestionnaire = () => publicAssessmentApi.get('/questionnaire');
+export const getPublicSolverChallenge = () => publicAssessmentApi.get('/challenge');
+export const submitPublicSolverAssessment = data => publicAssessmentApi.post('/submissions', data);
+export const getPublicSolverApplications = () => api.get('/solver-assessments/applications');
+export const getPublicSolverApplication = id => api.get(`/solver-assessments/applications/${encodeURIComponent(id)}`);
+export const reviewPublicSolverApplication = (id, notes) => api.post(`/solver-assessments/applications/${encodeURIComponent(id)}/review`, { notes });
