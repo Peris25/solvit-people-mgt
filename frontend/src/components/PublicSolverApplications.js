@@ -30,7 +30,7 @@ export default function PublicSolverApplications() {
   };
   return <section aria-label="New applicant assessments" style={{ background: '#fff', border: '1px solid #ddd', borderRadius: 8, padding: 20 }}>
     <h2>New applicant assessments</h2><p>Public submissions are unverified applications. They do not create Active Solvers or award assessment scores.</p>
-    <a href="/solver-assessments?new=1" target="_blank" rel="noreferrer">Open public questionnaire</a>
+    <a href="/solver-assessments" target="_blank" rel="noreferrer">Open public questionnaire</a>
     <p><label>Find applicant <input value={search} onChange={e => setSearch(e.target.value)} style={{ padding: 10, marginLeft: 8 }} /></label><button onClick={() => setRevision(v => v + 1)} style={{ padding: 10, marginLeft: 8 }}>Refresh applications</button></p>
     {error && <p role="alert">{error}</p>}{loading && <p role="status">Loading applications?</p>}
     {!loading && rows.length === 0 && <p>No new applicant assessments received.</p>}

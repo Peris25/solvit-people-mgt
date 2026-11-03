@@ -101,7 +101,7 @@ export default function SolverDashboard() {
         {error && <p role="alert">{error}</p>}
         {current && sectionErrors.map(message => <p role="alert" key={message}>{message}</p>)}
         {!current && !error && <p>Loading your Solver profile...</p>}
-        <nav style={{ display: 'flex', gap: 16, marginBottom: 16 }}><Link to="/solvers">My profile, induction & documents</Link><Link to="/notifications">Notifications</Link><Link to="/solver-assessments">My assessments</Link></nav>
+        <nav style={{ display: 'flex', gap: 16, marginBottom: 16 }}><Link to="/solvers">My profile, induction & documents</Link><Link to="/notifications">Notifications</Link></nav>
         {/* Active survey banner */}
         {current && activeSurvey && (
           <div data-testid="solver-survey-banner" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FF353F', padding: '12px', marginBottom: '16px' }}>

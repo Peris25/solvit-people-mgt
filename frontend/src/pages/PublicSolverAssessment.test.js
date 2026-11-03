@@ -1,6 +1,7 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import PublicSolverAssessment, { SolverAssessmentAccess } from './PublicSolverAssessment';
+import PublicSolverAssessment from './PublicSolverAssessment';
+import SolverApplicantInbox from './SolverApplicantInbox';
 import PublicSolverApplications from '../components/PublicSolverApplications';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../services/api';
@@ -23,18 +24,19 @@ const click=async text => { await act(async () => [...container.querySelectorAll
 const change=async (node,value) => { await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(node,value); node.dispatchEvent(new Event('input',{bubbles:true})); }); };
 
 test('anonymous applicants see questionnaire without accessing private assessment APIs', async () => {
-  await render(<SolverAssessmentAccess />);
+  await render(<PublicSolverAssessment />);
   expect(container.textContent).toContain('Name of Applicant');
   expect(container.textContent).toContain('awaiting publication');
   expect(api.getSolverAssessmentAttempts).not.toHaveBeenCalled();
   expect(container.textContent).not.toContain('Protected workspace');
 });
 
-test('signed-in staff retain protected workspace while public preview is explicit', async () => {
+test('signed-in staff see the same standalone applicant questionnaire', async () => {
   useAuth.mockReturnValue({user:{id:'hr',role:'hr_admin'}});
-  await render(<SolverAssessmentAccess />); expect(container.textContent).toContain('Protected workspace');
+  await render(<PublicSolverAssessment />); expect(container.textContent).not.toContain('Protected workspace');
+  expect(container.textContent).toContain('Name of Applicant');
   window.history.replaceState({},'', '/solver-assessments?new=1');
-  await render(<SolverAssessmentAccess />); expect(container.textContent).toContain('Name of Applicant');
+  await render(<PublicSolverAssessment />); expect(container.textContent).toContain('Name of Applicant');
 });
 
 test('submission sends answers and consent, then displays receipt without creating an account', async () => {
@@ -65,4 +67,12 @@ test('HR can inspect applicant answers without activating a Solver', async () =>
   expect(container.textContent).toContain('source photo question is pending');
   expect(container.querySelector('[aria-label="Applicant answers"]')).not.toBeNull();
   expect(api.activateSolver).not.toHaveBeenCalled();
+});
+
+
+test('private inbox denies non-HR users before loading applicant records', async () => {
+  useAuth.mockReturnValue({ user: { id: 'employee', role: 'employee' } });
+  await render(<SolverApplicantInbox />);
+  expect(container.textContent).toContain('HR access is required');
+  expect(api.getPublicSolverApplications).not.toHaveBeenCalled();
 });

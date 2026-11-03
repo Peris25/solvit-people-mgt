@@ -33,7 +33,7 @@ const MENU_ITEMS = [
       ]
     },
     { path: '/recruitment', label: 'Recruitment',  Icon: Target,          roles: ['hr_admin','hr_manager', 'general_manager','line_manager','executive'] },
-    { path: '/solver-assessments', label: 'Solver Assessments', Icon: FileCheck, roles: ['hr_admin','hr_manager', 'general_manager','line_manager','solver'] },
+    { path: '/solver-assessment-applications', label: 'Solver Applications', Icon: FileCheck, roles: ['hr_admin','hr_manager', 'general_manager'] },
     { path: '/onboarding',  label: 'Onboarding / Exit',   Icon: Rocket,          roles: ['hr_admin','hr_manager', 'general_manager','line_manager','employee','solver','finance','it_admin'] },
   ]},
   // Line Manager team views — visible to anyone with the manager layer

@@ -10,7 +10,7 @@ const Employees = lazy(() => import('./pages/Employees'));
 const Organogram = lazy(() => import('./pages/Organogram'));
 const StaffDirectory = lazy(() => import('./pages/StaffDirectory'));
 const Solvers = lazy(() => import('./pages/Solvers'));
-const SolverAssessments = lazy(() => import('./pages/SolverAssessments'));
+const SolverApplicantInbox = lazy(() => import('./pages/SolverApplicantInbox'));
 const Recruitment = lazy(() => import('./pages/Recruitment'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
 const Performance = lazy(() => import('./pages/Performance'));
@@ -45,22 +45,27 @@ const Notifications = lazy(() => import('./pages/Notifications'));
 const Documents = lazy(() => import('./pages/Documents'));
 import MfaSecurity from './pages/MfaSecurity';
 import { NotificationProvider } from './context/NotificationContext';
-import { SolverAssessmentAccess } from './pages/PublicSolverAssessment';
+import PublicSolverAssessment from './pages/PublicSolverAssessment';
 
 export default function App() {
+  return <BrowserRouter><Routes>
+    <Route path="/solver-assessments" element={<PublicSolverAssessment />} />
+    <Route path="/*" element={<Portal />} />
+  </Routes></BrowserRouter>;
+}
+
+function Portal() {
   return (
     <ThemeProvider>
       <AuthProvider>
         <NotificationProvider>
-        <BrowserRouter>
           <ErrorToast />
-        <Suspense fallback={<div role="status" style={{ padding: '24px' }}>Loading page?</div>}>
+        <Suspense fallback={<div role="status" style={{ padding: '24px' }}>Loading page...</div>}>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/apply/:rid" element={<PublicSolverApply />} />
-          <Route path="/solver-assessments" element={<SolverAssessmentAccess />}><Route index element={<SolverAssessments />} /></Route>
           <Route path="/" element={<Layout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
@@ -74,6 +79,7 @@ export default function App() {
             <Route path="benefits" element={<Benefits />} />
             <Route path="reporting" element={<Reporting />} />
             <Route path="solvers" element={<Solvers />} />
+            <Route path="solver-assessment-applications" element={<SolverApplicantInbox />} />
             <Route path="solver-requisitions" element={<SolverRequisitions />} />
             <Route path="solver-eligible" element={<EligibleSolvers />} />
             <Route path="solver-ineligible" element={<IneligibleApplicants />} />
@@ -103,7 +109,6 @@ export default function App() {
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
         </Suspense>
-        </BrowserRouter>
         </NotificationProvider>
       </AuthProvider>
     </ThemeProvider>

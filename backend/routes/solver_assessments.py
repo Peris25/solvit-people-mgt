@@ -57,9 +57,9 @@ async def attempts(request:Request):
 
 @router.post('/attempts')
 async def assign(request:Request):
-    user=await get_current_user(request);db=get_db();body=await request.json()
-    async with integrity_write(db): result=await service.assign(db,user,body)
-    return JSONResponse(result,headers=PRIVATE)
+    await get_current_user(request)
+    from fastapi import HTTPException
+    raise HTTPException(410, 'Existing-Solver assessment assignments are retired. Use the public new-applicant questionnaire.')
 
 
 @router.get('/attempts/{reference}')

@@ -45,7 +45,6 @@ export default function SolverWorkflow({ solverId, accountId }) {
   });
   return <section style={{ gridColumn: '1 / -1', borderTop: '1px solid #ddd', marginTop: 16, paddingTop: 16 }}>
     <h3>Induction & assessments</h3>
-    <p><a href="/solver-assessments">Assigned assessments & competency records</a></p>
     {error && <p role="alert">{error}</p>}
     {!current && !error && <p>Loading workflow...</p>}
     {error && <button onClick={() => setRevision(value => value + 1)}>Retry</button>}

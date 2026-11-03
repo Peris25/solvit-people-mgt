@@ -99,3 +99,14 @@ def test_http_only_three_public_handlers_are_exempt_and_admin_stays_protected(st
         assert client.get('/api/solver-assessments/applications/'+submitted.json()['reference']).status_code==401
         assert client.post('/api/solver-assessments/public/submissions',json=payload(clock),headers={'Origin':'https://untrusted.example'}).status_code==403
         client.close()
+
+
+def test_retired_existing_solver_assignment_cannot_create_attempts(state):
+    from routes import solver_assessments
+    from unittest.mock import AsyncMock
+    from types import SimpleNamespace
+    db,_=state
+    with patch.object(solver_assessments,'get_current_user',AsyncMock(return_value={'id':'hr','role':'hr_admin'})),patch.object(solver_assessments,'get_db') as database:
+        with pytest.raises(HTTPException) as exc: asyncio.run(solver_assessments.assign(SimpleNamespace()))
+    assert exc.value.status_code==410
+    database.assert_not_called()

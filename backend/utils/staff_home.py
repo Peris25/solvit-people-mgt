@@ -71,19 +71,11 @@ async def staff_home_data(db, user, balance_loader):
             link('Solver Directory', '/solvers')
         except HTTPException as error:
             if error.status_code != 403: raise
-    if user.get('role') in {'hr_admin', 'hr_manager', "general_manager", 'line_manager'}:
-        from utils import solver_assessments
+    if user.get('role') in {'hr_admin', 'hr_manager', 'general_manager'}:
+        from utils.solver_assessments import hr
         try:
-            if user.get('role') in solver_assessments.HR_ROLES: solver_assessments.hr(user)
-            else: await solver_assessments.assessor(db, user)
-            link('Solver assessments', '/solver-assessments')
-            pending = await db.form_submissions.find({'$and': [tenant, {'workflow_kind': solver_assessments.KIND,
-                'status': {'$in': ['AwaitingScoring', 'Scored']}}]}).to_list(None)
-            for row in pending:
-                if row.get('publication_state') != 'Ready': continue
-                if user.get('role') not in solver_assessments.HR_ROLES and user['id'] not in {row.get('assessor_id'), row.get('reviewer_id')}: continue
-                snapshot['tasks'].append({'id': identifier(row), 'kind': 'solver_assessment', 'title': 'Review assigned Solver assessment',
-                    'status': row['status'], 'due_date': row.get('due_at'), 'path': '/solver-assessments?assessment=' + identifier(row)})
+            hr(user)
+            link('Solver applications', '/solver-assessment-applications')
         except HTTPException as error:
             if error.status_code != 403: raise
     if can_personal(user, "M18"):

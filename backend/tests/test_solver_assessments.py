@@ -215,7 +215,7 @@ def test_notifications_are_scoped_readable_and_do_not_expose_answers():
     assert run(list_inbox(db,users['solver']))['unread_count']==1
     assert run(list_inbox(db,users['foreign_solver']))['total']==0
     item=run(list_inbox(db,users['assessor']))['items'][0]
-    assert item['link'].startswith('/solver-assessments?assessment=') and 'synthetic correct' not in str(item)
+    assert item['link'] is None and 'synthetic correct' not in str(item)
     with pytest.raises(HTTPException):run(read_notification(db,users['other'],item['id']))
     count=len(db.notifications.docs);saved,_=run(service.load(db,users['hr'],row['id']));run(service.notify(db,saved,'assigned'))
     assert len(db.notifications.docs)==count

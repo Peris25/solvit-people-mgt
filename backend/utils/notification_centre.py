@@ -161,11 +161,9 @@ async def related_link(db, user, row, category):
             hr(user)
             if tenant_of(user) != 'solvit': return None, None
             record = await db.public_solver_assessments.find_one({'id': data['public_solver_assessment_id'], 'tenant_id': 'solvit', 'kind': PUBLIC_KIND, 'publication_state': 'Ready'})
-            return ('/solver-assessments?application=' + quote(record['id'], safe=''), None) if record else (None, None)
+            return ('/solver-assessment-applications?application=' + quote(record['id'], safe=''), None) if record else (None, None)
         if data.get('solver_assessment_id'):
-            from utils.solver_assessments import load
-            await load(db, user, data['solver_assessment_id'])
-            return '/solver-assessments?assessment=' + quote(data['solver_assessment_id'], safe=''), None
+            return None, None  # Retired existing-Solver assignment flow.
         if data.get('solver_workflow') and data.get('solver_id'):
             await authorize_solver(db, user, data['solver_id'])
             return '/solvers', None

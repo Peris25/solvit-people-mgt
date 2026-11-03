@@ -1,15 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useAuth } from '../context/AuthContext';
-import Layout from '../components/Layout';
 import * as api from '../services/api';
 import './PublicSolverAssessment.css';
-
-export function SolverAssessmentAccess() {
-  const { user } = useAuth();
-  if (user === undefined) return <p role="status">Loading?</p>;
-  if (!user || new URLSearchParams(window.location.search).get('new') === '1') return <PublicSolverAssessment />;
-  return <Layout />;
-}
 
 const errorMessage = e => typeof e?.response?.data?.detail === 'string' ? e.response.data.detail : 'Unable to complete this request. Please try again.';
 

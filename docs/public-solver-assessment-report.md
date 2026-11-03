@@ -34,3 +34,14 @@ Existing Google Forms answers remain in Google Forms; no historical-response imp
 HR must define applicant-data retention. Rate-limit slot documents also need a separately approved periodic retention policy; this release deletes no records and installs no TTL indexes. Submission publication interrupted before audit/notifications finish can be recovered by retrying the same form token and identical answers within its two-hour validity. Other operational recovery should be performed by an authorized operator after inspection; no automatic record cleanup is included.
 
 Deploy both services on the same release, then verify the public page in an incognito session and private HR review. Do not create a fictitious production applicant merely to test: local synthetic tests cover submission. Production live acceptance and authenticated browser inspection remain separate verification steps.
+
+
+## Standalone-only correction requested by HR
+
+The applicant URL `/solver-assessments` now always renders the public questionnaire outside the portal AuthProvider, NotificationProvider and Layout. It is identical for logged-out applicants and already-signed-in HR. No query parameter, Solver record, account, login check, existing-Solver picker, assessment configuration or assignment is needed.
+
+HR's new private route is `/solver-assessment-applications`, reached through **Solver Applications** in the sidebar. It reads only the new public applicant collection. Notifications and Staff Home link to this inbox. Existing-Solver assignment/history screens are no longer routed from the application, old pending assessment tasks and links have been removed from Staff Home and Solver navigation, and the legacy assignment-creation API returns authenticated HTTP 410. Old assignment notifications no longer link into this flow.
+
+This is a fresh applicant workflow: old assigned-assessment answers and Google Forms responses are not imported, listed or reused here. No database purge was performed or claimed; removing unknown stored historical rows is a separate destructive operation, outside this UI/workflow correction.
+
+Regression validation: full backend 1,348 passed / 321 existing integration skips; full frontend 277 passed across 38 suites. Strict and normal production builds, Python compilation and whitespace checks passed. Added checks prove the standalone route never mounts portal authentication and the old assignment endpoint cannot create attempts. The photo-source gap above remains unchanged.
