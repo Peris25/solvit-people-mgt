@@ -1,4 +1,5 @@
 import EmployeeLeaveGroups from '../components/EmployeeLeaveGroups';
+import LeaveActionButton from '../components/LeaveActionButton';
 import { leaveStatus } from '../utils/leaveDisplay';
 import LeaveHistory, { HistoricalLeaveDecision } from '../components/LeaveHistory';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -9,7 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSearchParams } from 'react-router-dom';
 import { relatedRecordRows } from '../utils/relatedRecordFilter';
 import { useNotifications } from '../context/NotificationContext';
-import { Calendar as CalendarIcon, ClipboardList, Users as UsersIcon, RotateCcw, Plus } from 'lucide-react';
+import { Calendar as CalendarIcon, ClipboardList, Users as UsersIcon, RotateCcw, Plus, ClipboardCheck, Pencil, Undo2, Check, X } from 'lucide-react';
 
 const LEAVE_TYPE_LABELS = {
   Annual: 'Annual leave',
@@ -410,9 +411,9 @@ export default function Leave() {
           <h3>Approval history</h3>{(review.approval_history || []).map((entry, index) => <p key={index}>{entry.stage} · {entry.decision || 'Recorded'} · {entry.actor_role} · {entry.at}</p>)}
           {error && <p role="alert">{error}</p>}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '16px' }}>
-            <button style={btnGhost} onClick={() => setReview(null)}>Close</button>
-            {(review.approval_stage || (review.can_hr_override && checks.hr_override)) && <button disabled={saving} style={btnRed} onClick={() => decide('Approve')}>{checks.hr_override ? 'Approve directly as HR' : review.approval_stage === 'hr' ? 'HR final approval' : 'Recommend to HR'}</button>}
-            {review.can_reject && <button disabled={saving} style={btnGhost} onClick={() => decide('Reject')}>Deny</button>}
+            <LeaveActionButton onClick={() => setReview(null)}>Close</LeaveActionButton>
+            {(review.approval_stage || (review.can_hr_override && checks.hr_override)) && <LeaveActionButton icon={Check} variant="primary" disabled={saving} onClick={() => decide('Approve')}>{checks.hr_override ? 'Approve directly as HR' : review.approval_stage === 'hr' ? 'HR final approval' : 'Recommend to HR'}</LeaveActionButton>}
+            {review.can_reject && <LeaveActionButton icon={X} variant="danger" disabled={saving} onClick={() => decide('Reject')}>Deny</LeaveActionButton>}
           </div>
         </div>
       </div>}
@@ -451,11 +452,12 @@ function LeaveRecordsTable({ rows, withdraw, review, historicalReview, edit, sav
               <td style={{ padding: '10px 14px', color: '#525252' }}>{r.handover_contact || '—'}</td>
               <td style={{ padding: '10px 14px' }}><StatusBadge status={leaveStatus(r.status)} small /></td>
               <td style={{ padding: '10px 14px' }}>
-                {historicalReview && r.historical_import && r.can_correct_history && leaveStatus(r.status) === 'Pending' && <button disabled={saving} onClick={() => historicalReview(r)} style={btnGhost}>Review</button>}
-                {(r.approval_stage || r.can_reject || r.can_hr_override) && <button disabled={saving} onClick={() => review(r)} style={btnGhost}>Review</button>}
-                {r.can_cancel && <button disabled={saving} onClick={() => withdraw(r)} style={btnGhost}>Withdraw</button>}
-                {edit && r.can_edit && !r.historical_import && <button disabled={saving} onClick={() => edit(r)} style={btnGhost}>Edit and resubmit</button>}
-
+                <div className="leave-actions">
+                  {historicalReview && r.historical_import && r.can_correct_history && leaveStatus(r.status) === 'Pending' && <LeaveActionButton icon={ClipboardCheck} variant="primary" disabled={saving} onClick={() => historicalReview(r)}>Review</LeaveActionButton>}
+                  {(r.approval_stage || r.can_reject || r.can_hr_override) && <LeaveActionButton icon={ClipboardCheck} variant="primary" disabled={saving} onClick={() => review(r)}>Review</LeaveActionButton>}
+                  {r.can_cancel && <LeaveActionButton icon={Undo2} variant="danger" disabled={saving} onClick={() => withdraw(r)}>Withdraw</LeaveActionButton>}
+                  {edit && r.can_edit && !r.historical_import && <LeaveActionButton icon={Pencil} disabled={saving} onClick={() => edit(r)}>Edit and resubmit</LeaveActionButton>}
+                </div>
               </td>
             </tr>
           ))}

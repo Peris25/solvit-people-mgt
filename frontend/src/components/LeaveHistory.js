@@ -2,7 +2,8 @@ import EmployeeLeaveGroups from './EmployeeLeaveGroups';
 import { leaveStatus } from '../utils/leaveDisplay';
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Pencil } from 'lucide-react';
+import { Pencil, Check, X } from 'lucide-react';
+import LeaveActionButton from './LeaveActionButton';
 import * as api from '../services/api';
 
 const style = { padding: '10px', border: '1px solid #aaa', width: '100%', boxSizing: 'border-box' };
@@ -60,7 +61,7 @@ export default function LeaveHistory({ rows, onSaved }) {
       </form>
     </HistoryDialog>}
     <EmployeeLeaveGroups rows={rows} renderRecords={records => (<div style={{ overflowX: 'auto', marginTop: '20px' }}><table style={{ width: '100%', fontSize: '13px' }}><thead><tr>{['Employee', 'Type', 'From', 'To', 'Days', 'Status', 'Action'].map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>
-      {records.map(row => <tr key={row.id}>{[row.employee_name, row.leave_type, row.start_date, row.end_date, row.working_days, leaveStatus(row.status)].map((value, i) => <td key={i} style={{ padding: '10px' }}>{value}</td>)}<td>{row.can_correct_history && <button style={buttonStyle} disabled={busy} aria-label={`Edit historical record for ${row.employee_name}`} onClick={event => open(row, event.currentTarget)}><Pencil size={14} aria-hidden="true" style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }} />Edit historical record</button>}</td></tr>)}
+      {records.map(row => <tr key={row.id}>{[row.employee_name, row.leave_type, row.start_date, row.end_date, row.working_days, leaveStatus(row.status)].map((value, i) => <td key={i} style={{ padding: '10px' }}>{value}</td>)}<td>{row.can_correct_history && <LeaveActionButton icon={Pencil} disabled={busy} aria-label={`Edit historical record for ${row.employee_name}`} onClick={event => open(row, event.currentTarget)}>Edit historical record</LeaveActionButton>}</td></tr>)}
     </tbody></table></div>)} />
     {editing && <HistoryDialog busy={busy} onClose={() => { setEditing(null); setError(''); }} trigger={editTrigger}>
         <h3 id="historical-correction-title" style={{ margin: '0 0 10px', fontWeight: 800, fontSize: '20px' }}>Edit historical leave - {editing.employee_name}</h3>
@@ -109,9 +110,9 @@ export function HistoricalLeaveDecision({ record, onClose, onSaved }) {
     <label>Decision reason<input aria-label="Imported leave decision reason" style={style} value={reason} maxLength={1000} disabled={busy} onChange={event => setReason(event.target.value)} /></label>
     {error && <p role="alert">{error}</p>}
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '20px' }}>
-      <button style={buttonStyle} disabled={busy} onClick={onClose}>Cancel</button>
-      <button style={{ ...buttonStyle, background: '#FF353F', color: '#fff' }} disabled={busy} onClick={() => decide('Approved')}>Approve leave</button>
-      <button style={buttonStyle} disabled={busy} onClick={() => decide('Denied')}>Deny leave</button>
+      <LeaveActionButton disabled={busy} onClick={onClose}>Cancel</LeaveActionButton>
+      <LeaveActionButton icon={Check} variant="primary" disabled={busy} onClick={() => decide('Approved')}>Approve leave</LeaveActionButton>
+      <LeaveActionButton icon={X} variant="danger" disabled={busy} onClick={() => decide('Denied')}>Deny leave</LeaveActionButton>
     </div>
   </HistoryDialog>;
 }

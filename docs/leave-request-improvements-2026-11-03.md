@@ -93,3 +93,17 @@ may eventually benefit from explicit pagination; they are no longer silently tru
   passed. New regressions cover delayed metadata, focus refresh, and authorization
   reuse without cross-request caching. No end-to-end latency measurement or hosting
   cold-start conclusion is claimed from these tests.
+
+## Leave action presentation follow-up
+
+Review, Edit and resubmit, Withdraw, historical Edit and approval/denial actions now
+share a small leave-specific button component. Icons are decorative, labels remain
+explicit, primary review actions have a dark fill, and withdrawal/denial actions use
+a red outline. Buttons have 44-pixel minimum height, keyboard focus outlines,
+disabled styling, hover states and reduced-motion support. Row actions wrap and stack
+on narrow screens. Existing handlers, permissions, confirmation requirements and
+record lifecycles are unchanged; no deletion button was introduced.
+
+Validation: 263 frontend tests / 35 suites passed; strict CI build and whitespace
+checks passed. Automatic deployment reruns the complete frontend suite and verifies
+published HTML and JS/CSS. Backend code was unchanged in this presentation release.
