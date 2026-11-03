@@ -239,6 +239,7 @@ export const leaveDecision = (id, data) => api.put(`/leave/${id}/decision`, data
 export const previewLeave = (data, params) => api.post('/leave/preview', data, { params });
 export const cancelLeave = (id, reason) => api.put(`/leave/${id}/cancel`, { reason });
 export const supplementLeave = (id, data) => api.put(`/leave/${id}/supporting-info`, data);
+export const resubmitLeave = (id, data) => api.put(`/leave/${id}/resubmit`, data);
 export const uploadLeaveEvidence = data => api.post('/leave/evidence', data);
 export const leaveEvidenceUrl = id => `${api.defaults.baseURL}/leave/evidence/${encodeURIComponent(id)}`;
 export const downloadLeaveEvidence = id => api.get(`/leave/evidence/${encodeURIComponent(id)}`, { responseType: 'blob' });

@@ -86,6 +86,29 @@ test('HR starts in the pending application queue including pending imported entr
   expect(container.textContent).not.toContain('Synthetic Joseph');
 });
 
+test('employee edits dates and resubmits through the authorized API', async () => {
+  api.getLeaveRequests.mockResolvedValue({ data: [{ ...row, can_edit: true }] });
+  api.resubmitLeave.mockResolvedValue({ data: { ...row, end_date: '2026-11-09' } });
+  await render(); await click('Edit and resubmit');
+  const end = container.querySelector('[aria-label="Leave end date"]');
+  expect(end.disabled).toBe(false);
+  expect(container.querySelector('[aria-label="Leave type"]').disabled).toBe(false);
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(end, '2026-11-09');
+    end.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(api.resubmitLeave).toHaveBeenCalledWith(row.id, expect.objectContaining({ start_date: row.start_date, end_date: '2026-11-09', leave_type: 'Annual' }));
+  expect(api.supplementLeave).not.toHaveBeenCalled();
+  expect(api.createLeaveRequest).not.toHaveBeenCalled();
+});
+
+test.each(['Approved', 'Rejected', 'Cancelled'])('employee cannot edit a finalized %s request', async status => {
+  api.getLeaveRequests.mockResolvedValue({ data: [{ ...row, status, can_edit: false, can_cancel: false }] });
+  await render();
+  expect([...container.querySelectorAll('button')].some(button => button.textContent === 'Edit and resubmit')).toBe(false);
+});
+
 test('manager recommendation uses the server-assigned stage and does not finalize HR approval', async () => {
   useAuth.mockReturnValue({ user: { ...user, role: 'line_manager' } });
   api.getLeaveRequests.mockResolvedValue({ data: [{ ...row, employee_id: 'report', approval_stage: 'manager', can_cancel: false, can_reject: true }] });

@@ -87,7 +87,7 @@ async def list_leave_requests(request: Request, employee_id: Optional[str] = Non
     query = await scoped_employee_query(db, user, "M18", employee_id)
     if status:
         query = {"$and": [query, {"status": status}]}
-    requests = await db.leave_requests.find(query).sort("created_at", -1).to_list(200)
+    requests = await db.leave_requests.find(query).sort("created_at", -1).to_list(None)
     from utils.leave_workflow import view
     return [await view(db, user, row) for row in requests]
 
@@ -241,6 +241,24 @@ async def supplement_leave(request_id: str, request: Request):
         if key not in {"emergency_sick", "early_maternity_advice"} and (not isinstance(value, str) or len(value) > 8000):
             raise HTTPException(422, "Supporting information must contain valid text")
     return await supplement(get_db(), user, request_id, body)
+
+
+@router.put("/{request_id}/resubmit")
+async def resubmit_leave(request_id: str, request: Request):
+    from utils.leave_workflow import supplement
+    user = await get_current_user(request)
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(422, "Leave changes must be an object")
+    for key, value in body.items():
+        if key in {"emergency_sick", "early_maternity_advice"}:
+            if not isinstance(value, bool):
+                raise HTTPException(422, "Leave flags must be booleans")
+        elif not isinstance(value, str) or len(value) > 8000:
+            raise HTTPException(422, "Leave changes must contain valid text")
+    async def loader(employee_id):
+        return await get_leave_balances(employee_id, request)
+    return await supplement(get_db(), user, request_id, body, balance_loader=loader)
 
 
 @router.get("/evidence/{document_id}")

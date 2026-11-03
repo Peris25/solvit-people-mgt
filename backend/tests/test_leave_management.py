@@ -228,7 +228,73 @@ def test_future_pending_withdrawal_is_owned_and_keeps_history_and_balance():
     cancelled = run(workflow.cancel(db, actors["staff"], row["id"], "Plans changed"))
     assert cancelled["status"] == "Cancelled" and len(cancelled["approval_history"]) == 2
     assert run(workflow.availability(db, db.employees.docs[0], loader.return_value)) == 21
+
+
+def test_pending_edit_resubmits_same_record_with_recalculation_and_audit():
+    db, actors = fixture(); loader = budget()
+    with patch("utils.email_service.send_email", AsyncMock()), patch("automation.engine.automation_engine.fire_event", AsyncMock()):
+        row = run(workflow.create(db, actors["staff"], payload(), loader))
+    stored = db.leave_requests.docs[0]
+    stored.update(status="Pending_HR", manager_decision="Approve", manager_decided_by=actors["boss"]["id"])
+    result = run(workflow.supplement(db, actors["staff"], row["id"], {"end_date": "2026-11-09"}, balance_loader=loader))
+    assert result["id"] == row["id"] and len(db.leave_requests.docs) == 1
+    assert result["status"] == "Pending_Manager" and result["working_days"] == 3.5
+    assert result["manager_decision"] is None and result["can_edit"] is True
+    assert result["approval_history"][-1]["stage"] == "resubmitted"
+    assert "2026-11-06" in result["approval_history"][-1]["reason"]
+    assert db.audit_logs.docs[-1]["action"] == "leave.resubmitted"
+    assert db.leave_balances.writes == 0
+
+
+@pytest.mark.parametrize("status", ["Approved", "Rejected", "Denied", "Cancelled"])
+def test_finalized_request_cannot_be_edited(status):
+    db, actors = fixture()
+    stored = {"_id": ObjectId(), "id": "final", "tenant_id": "solvit", **payload(), "status": status, "working_days": 2}
+    db.leave_requests.docs = [stored]; before = deepcopy(stored)
+    with pytest.raises(HTTPException):
+        run(workflow.supplement(db, actors["staff"], "final", {"end_date": "2026-11-09"}, balance_loader=budget()))
+    assert stored == before
+    assert run(workflow.view(db, actors["staff"], stored))["can_edit"] is False
+
+
+def test_edit_rejects_forged_identity_other_employee_overlap_and_insufficient_balance():
+    db, actors = fixture(); loader = budget()
+    with patch("utils.email_service.send_email", AsyncMock()), patch("automation.engine.automation_engine.fire_event", AsyncMock()):
+        row = run(workflow.create(db, actors["staff"], payload(), loader))
+    for actor, changes, available in [
+        (actors["other"], {"end_date": "2026-11-09"}, loader),
+        (actors["boss"], {"end_date": "2026-11-09"}, loader),
+        (actors["staff"], {"employee_id": "other"}, loader),
+        (actors["staff"], {"status": "Approved"}, loader),
+        (actors["staff"], {"end_date": "2026-11-09"}, AsyncMock(return_value={"Annual": {"remaining": 1}, "year": 2026})),
+    ]:
+        before = deepcopy(db.leave_requests.docs)
+        with pytest.raises(HTTPException):
+            run(workflow.supplement(db, actor, row["id"], changes, balance_loader=available))
+        assert db.leave_requests.docs == before
+    db.leave_requests.docs.append({"_id": ObjectId(), "id": "clash", "tenant_id": "solvit", **payload(start_date="2026-11-09", end_date="2026-11-10"), "status": "Approved", "working_days": 2})
+    with pytest.raises(HTTPException):
+        run(workflow.supplement(db, actors["staff"], row["id"], {"end_date": "2026-11-09"}, balance_loader=loader))
     assert db.leave_balances.writes == 0 and db.leave_requests.docs[0]["working_days"] == 2
+
+
+def test_started_and_historical_requests_cannot_be_resubmitted():
+    for extra in ({"start_date": "2026-10-14"}, {"historical_import": True}):
+        db, actors = fixture()
+        record = {"_id": ObjectId(), "id": "locked", "tenant_id": "solvit", **payload(), "status": "Pending_Manager", "working_days": 2, **extra}
+        db.leave_requests.docs = [record]; before = deepcopy(record)
+        with pytest.raises(HTTPException):
+            run(workflow.supplement(db, actors["staff"], "locked", {"start_date": "2026-11-09"}, balance_loader=budget()))
+        assert record == before
+
+
+def test_authorized_leave_list_does_not_silently_stop_at_200_records():
+    db, actors = fixture()
+    db.leave_requests.docs = [{"_id": ObjectId(), "id": str(index), "tenant_id": "solvit", **payload(), "status": "Pending_Manager", "working_days": 2} for index in range(205)]
+    with patch.object(leave, "get_db", return_value=db), patch.object(leave, "get_current_user", AsyncMock(return_value=actors["staff"])):
+        result = run(leave.list_leave_requests(SimpleNamespace()))
+    assert len(result) == 205
+    assert {row["employee_id"] for row in result} == {"staff"}
 
 
 def test_approved_leave_cannot_be_self_cancelled_and_other_department_approval_does_not_block():

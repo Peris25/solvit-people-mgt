@@ -144,8 +144,8 @@ export default function Leave() {
         documentId = uploaded.data.id; setForm(previous => ({ ...previous, supporting_document_id: documentId }));
       }
       const payload = { ...form, employee_id: myEmpId, line_manager_id: myLM.id || undefined, supporting_document_id: documentId || undefined };
-      const fields = ['notes', 'handover_contact_id', 'supporting_document_id', 'expected_delivery_date', 'birth_date', 'family_relationship', 'emergency_sick', 'early_maternity_advice'];
-      const response = editing ? await api.supplementLeave(editing.id, Object.fromEntries(fields.filter(field => payload[field] !== undefined).map(field => [field, payload[field]]))) : await api.createLeaveRequest(payload);
+      const fields = ['start_date', 'end_date', 'leave_type', 'notes', 'handover_contact_id', 'supporting_document_id', 'expected_delivery_date', 'birth_date', 'family_relationship', 'emergency_sick', 'early_maternity_advice'];
+      const response = editing ? await api.resubmitLeave(editing.id, Object.fromEntries(fields.filter(field => payload[field] !== undefined).map(field => [field, payload[field]]))) : await api.createLeaveRequest(payload);
       if (!response.data?.id) throw new Error('The leave request could not be confirmed. Refresh history before retrying.');
       setShowForm(false); setForm(freshForm()); load(); notificationState?.refresh();
     } catch (err) { setError(message(err)); } finally { setSaving(false); }
@@ -228,9 +228,9 @@ export default function Leave() {
           {/* Accrued balance card */}
           {annualBal && (
             <div data-testid="balance-accrued" style={{ backgroundColor: '#191919', color: '#fff', padding: '14px 18px' }}>
-              <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(255,255,255,0.6)', marginBottom: '6px' }}>Available to request</div>
+              <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(255,255,255,0.6)', marginBottom: '6px' }}>Days remaining</div>
               <div style={{ fontSize: '28px', fontWeight: 900, letterSpacing: '-0.04em', fontFamily: 'Barlow' }}>{accruedDisplay}</div>
-              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)' }}>Recorded balance: {annualBal.remaining ?? 'Needs HR review'}. Pending commitments are shown separately.</div>
+              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)' }}>Recorded balance: {annualBal.remaining ?? 'Needs HR review'}.</div>
             </div>
           )}
           {Object.entries(balances).filter(([, value]) => value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, 'remaining')).map(([type, b]) => (
@@ -286,14 +286,15 @@ export default function Leave() {
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <div style={{ backgroundColor: '#fff', width: '560px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', border: '1px solid rgba(25,25,25,0.15)' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between' }}>
-              <h3 style={{ margin: 0, fontWeight: 900, fontFamily: 'Barlow' }}>Apply for Leave</h3>
+              <h3 style={{ margin: 0, fontWeight: 900, fontFamily: 'Barlow' }}>{editing ? 'Edit and resubmit leave' : 'Apply for Leave'}</h3>
               <button onClick={() => setShowForm(false)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}>×</button>
             </div>
             <form onSubmit={submit} style={{ padding: '24px' }}>
+              {editing && <p>Resubmitting restarts manager and HR review. Approved and denied requests cannot be edited.</p>}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '14px' }}>
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={lbl}>Leave Type</label>
-                  <select required aria-label="Leave type" disabled={!!editing} value={form.leave_type} onChange={e => setForm(p => ({ ...p, leave_type: e.target.value }))} style={inp}>
+                  <select required aria-label="Leave type" value={form.leave_type} onChange={e => setForm(p => ({ ...p, leave_type: e.target.value }))} style={inp}>
                     {Object.keys(types).map(t => <option key={t} value={t}>{LEAVE_TYPE_LABELS[t] || `${t} leave`}</option>)}
                   </select>
                   {types[form.leave_type]?.description && (
@@ -302,11 +303,11 @@ export default function Leave() {
                 </div>
                 <div>
                   <label style={lbl}>Start Date</label>
-                  <input type="date" required disabled={!!editing} aria-label="Leave start date" value={form.start_date} onChange={e => setForm(p => ({ ...p, start_date: e.target.value }))} style={inp} />
+                  <input type="date" required aria-label="Leave start date" value={form.start_date} onChange={e => setForm(p => ({ ...p, start_date: e.target.value }))} style={inp} />
                 </div>
                 <div>
                   <label style={lbl}>End Date</label>
-                  <input type="date" required disabled={!!editing} aria-label="Leave end date" value={form.end_date} onChange={e => setForm(p => ({ ...p, end_date: e.target.value }))} style={inp} />
+                  <input type="date" required aria-label="Leave end date" value={form.end_date} onChange={e => setForm(p => ({ ...p, end_date: e.target.value }))} style={inp} />
                 </div>
                 <div style={{ gridColumn: '1 / -1', backgroundColor: '#F5F5F5', padding: '8px 12px', fontSize: '12px' }}>
                   Working Days: <strong>{calcDays()}</strong>
@@ -361,7 +362,7 @@ export default function Leave() {
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '16px' }}>
                 <button type="button" onClick={() => setShowForm(false)} style={btnGhost}>Cancel</button>
-                <button data-testid="leave-submit-btn" type="submit" disabled={saving} style={btnRed}>{saving ? 'Saving...' : editing ? 'Save supporting information' : 'Submit Request'}</button>
+                <button data-testid="leave-submit-btn" type="submit" disabled={saving} style={btnRed}>{saving ? 'Saving...' : editing ? 'Resubmit request' : 'Submit Request'}</button>
               </div>
             </form>
           </div>
@@ -428,7 +429,7 @@ function LeaveRecordsTable({ rows, withdraw, review, historicalReview, edit, sav
                 {historicalReview && r.historical_import && r.can_correct_history && leaveStatus(r.status) === 'Pending' && <button disabled={saving} onClick={() => historicalReview(r)} style={btnGhost}>Review</button>}
                 {(r.approval_stage || r.can_reject || r.can_hr_override) && <button disabled={saving} onClick={() => review(r)} style={btnGhost}>Review</button>}
                 {r.can_cancel && <button disabled={saving} onClick={() => withdraw(r)} style={btnGhost}>Withdraw</button>}
-                {edit && !r.historical_import && ['Pending_Manager', 'Pending_HR', 'Discussion_Requested', 'Pending'].includes(r.status) && <button disabled={saving} onClick={() => edit(r)} style={btnGhost}>Supporting information</button>}
+                {edit && r.can_edit && !r.historical_import && <button disabled={saving} onClick={() => edit(r)} style={btnGhost}>Edit and resubmit</button>}
 
               </td>
             </tr>

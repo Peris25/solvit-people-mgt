@@ -80,6 +80,7 @@ async def view(db, user, record):
     result["approval_stage"] = await stage_for(db, user, record)
     result["can_reject"] = result["approval_stage"] is not None or (user.get("role") in HR and not own(employee, user) and record.get("status") in PENDING)
     result["can_cancel"] = own(employee, user) and record.get("status") in PENDING and isinstance(record.get("start_date"), str) and record["start_date"] > today().isoformat()
+    result["can_edit"] = result["can_cancel"] and not record.get("historical_import")
     result["can_hr_override"] = user.get("role") in HR and not own(employee, user) and not record.get("historical_import") and record.get("status") in PENDING
     if record.get("historical_import"):
         result["can_reject"] = False
@@ -320,8 +321,11 @@ async def decide(db, user, reference, body, balance_loader):
     return await view(db, user, result)
 
 
-async def supplement(db, user, reference, body):
+async def supplement(db, user, reference, body, *, balance_loader=None):
+    resubmitting = balance_loader is not None
     allowed = {"notes", "handover_contact_id", "supporting_document_id", "birth_date", "expected_delivery_date", "family_relationship", "emergency_sick", "early_maternity_advice"}
+    if resubmitting:
+        allowed |= {"start_date", "end_date", "leave_type"}
     if set(body) - allowed:
         raise HTTPException(403, "Dates, employee identity and approval fields cannot be changed through supporting information")
     async with integrity_write(db):
@@ -333,10 +337,25 @@ async def supplement(db, user, reference, body):
             raise HTTPException(403, "Only the employee or HR may supplement this request")
         if current.get("status") not in PENDING:
             raise HTTPException(409, "Only pending requests may be supplemented")
+        if resubmitting and (not own(employee, user) or day(current["start_date"]) <= today()):
+            raise HTTPException(403, "Only the employee may edit and resubmit their own future pending leave")
         candidate = {**current, **body}
         submitted = day(str(current.get("created_at") or today().isoformat())[:10])
-        quote = await preview(db, employee, candidate, exclude=current["_id"], submitted_on=submitted)
-        if current.get("working_days") != quote["working_days"]:
+        quote = await preview(db, employee, candidate, exclude=current["_id"], submitted_on=today() if resubmitting else submitted)
+        if resubmitting:
+            if day(candidate["start_date"]) <= today():
+                raise HTTPException(422, "Resubmitted leave must start in the future")
+            manager = await saved_manager(db, user, employee, None)
+            await validate_manager(db, manager, employee, tenant_of(user))
+            balance = await balance_loader(employee_key(employee))
+            if candidate["leave_type"] == "Annual":
+                if str(balance.get("year", today().year)) != str(day(candidate["start_date"]).year):
+                    raise HTTPException(409, "HR must confirm the balance for the requested leave year")
+                if quote["working_days"] > await availability(db, employee, balance, exclude=current["_id"]):
+                    raise HTTPException(422, "Requested annual leave exceeds the recorded available balance after pending commitments")
+            if candidate["leave_type"] == "Unpaid" and await availability(db, employee, balance, exclude=current["_id"]) > 0:
+                raise HTTPException(422, "Annual leave must be exhausted before leave without pay")
+        elif current.get("working_days") != quote["working_days"]:
             raise HTTPException(409, "Saved leave units differ from current policy. HR reconciliation or a replacement request is required; existing units were not changed")
         history = list(current.get("approval_history", []))
         for legacy_stage in ("manager", "hr"):
@@ -344,14 +363,21 @@ async def supplement(db, user, reference, body):
                 history.append({"stage": legacy_stage, "decision": current[f"{legacy_stage}_decision"],
                                 "actor_id": current.get(f"{legacy_stage}_decided_by", ""),
                                 "at": current.get(f"{legacy_stage}_decided_at", ""), "reason": current.get(f"{legacy_stage}_reason", "")})
-        history.append({"stage": "supplemented", "actor_id": user["id"], "actor_role": user["role"], "at": stamp()})
+        history.append({"stage": "resubmitted" if resubmitting else "supplemented", "actor_id": user["id"], "actor_role": user["role"], "at": stamp()})
+        if resubmitting:
+            history[-1]["reason"] = f"Previous request: {current['leave_type']}, {current['start_date']} to {current['end_date']}, {current['working_days']} days"
         covering = await find_employee(db, candidate.get("handover_contact_id"), tenant_of(user)) if candidate.get("handover_contact_id") else None
         update = {**body, "policy_version": VERSION, "policy_snapshot": quote, "status": "Pending_Manager",
                   "approval_history": history, "manager_decision": None, "manager_decided_by": None, "hr_decision": None,
                   "hr_decided_by": None, "document_verified": False, "supporting_document_present": quote["supporting_document_present"], "updated_at": stamp()}
         update["handover_contact"] = covering.get("full_name") if covering else None
+        if resubmitting:
+            update.update(working_days=quote["working_days"], line_manager_id=manager,
+                          manager_reason=None, manager_decided_at=None, hr_reason=None, hr_decided_at=None,
+                          sick_pay=quote["sick_pay"], extended_sick_followup_required=quote["extended_sick_followup_required"],
+                          compassionate_paid_days=quote["compassionate_paid_days"], compassionate_unpaid_days=quote["compassionate_unpaid_days"])
         result = await db.leave_requests.find_one_and_update({"_id": current["_id"]}, {"$set": update}, return_document=True)
-        await audit(db, user, result, "leave.supplemented")
+        await audit(db, user, result, "leave.resubmitted" if resubmitting else "leave.supplemented")
     await notify(db, result, "supplemented")
     return await view(db, user, result)
 
