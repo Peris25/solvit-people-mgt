@@ -267,14 +267,14 @@ export default function Leave() {
         <>
           {tab === 'my' && <RequestsTable rows={myRequests} withdraw={withdraw} edit={openForm} review={openReview} saving={saving} testId="my-applications" />}
           {tab === 'team' && hasTeam && <>
-            <p>Review employee applications here. Expand the employee and leave type to review a request. Pending entries imported from the workbook can also be reviewed here; full corrections remain under Historical records.</p>
+            <p>All matching applications are listed below with their review actions. Pending entries imported from the workbook can also be reviewed here; full corrections remain under Historical records.</p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
               <input aria-label="Search team leave" placeholder="Search employee, leave type or date" value={teamSearch} onChange={event => setTeamSearch(event.target.value)} style={{ ...inp, maxWidth: '360px' }} />
               <select aria-label="Team leave status" value={teamStatus} onChange={event => setTeamStatus(event.target.value)} style={{ ...inp, maxWidth: '200px' }}>{['All', 'Pending', 'Approved', 'Denied', 'Withdrawn'].map(status => <option key={status}>{status}</option>)}</select>
               <button style={btnGhost} onClick={load}>Refresh requests</button>
             </div>
             <p>{visibleTeamRequests.length} matching applications</p>
-            <RequestsTable rows={visibleTeamRequests} historicalReview={isHR ? setHistoricalReview : undefined} withdraw={withdraw} review={openReview} saving={saving} testId="team-leave" />
+            <RequestsTable flat rows={visibleTeamRequests} historicalReview={isHR ? setHistoricalReview : undefined} withdraw={withdraw} review={openReview} saving={saving} testId="team-leave" />
           </>}
           {tab === 'history' && isHR && <LeaveHistory key={accountKey} rows={requests.filter(row => row.historical_import)} onSaved={load} />}
           {tab === 'calendar' && <LeaveCalendar calendar={calendar} year={calYear} month={calMonth} setYear={setCalYear} setMonth={setCalMonth} />}
@@ -400,6 +400,7 @@ const btnRed = { padding: '10px 22px', backgroundColor: '#FF353F', color: '#fff'
 const btnGhost = { padding: '10px 20px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '12px', fontFamily: 'Nunito Sans, sans-serif' };
 
 function RequestsTable(props) {
+  if (props.flat) return <LeaveRecordsTable {...props} />;
   return <EmployeeLeaveGroups rows={props.rows} renderRecords={rows => <LeaveRecordsTable {...props} rows={rows} />} />;
 }
 

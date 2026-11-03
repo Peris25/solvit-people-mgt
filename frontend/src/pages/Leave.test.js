@@ -73,6 +73,9 @@ test('HR starts in the pending application queue including pending imported entr
   await render();
   expect(container.textContent).toContain('Synthetic Joseph');
   expect(container.textContent).toContain('Imported history');
+  expect(container.querySelector('[data-testid="employee-leave-groups"]')).toBeNull();
+  expect(container.querySelector('[data-testid="team-leave"] tbody tr')).not.toBeNull();
+  expect(container.textContent).not.toContain('0 pending days');
   expect(container.textContent).not.toContain('Withdrawn employee');
   const select = container.querySelector('[aria-label="Team leave status"]');
   await act(async () => {
