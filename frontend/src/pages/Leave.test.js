@@ -63,7 +63,7 @@ test('employee withdrawal is labelled Withdrawn rather than Denied and has no ap
   expect([...container.querySelectorAll('button')].some(button => button.textContent === 'Review')).toBe(false);
 });
 
-test('HR starts in the pending live application queue without imported workbook entries', async () => {
+test('HR starts in the pending application queue including pending imported entries', async () => {
   useAuth.mockReturnValue({ user: { ...user, role: 'hr_admin' } });
   api.getLeaveRequests.mockResolvedValue({ data: [
     { ...row, employee_id: 'report', employee_name: 'Synthetic Joseph', can_hr_override: true },
@@ -72,7 +72,7 @@ test('HR starts in the pending live application queue without imported workbook 
   ] });
   await render();
   expect(container.textContent).toContain('Synthetic Joseph');
-  expect(container.textContent).not.toContain('Imported history');
+  expect(container.textContent).toContain('Imported history');
   expect(container.textContent).not.toContain('Withdrawn employee');
   const select = container.querySelector('[aria-label="Team leave status"]');
   await act(async () => {
@@ -140,4 +140,23 @@ test('working-day display uses the server quote including fractional holiday-adj
     expect(api.previewLeave).toHaveBeenCalledWith(expect.objectContaining({ employee_id: 'staff' }), expect.any(Object));
     expect(container.textContent).toContain('Working Days: 1.5');
   } finally { jest.useRealTimers(); }
+});
+
+
+test('HR can approve the pending imported row directly from Team Leave without changing dates or days', async () => {
+  HTMLDialogElement.prototype.showModal = jest.fn(function () { this.setAttribute('open', ''); });
+  useAuth.mockReturnValue({ user: { ...user, role: 'hr_admin' } });
+  const imported = { ...row, id: 'imported', employee_id: 'report', employee_name: 'Synthetic Joseph', historical_import: true, can_correct_history: true, status: 'Pending', revision: 3, day_basis: 'Recorded units', can_cancel: false };
+  api.getLeaveRequests.mockResolvedValue({ data: [imported] });
+  api.correctLeaveHistory.mockResolvedValue({ data: { ...imported, status: 'Approved', revision: 4 } });
+  await render(); await click('Review');
+  expect(document.body.querySelector('dialog').textContent).toContain('Review imported leave');
+  await act(async () => {
+    const input = document.body.querySelector('[aria-label="Imported leave decision reason"]');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'HR reviewed and approved source entry');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => [...document.body.querySelectorAll('button')].find(button => button.textContent === 'Approve leave').click());
+  expect(api.correctLeaveHistory).toHaveBeenCalledWith('imported', expect.objectContaining({ status: 'Approved', revision: 3, start_date: imported.start_date, end_date: imported.end_date, working_days: 2, reason: 'HR reviewed and approved source entry' }));
+  expect(api.leaveDecision).not.toHaveBeenCalled();
 });

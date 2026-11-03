@@ -1,6 +1,6 @@
 import EmployeeLeaveGroups from '../components/EmployeeLeaveGroups';
 import { leaveStatus } from '../utils/leaveDisplay';
-import LeaveHistory from '../components/LeaveHistory';
+import LeaveHistory, { HistoricalLeaveDecision } from '../components/LeaveHistory';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import StatusBadge from '../components/StatusBadge';
 import EmployeePicker from '../components/EmployeePicker';
@@ -65,6 +65,7 @@ export default function Leave() {
   const canDecide = isLM || isHR || ['finance', 'executive', 'board'].includes(user?.role);
 
   const [tab, setTab] = useState(isHR ? 'team' : 'my');
+  const [historicalReview, setHistoricalReview] = useState(null);
   const [teamSearch, setTeamSearch] = useState('');
   const [teamStatus, setTeamStatus] = useState(isHR ? 'Pending' : 'All');
   useEffect(() => {
@@ -106,7 +107,7 @@ export default function Leave() {
     } catch (err) { if (valid()) setError(message(err)); }
     finally { if (valid()) { setLoading(false); setLoadedFor(accountKey); } }
   }, [accountKey, user?.employee_id]);
-  useEffect(() => { setShowForm(false); setReview(null); setCalendar(null); setForm(freshForm()); load(); }, [load]);
+  useEffect(() => { setShowForm(false); setReview(null); setHistoricalReview(null); setCalendar(null); setForm(freshForm()); load(); }, [load]);
   const loadCalendar = useCallback(async () => {
     setCalendar(null);
     try { const c = await api.getLeaveCalendar(calYear, calMonth); if (activeAccount.current === accountKey) setCalendar(c.data); }
@@ -179,7 +180,7 @@ export default function Leave() {
   const ownAliases = [myEmpId, user?.employee_id, ...(user?.employee_reference_ids || [])].filter(Boolean).map(String);
   const selectedRequests = relatedRecordRows(requests, linkedRequest);
   const myRequests = selectedRequests.filter(r => ownAliases.includes(String(r.employee_id)));
-  const teamRequests = selectedRequests.filter(r => !ownAliases.includes(String(r.employee_id)) && (!isHR || !r.historical_import));
+  const teamRequests = selectedRequests.filter(r => !ownAliases.includes(String(r.employee_id)));
   const visibleTeamRequests = teamRequests.filter(row => linkedRequest || ((teamStatus === 'All' || leaveStatus(row.status) === teamStatus) && `${row.employee_name || ''} ${row.leave_type || ''} ${row.start_date || ''} ${row.end_date || ''}`.toLowerCase().includes(teamSearch.trim().toLowerCase())));
 
   const annualBal = balances?.Annual;
@@ -266,14 +267,14 @@ export default function Leave() {
         <>
           {tab === 'my' && <RequestsTable rows={myRequests} withdraw={withdraw} edit={openForm} review={openReview} saving={saving} testId="my-applications" />}
           {tab === 'team' && hasTeam && <>
-            <p>Review employee applications here. Expand the employee and leave type to review a request. Imported workbook entries are under Historical records.</p>
+            <p>Review employee applications here. Expand the employee and leave type to review a request. Pending entries imported from the workbook can also be reviewed here; full corrections remain under Historical records.</p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
               <input aria-label="Search team leave" placeholder="Search employee, leave type or date" value={teamSearch} onChange={event => setTeamSearch(event.target.value)} style={{ ...inp, maxWidth: '360px' }} />
               <select aria-label="Team leave status" value={teamStatus} onChange={event => setTeamStatus(event.target.value)} style={{ ...inp, maxWidth: '200px' }}>{['All', 'Pending', 'Approved', 'Denied', 'Withdrawn'].map(status => <option key={status}>{status}</option>)}</select>
               <button style={btnGhost} onClick={load}>Refresh requests</button>
             </div>
             <p>{visibleTeamRequests.length} matching applications</p>
-            <RequestsTable rows={visibleTeamRequests} withdraw={withdraw} review={openReview} saving={saving} testId="team-leave" />
+            <RequestsTable rows={visibleTeamRequests} historicalReview={isHR ? setHistoricalReview : undefined} withdraw={withdraw} review={openReview} saving={saving} testId="team-leave" />
           </>}
           {tab === 'history' && isHR && <LeaveHistory key={accountKey} rows={requests.filter(row => row.historical_import)} onSaved={load} />}
           {tab === 'calendar' && <LeaveCalendar calendar={calendar} year={calYear} month={calMonth} setYear={setCalYear} setMonth={setCalMonth} />}
@@ -366,6 +367,7 @@ export default function Leave() {
           </div>
         </div>
       )}
+      {historicalReview && isHR && loadedFor === accountKey && <HistoricalLeaveDecision record={historicalReview} onClose={() => setHistoricalReview(null)} onSaved={load} />}
       {review && loadedFor === accountKey && <div role="dialog" aria-label="Review leave request" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100 }}>
         <div style={{ background: '#fff', width: '600px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', padding: '24px' }}>
           <h2>Review leave request</h2><p>{review.employee_name} · {review.leave_type} · {fmtPeriod(review.start_date, review.end_date)} · {review.working_days} working days</p>
@@ -401,7 +403,7 @@ function RequestsTable(props) {
   return <EmployeeLeaveGroups rows={props.rows} renderRecords={rows => <LeaveRecordsTable {...props} rows={rows} />} />;
 }
 
-function LeaveRecordsTable({ rows, withdraw, review, edit, saving, testId }) {
+function LeaveRecordsTable({ rows, withdraw, review, historicalReview, edit, saving, testId }) {
   return (
     <div data-testid={testId} style={{ overflowX: 'auto', backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
@@ -422,6 +424,7 @@ function LeaveRecordsTable({ rows, withdraw, review, edit, saving, testId }) {
               <td style={{ padding: '10px 14px', color: '#525252' }}>{r.handover_contact || '—'}</td>
               <td style={{ padding: '10px 14px' }}><StatusBadge status={leaveStatus(r.status)} small /></td>
               <td style={{ padding: '10px 14px' }}>
+                {historicalReview && r.historical_import && r.can_correct_history && leaveStatus(r.status) === 'Pending' && <button disabled={saving} onClick={() => historicalReview(r)} style={btnGhost}>Review</button>}
                 {(r.approval_stage || r.can_reject || r.can_hr_override) && <button disabled={saving} onClick={() => review(r)} style={btnGhost}>Review</button>}
                 {r.can_cancel && <button disabled={saving} onClick={() => withdraw(r)} style={btnGhost}>Withdraw</button>}
                 {edit && !r.historical_import && ['Pending_Manager', 'Pending_HR', 'Discussion_Requested', 'Pending'].includes(r.status) && <button disabled={saving} onClick={() => edit(r)} style={btnGhost}>Supporting information</button>}

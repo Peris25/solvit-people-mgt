@@ -87,6 +87,35 @@ export default function LeaveHistory({ rows, onSaved }) {
 }
 
 
+export function HistoricalLeaveDecision({ record, onClose, onSaved }) {
+  const trigger = useRef(document.activeElement);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const decide = async status => {
+    if (reason.trim().length < 5) { setError('Enter a decision reason of at least five characters.'); return; }
+    setBusy(true); setError('');
+    try {
+      const fields = Object.fromEntries(['leave_type', 'start_date', 'end_date', 'working_days', 'revision'].map(key => [key, record[key]]));
+      const response = await api.correctLeaveHistory(record.id, { ...fields, resumption_date: record.resumption_date || null, day_basis: record.day_basis || 'Recorded units', status, reason: reason.trim() });
+      if (!response.data?.id) throw new Error();
+      onSaved(); onClose();
+    } catch (error) { setError(fail(error)); } finally { setBusy(false); }
+  };
+  return <HistoryDialog busy={busy} onClose={onClose} trigger={trigger}>
+    <h3 id="historical-correction-title">Review imported leave - {record.employee_name}</h3>
+    <p id="historical-correction-description">This entry came from the leave tracker. HR can record its approval or denial here; dates and days will stay the same.</p>
+    <p>{record.leave_type}: {record.start_date} to {record.end_date} · {record.working_days} days</p>
+    <label>Decision reason<input aria-label="Imported leave decision reason" style={style} value={reason} maxLength={1000} disabled={busy} onChange={event => setReason(event.target.value)} /></label>
+    {error && <p role="alert">{error}</p>}
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '20px' }}>
+      <button style={buttonStyle} disabled={busy} onClick={onClose}>Cancel</button>
+      <button style={{ ...buttonStyle, background: '#FF353F', color: '#fff' }} disabled={busy} onClick={() => decide('Approved')}>Approve leave</button>
+      <button style={buttonStyle} disabled={busy} onClick={() => decide('Denied')}>Deny leave</button>
+    </div>
+  </HistoryDialog>;
+}
+
 function HistoryDialog({ busy, onClose, trigger, children }) {
   const dialog = useRef(null);
   useEffect(() => {
