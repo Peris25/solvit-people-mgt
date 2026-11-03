@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import Optional, List
+import asyncio
 from datetime import datetime, timezone, timedelta
 from bson import ObjectId
 from database import get_db
@@ -93,6 +94,14 @@ async def list_leave_requests(request: Request, employee_id: Optional[str] = Non
     # Reuse checked identities only within this one authorized HTTP request.
     # Never cache permissions or employee data across requests/workers.
     authorized_employees = {}
+    references = {row.get("employee_id") for row in requests if isinstance(row.get("employee_id"), (str, ObjectId))}
+    limit = asyncio.Semaphore(6)
+    async def resolve(reference):
+        async with limit:
+            authorized_employees[reference] = await authorize_employee(db, user, reference, "M18")
+    # Independent checks overlap network waits, with bounded database concurrency.
+    # Every identity still passes the same tenant/scope/duplicate checks.
+    await asyncio.gather(*(resolve(reference) for reference in references))
     return [await view(db, user, row, authorized_employees=authorized_employees) for row in requests]
 
 

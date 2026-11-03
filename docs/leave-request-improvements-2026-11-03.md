@@ -152,3 +152,26 @@ Regression examples: 16?19 October / 2.5 units changed to 6?12 November recalcul
 to 5.5 under the default calendar; a configured 9 November holiday yields 4.5; shortening
 to 6 November yields 1. Explicit recalculation repairs a pre-existing November / 2.5
 mismatch. Focused backend validation: 83 passed, one integration skip.
+
+
+## Saved-row correction and additional loading work
+
+The live HR view was inspected: Joseph Ndungu Warutumo's imported pending Annual
+entry showed 6?12 November 2026 with 2.5 units. At the user's explicit request, the
+existing HR correction dialog was used to select server-side recalculation and submit
+an audit reason while preserving dates and Pending status. The dialog closed following
+submission, but browser window activation then failed twice (`failed to activate captured
+window`), preventing independent verification of the resulting stored/displayed total.
+Do not describe the live correction as independently verified until Team Leave is checked.
+The saved resumption date also precedes the November period and needs HR confirmation;
+it was not automatically changed. No approval, denial, deletion or balance-snapshot write
+was performed.
+
+Public health responses measured 1.22, 0.62 and 0.61 seconds. These are not authenticated
+API or database timings, so they do not establish full portal performance. The leave list
+previously resolved each distinct employee sequentially. Independent identity checks now
+run with bounded concurrency (maximum six), retaining identical authorization and duplicate
+checks and request-local reuse. No cross-request permission cache was introduced.
+Validation: 143 focused backend tests passed, one integration skip; compilation and
+whitespace checks passed. Regression verifies concurrent execution stays bounded and
+authorization data is not reused across requests. Frontend code is unchanged.
