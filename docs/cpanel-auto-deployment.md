@@ -3,9 +3,22 @@
 ## Status
 
 The repository now contains a GitHub Actions workflow and an encrypted FTPS publisher.
-Hosting credentials and GitHub environment configuration must be set up once before
-automatic deployment can work. No account, secret or hosting configuration is created
-by these files. Do not describe the automation as enabled until a real run succeeds.
+The one-time setup was completed on 3 November 2026. Environment `cpanel-production`
+contains the three FTPS secrets and the confirmed public backend origin. Repository
+variable `CPANEL_AUTODEPLOY_ENABLED` is `true`. The first manual run succeeded:
+https://github.com/Peris25/solvit-people-mgt/actions/runs/41622621239
+
+That run passed 257 frontend tests (35 suites), five publisher tests and the strict
+production build, then uploaded seven files and verified the live HTML and JS/CSS.
+An independent public check confirmed the flat HR leave queue and absence of the old
+pending-day summary text. Future qualifying `main` pushes publish automatically.
+No backend deployment or employee-data changes were performed by this setup.
+
+Verified explicit FTPS hostname: `ossa-lon.cloudhosting.uk`, port 21. The cPanel-suggested
+`ftp.solvit.co.ke` failed hostname certificate validation; do not substitute it or
+disable certificate checks. The dedicated account was created with the People frontend
+directory restriction. The environment's additional branch restriction remains an
+owner hardening step; the workflow itself only runs deployments from `main`.
 
 ## One-time setup
 
@@ -76,5 +89,5 @@ although the application entry point is published after its assets.
   addition; the flat HR queue strict CI build also passed.
 - Run `python -m unittest discover -s scripts -p 'test_*.py' -v` locally for publisher
   checks. They use synthetic files and mocked connections, never the production host.
-- A real FTPS connection and first GitHub deployment remain required to validate
-  provider compatibility, credentials, remote rename behavior and public caching.
+- A real FTPS deployment passed, confirming provider compatibility, credentials,
+  encrypted data transfer, remote rename behavior and public HTML/asset verification.
