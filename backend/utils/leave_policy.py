@@ -148,12 +148,18 @@ async def preview(db, employee, payload, *, exclude=None, enforce=True, submitte
     if units <= 0:
         raise HTTPException(422, "The requested period contains no working time")
     emergency = kind == "Sick" and payload.get("emergency_sick") is True and start <= current
+    if enforce and start < current:
+        raise HTTPException(422, "Past dates cannot be used for a new leave application. Contact HR for a historical correction")
     if not emergency and start <= current and enforce:
         raise HTTPException(422, "Planned leave must be requested in advance")
     if kind == "Annual":
         notice = 28 if units > 5 else 7
-        if enforce and (start - current).days < notice:
-            raise HTTPException(422, f"Annual leave requires at least {notice} days' advance notice")
+        short_notice = (start - current).days < notice
+        notice_reason = payload.get("short_notice_reason") or ""
+        if not isinstance(notice_reason, str) or len(notice_reason) > 2000:
+            raise HTTPException(422, "Annual leave notice reason must be text up to 2000 characters")
+        if enforce and short_notice and len(notice_reason.strip()) < 10:
+            raise HTTPException(422, f"Provide a reason of at least 10 characters for less than {notice} days' notice. Manager and HR approval is still required")
         if policy.get("annual_eligible_from") and start < day(policy["annual_eligible_from"]):
             raise HTTPException(422, "Annual leave is not yet eligible under the verified contract")
     else:
@@ -222,7 +228,7 @@ async def preview(db, employee, payload, *, exclude=None, enforce=True, submitte
         if not covering or employee_key(covering) == employee_key(employee) or covering.get("lifecycle_state") != "Active":
             raise HTTPException(422, "Choose an active, different colleague for handover")
     return {"policy_version": VERSION, "working_days": units, "calendar_days": calendar_days,
-            "notice_days_required": notice, "planned_handover_required": not emergency,
+            "notice_days_required": notice, "short_notice": kind == "Annual" and (start - current).days < notice, "planned_handover_required": not emergency,
             "supporting_document_required": requires_document, "supporting_document_present": bool(doc),
             "extended_sick_followup_required": kind == "Sick" and units > 7,
             "sick_pay": tiers if kind == "Sick" else None,

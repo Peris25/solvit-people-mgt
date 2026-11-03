@@ -33,7 +33,7 @@ const fmtPeriod = (s, e) => {
     return `${a} → ${b}`;
   } catch { return `${s} → ${e}`; }
 };
-const freshForm = () => ({ leave_type: 'Annual', start_date: '', end_date: '', handover_contact: '', handover_contact_id: '', notes: '', supporting_document_id: '', expected_delivery_date: '', birth_date: '', family_relationship: '', emergency_sick: false, early_maternity_advice: false, request_token: globalThis.crypto?.randomUUID?.() || `leave-${Date.now()}-${Math.random()}` });
+const freshForm = () => ({ leave_type: 'Annual', start_date: '', end_date: '', handover_contact: '', handover_contact_id: '', notes: '', short_notice_reason: '', supporting_document_id: '', expected_delivery_date: '', birth_date: '', family_relationship: '', emergency_sick: false, early_maternity_advice: false, request_token: globalThis.crypto?.randomUUID?.() || `leave-${Date.now()}-${Math.random()}` });
 const message = error => {
   const detail = error?.response?.data?.detail;
   return typeof detail === 'string' ? detail : detail?.message || error?.message || 'Leave information is unavailable. Please retry.';
@@ -170,7 +170,7 @@ export default function Leave() {
         documentId = uploaded.data.id; setForm(previous => ({ ...previous, supporting_document_id: documentId }));
       }
       const payload = { ...form, employee_id: myEmpId, line_manager_id: myLM.id || undefined, supporting_document_id: documentId || undefined };
-      const fields = ['start_date', 'end_date', 'leave_type', 'notes', 'handover_contact_id', 'supporting_document_id', 'expected_delivery_date', 'birth_date', 'family_relationship', 'emergency_sick', 'early_maternity_advice'];
+      const fields = ['start_date', 'end_date', 'leave_type', 'notes', 'short_notice_reason', 'handover_contact_id', 'supporting_document_id', 'expected_delivery_date', 'birth_date', 'family_relationship', 'emergency_sick', 'early_maternity_advice'];
       const response = editing ? await api.resubmitLeave(editing.id, Object.fromEntries(fields.filter(field => payload[field] !== undefined).map(field => [field, payload[field]]))) : await api.createLeaveRequest(payload);
       if (!response.data?.id) throw new Error('The leave request could not be confirmed. Refresh history before retrying.');
       setShowForm(false); setForm(freshForm()); load(); notificationState?.refresh();
@@ -200,6 +200,7 @@ export default function Leave() {
       const url = URL.createObjectURL(response.data); const link = window.document.createElement('a'); link.href = url; link.download = 'leave-evidence'; link.click(); URL.revokeObjectURL(url);
     } catch (_) { setError('The supporting document could not be downloaded.'); }
   };
+  const earliestDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const calcDays = () => quote?.working_days ?? 'Awaiting server calculation';
 
   // Filtered request lists
@@ -327,13 +328,17 @@ export default function Leave() {
                     <div style={{ fontSize: '10px', color: '#525252', marginTop: '4px', fontStyle: 'italic' }}>{types[form.leave_type].description}</div>
                   )}
                 </div>
+                {form.leave_type === 'Annual' && <label style={{ gridColumn: '1 / -1' }}>Reason for short notice
+                  <textarea aria-label="Annual leave short-notice reason" maxLength={2000} minLength={10} required={quote?.short_notice === true} rows={2} style={inp} value={form.short_notice_reason || ''} onChange={event => setForm(previous => ({ ...previous, short_notice_reason: event.target.value }))} />
+                  <span style={{ fontSize: '12px', color: '#525252' }}>If you cannot give the required notice, explain why. Your request will still need manager and HR approval.</span>
+                </label>}
                 <div>
                   <label style={lbl}>Start Date</label>
-                  <input type="date" required aria-label="Leave start date" value={form.start_date} onChange={e => setForm(p => ({ ...p, start_date: e.target.value }))} style={inp} />
+                  <input type="date" required min={earliestDate} aria-label="Leave start date" value={form.start_date} onChange={e => setForm(p => ({ ...p, start_date: e.target.value }))} style={inp} />
                 </div>
                 <div>
                   <label style={lbl}>End Date</label>
-                  <input type="date" required aria-label="Leave end date" value={form.end_date} onChange={e => setForm(p => ({ ...p, end_date: e.target.value }))} style={inp} />
+                  <input type="date" required min={form.start_date > earliestDate ? form.start_date : earliestDate} aria-label="Leave end date" value={form.end_date} onChange={e => setForm(p => ({ ...p, end_date: e.target.value }))} style={inp} />
                 </div>
                 <div style={{ gridColumn: '1 / -1', backgroundColor: '#F5F5F5', padding: '8px 12px', fontSize: '12px' }}>
                   Working Days: <strong>{calcDays()}</strong>
@@ -399,6 +404,7 @@ export default function Leave() {
         <div style={{ background: '#fff', width: '600px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', padding: '24px' }}>
           <h2>Review leave request</h2><p>{review.employee_name} · {review.leave_type} · {fmtPeriod(review.start_date, review.end_date)} · {review.working_days} working days</p>
           <p>Status: {leaveStatus(review.status)}. HR may approve directly with a documented override reason.</p>
+          {review.short_notice_reason && <p><strong>Short-notice reason:</strong> {review.short_notice_reason}</p>}
           {review.notes && <p style={{ whiteSpace: 'pre-wrap' }}>Handover: {review.notes}</p>}
           {review.supporting_document_id && <button style={btnGhost} onClick={() => downloadEvidence(review.supporting_document_id)}>Download restricted supporting document</button>}
           <label style={{ display: 'block', margin: '12px 0' }}><input type="checkbox" checked={checks.handover_reviewed} onChange={e => setChecks(p => ({ ...p, handover_reviewed: e.target.checked }))} /> Written handover reviewed and signed off (planned leave)</label>

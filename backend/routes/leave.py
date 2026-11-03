@@ -49,6 +49,7 @@ class LeaveRequest(BaseModel):
     handover_contact_id: Optional[str] = None
     line_manager_id: Optional[str] = None
     notes: Optional[str] = Field(None, max_length=8000)
+    short_notice_reason: Optional[str] = Field(None, max_length=2000)
     supporting_document_id: Optional[str] = None
     expected_delivery_date: Optional[str] = None
     birth_date: Optional[str] = None

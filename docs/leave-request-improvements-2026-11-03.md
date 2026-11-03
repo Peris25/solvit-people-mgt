@@ -107,3 +107,26 @@ record lifecycles are unchanged; no deletion button was introduced.
 Validation: 263 frontend tests / 35 suites passed; strict CI build and whitespace
 checks passed. Automatic deployment reruns the complete frontend suite and verifies
 published HTML and JS/CSS. Backend code was unchanged in this presentation release.
+
+
+## Past-date and annual notice follow-up
+
+New applications cannot start before the submission date in Africa/Nairobi, including
+emergency sick leave. The date pickers also set minimum dates. Planned leave retains
+its advance-date rule; emergency sick leave may start today. Imported historical
+records and approved historical balances are not rewritten.
+
+Annual requests below their notice requirement (seven days for short blocks, 28 days
+for longer blocks under the existing policy) can be submitted with a specific reason
+of 10?2,000 characters. The reason is saved and visible in the employee/manager/HR
+review response, but excluded from notification previews. Requests still start Pending
+Manager and retain manager/HR approval and all other eligibility, balance, evidence,
+handover and overlap checks. This implements the user's explicit notice-exception
+instruction; it does not automatically approve an exception. Original submission-token
+fingerprints remain compatible when no notice reason is supplied.
+
+Validation: complete collected backend suite **1,288 passed, 321 integration checks
+skipped**, five existing dependency/lifecycle warnings; focused leave/authorization
+suite **139 passed, one integration skip**; full frontend **264 passed / 35 suites**.
+Strict CI build, Python compilation and whitespace checks passed. Tests used only
+synthetic records and guarded localhost configuration, with jobs/email disabled.

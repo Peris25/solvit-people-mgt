@@ -72,7 +72,7 @@ async def view(db, user, record, *, authorized_employees=None):
                 entry.pop("reason", None)
     # Never send paths or arbitrary historical private fields as part of lists.
     fields = {"id", "storage_id", "employee_id", "employee_name", "tenant_id", "leave_type", "start_date", "end_date", "working_days",
-              "status", "handover_contact", "handover_contact_id", "notes", "line_manager_id", "created_at", "updated_at",
+              "status", "handover_contact", "handover_contact_id", "notes", "short_notice_reason", "line_manager_id", "created_at", "updated_at",
               "manager_decision", "manager_reason", "manager_decided_at", "manager_decided_by", "hr_decision", "hr_reason",
               "hr_decided_at", "approval_history", "policy_version", "supporting_document_id", "supporting_document_present",
               "document_verified", "expected_delivery_date", "birth_date", "family_relationship", "sick_pay", "emergency_sick",
@@ -198,7 +198,10 @@ async def create(db, user, payload, balance_loader):
             previous = await db.leave_requests.find_one({"$and": [tenant_query(tenant_of(user)), {
                 "employee_id": canonical, "submitted_by": user["id"], "request_token": payload["request_token"]}]})
         fingerprint_fields = ("leave_type", "start_date", "end_date", "notes", "handover_contact_id", "supporting_document_id", "birth_date", "expected_delivery_date", "family_relationship", "emergency_sick", "early_maternity_advice")
-        fingerprint = hashlib.sha256(json.dumps({key: payload.get(key) for key in fingerprint_fields}, sort_keys=True).encode()).hexdigest()
+        fingerprint_payload = {key: payload.get(key) for key in fingerprint_fields}
+        if payload.get("short_notice_reason"):
+            fingerprint_payload["short_notice_reason"] = payload["short_notice_reason"]
+        fingerprint = hashlib.sha256(json.dumps(fingerprint_payload, sort_keys=True).encode()).hexdigest()
         if previous:
             if previous.get("request_fingerprint") != fingerprint:
                 raise HTTPException(409, "This submission token already belongs to a different leave request")
@@ -329,7 +332,7 @@ async def decide(db, user, reference, body, balance_loader):
 
 async def supplement(db, user, reference, body, *, balance_loader=None):
     resubmitting = balance_loader is not None
-    allowed = {"notes", "handover_contact_id", "supporting_document_id", "birth_date", "expected_delivery_date", "family_relationship", "emergency_sick", "early_maternity_advice"}
+    allowed = {"notes", "short_notice_reason", "handover_contact_id", "supporting_document_id", "birth_date", "expected_delivery_date", "family_relationship", "emergency_sick", "early_maternity_advice"}
     if resubmitting:
         allowed |= {"start_date", "end_date", "leave_type"}
     if set(body) - allowed:

@@ -126,6 +126,21 @@ test('employee edits dates and resubmits through the authorized API', async () =
   expect(api.createLeaveRequest).not.toHaveBeenCalled();
 });
 
+test('application date picker blocks past dates and sends the annual short-notice reason', async () => {
+  api.createLeaveRequest.mockResolvedValue({ data: { id: 'submitted' } });
+  await render(); await act(async () => container.querySelector('[data-testid="apply-leave-btn"]').click());
+  const start = container.querySelector('[aria-label="Leave start date"]');
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  expect(start.min).toBe(today);
+  const reason = container.querySelector('[aria-label="Annual leave short-notice reason"]');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(reason, 'Urgent personal arrangements require short notice');
+    reason.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(api.createLeaveRequest).toHaveBeenCalledWith(expect.objectContaining({ short_notice_reason: 'Urgent personal arrangements require short notice' }));
+});
+
 test.each(['Approved', 'Rejected', 'Cancelled'])('employee cannot edit a finalized %s request', async status => {
   api.getLeaveRequests.mockResolvedValue({ data: [{ ...row, status, can_edit: false, can_cancel: false }] });
   await render();

@@ -138,6 +138,29 @@ def test_notice_long_block_handover_and_type_requirements(change):
     with pytest.raises(HTTPException): run(policy.preview(db, db.employees.docs[0], payload(**change)))
 
 
+@pytest.mark.parametrize("kind,extra", [("Annual", {}), ("Sick", {"emergency_sick": True})])
+def test_past_dates_cannot_be_submitted_even_with_emergency_or_notice_reason(kind, extra):
+    db, actors = fixture()
+    data = payload(leave_type=kind, start_date="2026-09-10", end_date="2026-09-11", short_notice_reason="A reason cannot authorize backdated applications", **extra)
+    with pytest.raises(HTTPException, match="Past dates"):
+        run(workflow.create(db, actors["staff"], data, budget()))
+    assert db.leave_requests.docs == []
+
+
+def test_short_notice_reason_allows_submission_but_does_not_approve_leave():
+    db, actors = fixture()
+    data = payload(start_date="2026-10-16", end_date="2026-10-17")
+    for reason in (None, " ", "short"):
+        with pytest.raises(HTTPException):
+            run(workflow.create(db, actors["staff"], {**data, "short_notice_reason": reason}, budget()))
+    with patch("utils.email_service.send_email", AsyncMock()), patch("automation.engine.automation_engine.fire_event", AsyncMock()):
+        result = run(workflow.create(db, actors["staff"], {**data, "short_notice_reason": "Urgent family arrangements require short notice"}, budget()))
+    assert result["status"] == "Pending_Manager"
+    assert result["short_notice_reason"] == "Urgent family arrangements require short notice"
+    assert db.leave_requests.docs[0]["policy_snapshot"]["short_notice"] is True
+    assert db.leave_balances.writes == 0
+
+
 def test_holidays_and_verified_contract_calendar_are_used_without_rewriting_employee():
     db, _ = fixture(); before = deepcopy(db.employees.docs)
     db.public_holidays.docs = [{"tenant_id": "solvit", "date": "2026-11-06"}]
