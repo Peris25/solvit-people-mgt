@@ -1,0 +1,71 @@
+name: Deploy frontend to cPanel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'scripts/deploy_frontend.py'
+      - 'scripts/test_deploy_frontend.py'
+      - '.github/workflows/frontend-cpanel.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cpanel-production-frontend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main' && (vars.CPANEL_AUTODEPLOY_ENABLED == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: cpanel-production
+    env:
+      CI: 'true'
+      GENERATE_SOURCEMAP: 'false'
+      REACT_APP_BACKEND_URL: ${{ vars.REACT_APP_BACKEND_URL }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Check deployment configuration
+        env:
+          FTP_HOST: ${{ secrets.CPANEL_FTP_HOST }}
+          FTP_USER: ${{ secrets.CPANEL_FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.CPANEL_FTP_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import os
+          from urllib.parse import urlsplit
+          for key in ('FTP_HOST', 'FTP_USER', 'FTP_PASSWORD', 'REACT_APP_BACKEND_URL'):
+              if not os.environ.get(key):
+                  raise SystemExit(f'Missing configuration: {key}')
+          url = urlsplit(os.environ['REACT_APP_BACKEND_URL'])
+          if url.scheme != 'https' or not url.netloc or url.username or url.password or url.path not in ('', '/') or url.query or url.fragment:
+              raise SystemExit('REACT_APP_BACKEND_URL must be the HTTPS backend origin, without /api or credentials')
+          PY
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Test deployment safeguards
+        run: python -m unittest discover -s scripts -p 'test_*.py' -v
+      - name: Test frontend
+        working-directory: frontend
+        run: npm test -- --watchAll=false --runInBand
+      - name: Build frontend with strict CI checks
+        working-directory: frontend
+        run: npm run build
+      - name: Publish and verify frontend
+        env:
+          FTP_HOST: ${{ secrets.CPANEL_FTP_HOST }}
+          FTP_USER: ${{ secrets.CPANEL_FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.CPANEL_FTP_PASSWORD }}
+        run: python scripts/deploy_frontend.py
