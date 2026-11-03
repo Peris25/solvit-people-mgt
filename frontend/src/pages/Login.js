@@ -27,13 +27,13 @@ export default function Login() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#F5F5F5', display: 'flex', fontFamily: 'Arial, Helvetica, sans-serif' }}>
+    <div className="portal-login" style={{ minHeight: '100vh', backgroundColor: '#F5F5F5', display: 'flex', fontFamily: 'Arial, Helvetica, sans-serif' }}>
       {/* Left — brand panel */}
-      <div style={{ flex: 1, background: '#191919', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '48px', minHeight: '100vh', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ backgroundImage: 'url(https://solvit.co.ke/wp-content/uploads/2024/03/Client-Meet.webp)', backgroundSize: 'cover', backgroundPosition: 'center', position: 'absolute', inset: 0, opacity: 0.35 }} />
+      <div className="portal-login-brand" style={{ flex: 1, background: '#191919', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '48px', minHeight: '100vh', position: 'relative', overflow: 'hidden' }}>
+        <div className="portal-login-art" aria-hidden="true" />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(25,25,25,0.85) 0%, rgba(25,25,25,0.55) 100%)' }} />
         <div style={{ position: 'relative', zIndex: 1 }}>
-          <img src="https://www.solvit.limited/dist/images/logo.png" alt="Solvit" style={{ height: '44px', width: 'auto', display: 'block', filter: 'brightness(0) invert(1)' }} />
+          <img src="/solvit-logo.png" alt="Solvit" style={{ height: '44px', width: 'auto', display: 'block', filter: 'brightness(0) invert(1)' }} />
         </div>
         <div style={{ position: 'relative', zIndex: 1 }}>
           <h1 style={{ color: '#fff', fontSize: '42px', fontWeight: 900, lineHeight: 1.1, letterSpacing: '-0.05em', margin: 0, marginBottom: '16px' }}>
@@ -47,7 +47,7 @@ export default function Login() {
       </div>
 
       {/* Right — login form */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '48px', maxWidth: '560px' }}>
+      <div className="portal-login-form" style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '48px', maxWidth: '560px' }}>
         <div style={{ marginBottom: '32px' }}>
           <h2 style={{ fontSize: '28px', fontWeight: 900, letterSpacing: '-0.04em', color: '#191919', margin: 0, marginBottom: '4px' }}>Sign in</h2>
           <p style={{ color: '#525252', fontSize: '14px', margin: 0 }}>Access the Solvit People Platform</p>

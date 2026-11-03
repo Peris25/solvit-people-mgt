@@ -80,7 +80,7 @@ export default function EmployeeDashboard() {
   return (
     <div data-testid="employee-dashboard" style={{ fontFamily: 'Arial, Helvetica, sans-serif', minHeight: '100vh' }}>
       {/* Top bar / greeting */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '20px' }}>
+      <div className="portal-welcome" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '20px' }}>
         <div>
           <h1 data-testid="emp-greeting" style={{ fontSize: '28px', fontWeight: 900, letterSpacing: '-0.04em', margin: 0, color: '#191919' }}>
             {greeting}, {firstName}

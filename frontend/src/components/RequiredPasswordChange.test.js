@@ -7,6 +7,7 @@ jest.mock('../context/AuthContext', () => ({ useAuth: jest.fn() }));
 jest.mock('react-router-dom', () => ({
   Outlet: () => <div data-testid="private-outlet">Private application</div>,
   Navigate: () => <div>Sign in</div>,
+  Link: ({ children, to, ...props }) => <a href={to} {...props}>{children}</a>,
 }));
 jest.mock('./Sidebar', () => () => <div data-testid="sidebar" />);
 jest.mock('./AIAgent', () => () => <div />);

@@ -7,6 +7,7 @@ import AIAgent from './AIAgent';
 import FirstLoginTour from './FirstLoginTour';
 import RequiredPasswordChange from './RequiredPasswordChange';
 import MfaSecurity from '../pages/MfaSecurity';
+import './Portal.css';
 
 export default function Layout() {
   const { user } = useAuth();
@@ -43,10 +44,15 @@ export default function Layout() {
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#F5F5F5', fontFamily: 'Nunito Sans, sans-serif' }}>
+    <div className="solvit-portal" style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#F5F5F5', fontFamily: 'Nunito Sans, sans-serif' }}>
       <Sidebar collapsed={sidebarCollapsed} onToggle={setSidebarCollapsed} onAIToggle={() => setAiOpen(p => !p)} aiOpen={aiOpen} />
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', marginRight: aiOpen ? '380px' : 0, transition: 'margin-right 0.3s' }}>
-        <main className="portal-main" style={{ flex: 1, overflowY: 'auto', padding: '24px', maxWidth: '1400px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+      <div className="portal-content" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', marginRight: aiOpen ? '380px' : 0, transition: 'margin-right 0.3s' }}>
+        <header className="portal-topbar">
+          <div className="portal-workspace-label"><span className="portal-brand-dot" aria-hidden="true" /><span>Solvit People</span><span className="portal-topbar-divider" aria-hidden="true">/</span><strong>{['hr_admin', 'hr_manager'].includes(user.role) ? 'HR workspace' : 'My workspace'}</strong></div>
+          <Link to="/my-profile" className="portal-account-link"><span className="portal-account-initial" aria-hidden="true">{user.full_name?.[0] || 'S'}</span><span>{user.full_name || 'My Profile'}</span></Link>
+        </header>
+        <a href="#portal-page-content" className="portal-skip-link">Skip to page content</a>
+        <main id="portal-page-content" tabIndex={-1} className="portal-main" style={{ flex: 1, overflowY: 'auto', padding: '24px', maxWidth: '1400px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
           <Outlet />
         </main>
       </div>

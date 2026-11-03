@@ -139,7 +139,7 @@ export default function Dashboard() {
   return (
     <div data-testid="hr-dashboard" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '20px' }}>
+      <div className="portal-welcome" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '20px' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: 900, letterSpacing: '-0.04em', color: '#191919', margin: 0 }}>HR Dashboard</h1>
           <p style={{ color: '#525252', fontSize: '12px', margin: '4px 0 0' }}>
@@ -189,7 +189,7 @@ export default function Dashboard() {
           />
 
           {/* Zones 2 + 3: Kanban (2/3) + Calendar (1/3) */}
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', marginBottom: '20px', alignItems: 'start' }}>
+          <div className="portal-dashboard-columns" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', marginBottom: '20px', alignItems: 'start' }}>
             <div data-testid="kanban-board" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
               {COLUMNS.map(col => {
                 const employees = (kanban[col.key] || []).filter(matches);

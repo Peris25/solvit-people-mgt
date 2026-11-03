@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useNotifications } from '../context/NotificationContext';
 
-const ICON_SIZE = 15;
+const ICON_SIZE = 17;
 
 const MENU_ITEMS = [
   { section: 'Core', items: [
@@ -178,7 +178,7 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
 
   if (collapsed) {
     return (
-      <div style={{ width: '56px', backgroundColor: tk.sidebarBg, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '14px 0', gap: '8px', zIndex: 50, minHeight: '100vh', borderRightWidth: '1px', borderRightStyle: 'solid', borderRightColor: tk.sidebarBorder }}>
+      <div className="portal-sidebar-collapsed" style={{ width: '56px', backgroundColor: tk.sidebarBg, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '14px 0', gap: '8px', zIndex: 50, minHeight: '100vh', borderRightWidth: '1px', borderRightStyle: 'solid', borderRightColor: tk.sidebarBorder }}>
         <button data-testid="solvit-logo-mark" onClick={() => onToggle(false)} style={{ background: theme === 'dark' ? '#FFFFFF' : 'transparent', border: 'none', padding: theme === 'dark' ? '4px 6px' : '0', cursor: 'pointer', marginBottom: '12px' }}>
           <img src="/solvit-logo.png" alt="Solvit" style={{ height: '24px', width: 'auto', objectFit: 'contain', display: 'block' }} />
         </button>
@@ -192,7 +192,7 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
   return (
     <div className="portal-sidebar-expanded" style={{ width: '240px', backgroundColor: tk.sidebarBg, display: 'flex', flexDirection: 'column', minHeight: '100vh', fontFamily: 'Nunito Sans, sans-serif', flexShrink: 0, borderRightWidth: '1px', borderRightStyle: 'solid', borderRightColor: tk.sidebarBorder }}>
       {/* Logo */}
-      <div style={{ padding: '20px 20px 14px', borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: tk.sidebarBorder }}>
+      <div className="portal-sidebar-brand" style={{ padding: '20px 20px 14px', borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: tk.sidebarBorder }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0, flex: 1 }}>
             <div style={{
@@ -218,7 +218,7 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
       </div>
 
       {/* User info */}
-      <div style={{ padding: '12px 20px', borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: tk.sidebarBorder, position: 'relative' }}>
+      <div className="portal-sidebar-account" style={{ padding: '12px 20px', borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: tk.sidebarBorder, position: 'relative' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: ROLE_COLORS[user?.role] || '#525252', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <span style={{ color: '#fff', fontWeight: 700, fontSize: '12px' }}>{user?.full_name?.[0] || 'U'}</span>
@@ -238,7 +238,7 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
         </div>
         {showNotif && (
           <div className="sidebar-notifications" data-testid="notif-dropdown" style={{ position: 'absolute', top: '60px', left: '8px', width: '360px', maxWidth: 'calc(100vw - 16px)', backgroundColor: '#fff', color: '#191919', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 200, maxHeight: '420px', display: 'flex', flexDirection: 'column' }}>
-            <style>{'@media (min-width: 601px) { .sidebar-notifications { left: 224px !important; top: 0 !important; max-width: calc(100vw - 240px) !important; } }'}</style>
+            <style>{'@media (min-width: 601px) { .sidebar-notifications { left: 252px !important; top: 0 !important; max-width: calc(100vw - 268px) !important; } }'}</style>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <strong style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Notifications {unread > 0 && <span style={{ color: '#FF353F' }}>· {unread}</span>}</strong>
               {unread > 0 && <button data-testid="mark-all-read" onClick={markAllRead} style={{ background: 'none', border: 'none', color: '#FF353F', cursor: 'pointer', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Mark recent read</button>}
@@ -265,7 +265,7 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
       </div>
 
       {/* Navigation */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+      <div className="portal-navigation" style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
         {filteredMenu.map(section => (
           <div key={section.section} style={{ marginBottom: '4px' }}>
             <div style={{ padding: '8px 20px 4px', fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.2em', color: tk.sidebarSubtle }}>{section.section}</div>
@@ -278,6 +278,7 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
               return (
                 <React.Fragment key={item.path}>
                   <div
+                    className={`portal-nav-item${active ? ' is-active' : ''}`}
                     data-testid={`nav-${item.path.replace('/', '')}`}
                     style={{
                       width: '100%', display: 'flex', alignItems: 'center',

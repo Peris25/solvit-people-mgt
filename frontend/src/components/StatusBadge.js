@@ -47,6 +47,7 @@ export default function StatusBadge({ status, small = false, className = '' }) {
   const config = STATUS_CONFIG[status] || { bg: '#F3F4F6', color: '#374151', label: status || 'Unknown' };
   return (
     <span
+      className={`portal-status-badge ${className}`}
       data-testid={`status-badge-${status}`}
       style={{
         display: 'inline-flex', alignItems: 'center',
