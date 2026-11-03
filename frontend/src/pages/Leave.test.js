@@ -55,6 +55,34 @@ test('withdrawal failure keeps the request visible', async () => {
   expect(container.querySelector('[data-testid="leave-request"]')).toBeTruthy();
 });
 
+test('employee withdrawal is labelled Withdrawn rather than Denied and has no approval control', async () => {
+  api.getLeaveRequests.mockResolvedValue({ data: [{ ...row, status: 'Cancelled', can_cancel: false }] });
+  await render();
+  expect(container.querySelector('[data-testid="status-badge-Withdrawn"]')).not.toBeNull();
+  expect(container.textContent).not.toContain('Denied');
+  expect([...container.querySelectorAll('button')].some(button => button.textContent === 'Review')).toBe(false);
+});
+
+test('HR starts in the pending live application queue without imported workbook entries', async () => {
+  useAuth.mockReturnValue({ user: { ...user, role: 'hr_admin' } });
+  api.getLeaveRequests.mockResolvedValue({ data: [
+    { ...row, employee_id: 'report', employee_name: 'Synthetic Joseph', can_hr_override: true },
+    { ...row, id: 'history', employee_id: 'old', employee_name: 'Imported history', historical_import: true, status: 'Pending' },
+    { ...row, id: 'withdrawn', employee_id: 'other', employee_name: 'Withdrawn employee', status: 'Cancelled' },
+  ] });
+  await render();
+  expect(container.textContent).toContain('Synthetic Joseph');
+  expect(container.textContent).not.toContain('Imported history');
+  expect(container.textContent).not.toContain('Withdrawn employee');
+  const select = container.querySelector('[aria-label="Team leave status"]');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, 'Withdrawn');
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  expect(container.textContent).toContain('Withdrawn employee');
+  expect(container.textContent).not.toContain('Synthetic Joseph');
+});
+
 test('manager recommendation uses the server-assigned stage and does not finalize HR approval', async () => {
   useAuth.mockReturnValue({ user: { ...user, role: 'line_manager' } });
   api.getLeaveRequests.mockResolvedValue({ data: [{ ...row, employee_id: 'report', approval_stage: 'manager', can_cancel: false, can_reject: true }] });
@@ -80,7 +108,7 @@ test('HR can select direct approval with reason and policy confirmations while m
   await render(); await act(async () => container.querySelector('[data-testid="leave-tab-team"]').click());
   await click('Review');
   const override = [...container.querySelectorAll('label')].find(label => label.textContent.includes('overriding manager routing')).querySelector('input');
-  await act(async () => override.click());
+  expect(override.checked).toBe(true);
   expect(container.textContent).toContain('Contract eligibility');
   await click('Approve directly as HR');
   expect(api.leaveDecision).toHaveBeenCalledWith(row.id, expect.objectContaining({ hr_override: true, stage: 'hr', decision: 'Approve' }));

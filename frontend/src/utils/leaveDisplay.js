@@ -1,6 +1,7 @@
 export function leaveStatus(value) {
   if (value === 'Approved') return 'Approved';
-  if (['Denied', 'Rejected', 'Cancelled'].includes(value)) return 'Denied';
+  if (['Cancelled', 'Canceled', 'Withdrawn'].includes(value)) return 'Withdrawn';
+  if (['Denied', 'Rejected'].includes(value)) return 'Denied';
   return 'Pending';
 }
 

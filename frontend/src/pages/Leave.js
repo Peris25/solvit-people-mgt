@@ -64,10 +64,13 @@ export default function Leave() {
   const isHR = ['hr_admin', 'hr_manager'].includes(user?.role);
   const canDecide = isLM || isHR || ['finance', 'executive', 'board'].includes(user?.role);
 
-  const [tab, setTab] = useState('my');
+  const [tab, setTab] = useState(isHR ? 'team' : 'my');
+  const [teamSearch, setTeamSearch] = useState('');
+  const [teamStatus, setTeamStatus] = useState(isHR ? 'Pending' : 'All');
   useEffect(() => {
     if (linkedRequest) setTab(requestedView === 'team' && canDecide ? 'team' : 'my');
-  }, [linkedRequest, requestedView, canDecide]);
+    else setTab(isHR ? 'team' : 'my');
+  }, [linkedRequest, requestedView, canDecide, isHR]);
   const [requests, setRequests] = useState([]);
   const [balances, setBalances] = useState(null);
   const [rollover, setRollover] = useState(null);
@@ -162,7 +165,7 @@ export default function Leave() {
       load(); notificationState?.refresh();
     } catch (err) { setError(message(err)); } finally { setSaving(false); }
   };
-  const openReview = row => { setReview(row); setError(''); setChecks({ handover_reviewed: false, policy_review_confirmed: false, document_verified: false, reason: '' }); };
+  const openReview = row => { setReview(row); setError(''); setChecks({ handover_reviewed: false, policy_review_confirmed: false, document_verified: false, reason: '', hr_override: row.can_hr_override === true }); };
   const downloadEvidence = async id => {
     try {
       const response = await api.downloadLeaveEvidence(id);
@@ -176,7 +179,8 @@ export default function Leave() {
   const ownAliases = [myEmpId, user?.employee_id, ...(user?.employee_reference_ids || [])].filter(Boolean).map(String);
   const selectedRequests = relatedRecordRows(requests, linkedRequest);
   const myRequests = selectedRequests.filter(r => ownAliases.includes(String(r.employee_id)));
-  const teamRequests = selectedRequests.filter(r => !ownAliases.includes(String(r.employee_id)));
+  const teamRequests = selectedRequests.filter(r => !ownAliases.includes(String(r.employee_id)) && (!isHR || !r.historical_import));
+  const visibleTeamRequests = teamRequests.filter(row => linkedRequest || ((teamStatus === 'All' || leaveStatus(row.status) === teamStatus) && `${row.employee_name || ''} ${row.leave_type || ''} ${row.start_date || ''} ${row.end_date || ''}`.toLowerCase().includes(teamSearch.trim().toLowerCase())));
 
   const annualBal = balances?.Annual;
   const accruedDisplay = balances && Object.prototype.hasOwnProperty.call(balances, 'annual_available_to_request') ? balances.annual_available_to_request ?? 'Needs HR review' : annualBal?.remaining ?? 'Unavailable';
@@ -261,7 +265,16 @@ export default function Leave() {
       {!historyAvailable && !loading && loadedFor === accountKey ? <p>Leave history is unavailable. <button style={btnGhost} onClick={load}>Retry</button></p> : loading || loadedFor !== accountKey ? <div style={{ padding: '48px', textAlign: 'center', color: '#525252' }}>Loading…</div> : (
         <>
           {tab === 'my' && <RequestsTable rows={myRequests} withdraw={withdraw} edit={openForm} review={openReview} saving={saving} testId="my-applications" />}
-          {tab === 'team' && hasTeam && <RequestsTable rows={teamRequests} withdraw={withdraw} review={openReview} saving={saving} testId="team-leave" />}
+          {tab === 'team' && hasTeam && <>
+            <p>Review employee applications here. Expand the employee and leave type to review a request. Imported workbook entries are under Historical records.</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+              <input aria-label="Search team leave" placeholder="Search employee, leave type or date" value={teamSearch} onChange={event => setTeamSearch(event.target.value)} style={{ ...inp, maxWidth: '360px' }} />
+              <select aria-label="Team leave status" value={teamStatus} onChange={event => setTeamStatus(event.target.value)} style={{ ...inp, maxWidth: '200px' }}>{['All', 'Pending', 'Approved', 'Denied', 'Withdrawn'].map(status => <option key={status}>{status}</option>)}</select>
+              <button style={btnGhost} onClick={load}>Refresh requests</button>
+            </div>
+            <p>{visibleTeamRequests.length} matching applications</p>
+            <RequestsTable rows={visibleTeamRequests} withdraw={withdraw} review={openReview} saving={saving} testId="team-leave" />
+          </>}
           {tab === 'history' && isHR && <LeaveHistory key={accountKey} rows={requests.filter(row => row.historical_import)} onSaved={load} />}
           {tab === 'calendar' && <LeaveCalendar calendar={calendar} year={calYear} month={calMonth} setYear={setCalYear} setMonth={setCalMonth} />}
           {tab === 'rollover' && <RolloverPanel rollover={rollover} />}

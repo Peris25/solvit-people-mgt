@@ -25,6 +25,7 @@ test('groups separate employee identities and leave types without counting denie
   expect(leaveStatus('Pending_Manager')).toBe('Pending');
   expect(leaveStatus('Pending_HR')).toBe('Pending');
   expect(leaveStatus('Rejected')).toBe('Denied');
+  expect(leaveStatus('Cancelled')).toBe('Withdrawn');
   act(() => root.unmount()); container.remove();
 });
 

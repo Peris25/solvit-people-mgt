@@ -72,7 +72,7 @@ export default function LeaveHistory({ rows, onSaved }) {
     }); }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '12px' }}>
         {['leave_type', 'status', 'day_basis'].map(field => <label key={field}>{labels[field]}<select aria-label={`Historical ${field}`} style={style} disabled={busy} value={editing[field]} onChange={event => setEditing({ ...editing, [field]: event.target.value })}>
-          {(field === 'leave_type' ? ['Annual', 'Sick', 'Paternity', 'Maternity', 'Compassionate', 'Unpaid'] : field === 'status' ? ['Pending', 'Approved', 'Denied'] : ['Recorded units', 'Calendar days']).map(value => <option key={value}>{value}</option>)}
+          {(field === 'leave_type' ? ['Annual', 'Sick', 'Paternity', 'Maternity', 'Compassionate', 'Unpaid'] : field === 'status' ? ['Pending', 'Approved', 'Denied', 'Withdrawn'] : ['Recorded units', 'Calendar days']).map(value => <option key={value}>{value}</option>)}
         </select></label>)}
         {['start_date', 'end_date', 'resumption_date', 'working_days', 'reason'].map(field => <label key={field}>{labels[field]}<input aria-label={`Historical ${field}`} style={style} disabled={busy} type={field.endsWith('date') ? 'date' : field === 'working_days' ? 'number' : 'text'} required={field !== 'resumption_date'} step={field === 'working_days' ? 'any' : undefined} min={field === 'working_days' ? '0.01' : undefined} minLength={field === 'reason' ? 5 : undefined} maxLength={field === 'reason' ? 1000 : undefined} value={editing[field]} onChange={event => setEditing({ ...editing, [field]: event.target.value })} /></label>)}
       </div>

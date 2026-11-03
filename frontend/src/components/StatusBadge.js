@@ -26,6 +26,8 @@ const STATUS_CONFIG = {
   'In_Progress': { bg: '#DBEAFE', color: '#1D4ED8', label: 'In Progress' },
   'Completed': { bg: '#DCFCE7', color: '#166534', label: 'Completed' },
   'Overdue': { bg: '#FEE2E2', color: '#991B1B', label: 'Overdue' },
+  'Withdrawn': { bg: '#F3F4F6', color: '#374151', label: 'Withdrawn' },
+  'Denied': { bg: '#FEE2E2', color: '#991B1B', label: 'Denied' },
   'Rejected': { bg: '#FEE2E2', color: '#991B1B', label: 'Rejected' },
   'Approved': { bg: '#DCFCE7', color: '#166534', label: 'Approved' },
   'Submitted': { bg: '#DBEAFE', color: '#1D4ED8', label: 'Submitted' },

@@ -32,6 +32,8 @@ class HistoricalFields(BaseModel):
     @field_validator("status")
     @classmethod
     def state(cls, value):
+        if value == "Withdrawn":
+            value = "Cancelled"
         if value == "Denied":
             value = "Rejected"
         if value not in {"Approved", "Pending", "Recorded", "Rejected", "Cancelled"}:

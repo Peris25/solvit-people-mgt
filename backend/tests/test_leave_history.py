@@ -167,6 +167,7 @@ def test_bulk_confirmation_cannot_target_pending_or_live_records_or_other_employ
 
 def test_denied_display_choice_preserves_existing_rejected_storage_compatibility():
     assert history.HistoricalRow(**row(status="Denied")).status == "Rejected"
+    assert history.HistoricalRow(**row(status="Withdrawn")).status == "Cancelled"
 
 
 def test_source_approval_rejects_stale_revision_without_writing():
