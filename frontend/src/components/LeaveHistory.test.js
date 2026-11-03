@@ -58,7 +58,8 @@ test('failed correction stays open and reports error without claiming success', 
 test('Edit opens a modal immediately and Cancel closes it without writing', () => {
   act(() => root.render(<LeaveHistory rows={[row]} onSaved={jest.fn()} />));
   const trigger = button('Edit historical record');
-  expect(trigger.style.border).toContain('solid');
+  expect(trigger.classList.contains('leave-action')).toBe(true);
+  expect(trigger.getAttribute('aria-label')).toBe(`Edit historical record for ${row.employee_name}`);
   act(() => trigger.click());
   expect(document.body.querySelector('dialog[open]')).not.toBeNull();
   expect(container.querySelector('form')).toBeNull();
