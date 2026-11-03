@@ -173,7 +173,7 @@ async def get_calendar_events(request: Request, days_ahead: int = 90):
 @router.post("")
 async def create_event(event: CalendarEvent, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     module_access(user, "M15", write=True)

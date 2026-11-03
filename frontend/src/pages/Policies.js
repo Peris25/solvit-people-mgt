@@ -41,7 +41,7 @@ export default function Policies() {
   const fileRef = useRef();
 
   const canAcknowledge = selected && (selected.acknowledgement_available ?? (selected.status === 'Active' && Boolean(selected.content?.trim() || selected.has_attachment)));
-  const canEdit = ['hr_admin', 'hr_manager'].includes(user?.role);
+  const canEdit = ['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role);
 
   useEffect(() => { load(); }, []);
 

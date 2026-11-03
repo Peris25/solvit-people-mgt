@@ -92,7 +92,7 @@ def fmt(doc):
 
 def employee_view(doc, user):
     """Private HR/self views stay distinct from a manager's team metadata."""
-    if user.get("role") in ("hr_admin", "hr_manager", "board", "it_admin"):
+    if user.get("role") in ("hr_admin", "hr_manager", "general_manager", "board", "it_admin"):
         selected = deepcopy(doc)
     else:
         fields = {"id", "_id", "full_name", "preferred_name", "work_email", "department", "role_title",
@@ -480,8 +480,8 @@ async def get_employee_profile(employee_id: str, request: Request):
         else: raise
     trainings=[await learning_workflows.projection(db,user,row,emp) for row in trainings]
     idp = await db.idps.find_one(related()) if learning_allowed else None
-    cases = await db.disciplinary_cases.find(related()).sort("created_at", -1).to_list(20) if user["role"] in ["hr_admin", "hr_manager"] else []
-    notifications = await db.notifications.find({"recipient_id": emp_id}).sort("created_at", -1).to_list(20) if user["role"] in ["hr_admin", "hr_manager"] or employee_key(emp) == user.get("employee_id") else []
+    cases = await db.disciplinary_cases.find(related()).sort("created_at", -1).to_list(20) if user["role"] in ["hr_admin", "hr_manager", "general_manager"] else []
+    notifications = await db.notifications.find({"recipient_id": emp_id}).sort("created_at", -1).to_list(20) if user["role"] in ["hr_admin", "hr_manager", "general_manager"] or employee_key(emp) == user.get("employee_id") else []
 
     # Build timeline
     timeline = []
@@ -517,7 +517,7 @@ async def get_employee_profile(employee_id: str, request: Request):
 @router.get("/kanban")
 async def get_kanban(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     employees = await db.employees.find({"tenant_id": "solvit"}).sort("full_name", 1).to_list(500)
@@ -539,7 +539,7 @@ async def get_kanban(request: Request):
 @router.get("/stats")
 async def get_stats(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "executive"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "executive"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     pipeline = [{"$match": {"tenant_id": "solvit"}}, {"$group": {"_id": "$lifecycle_state", "count": {"$sum": 1}}}]
@@ -563,7 +563,7 @@ async def get_stats(request: Request):
 @router.post("")
 async def create_employee(emp: EmployeeCreate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     if emp.lifecycle_state and emp.lifecycle_state not in LIFECYCLE_STATES:
         raise HTTPException(422, "Invalid employee status")
@@ -651,7 +651,7 @@ async def get_employee(employee_id: str, request: Request):
 @router.put("/{employee_id}")
 async def update_employee(employee_id: str, upd: EmployeeUpdate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "line_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "line_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     async with integrity_write(db):

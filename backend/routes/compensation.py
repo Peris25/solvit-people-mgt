@@ -30,7 +30,7 @@ def fmt(doc):
 async def get_pay_bands(request: Request):
     user = await get_current_user(request)
     compensation_access(user,write=False)
-    if user["role"] not in ["hr_admin", "hr_manager", "finance", "executive"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "finance", "executive"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     bands = await db.pay_bands.find(tenant_query(tenant_of(user))).sort("band", 1).to_list(20)
@@ -42,7 +42,7 @@ async def update_pay_band(band_id: str, request: Request):
     """HR Admin (or HR Manager) can edit pay band min/mid/max and roles."""
     user = await get_current_user(request)
     compensation_access(user,write=True)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Only HR Admin can edit pay bands")
     db = get_db()
     from utils.employee_integrity import integrity_write
@@ -72,7 +72,7 @@ async def update_pay_band(band_id: str, request: Request):
 async def get_pay_band_alerts(request: Request):
     user = await get_current_user(request)
     compensation_access(user,write=False)
-    if user["role"] not in ["hr_admin", "hr_manager", "finance"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "finance"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     alerts = await db.pay_band_alerts.find({"$and":[tenant_query(tenant_of(user)),{"status":"Active"}]}).to_list(50)
@@ -83,7 +83,7 @@ async def get_pay_band_alerts(request: Request):
 async def get_salary_reviews(request: Request):
     user = await get_current_user(request)
     compensation_access(user,write=False)
-    if user["role"] not in ["hr_admin", "hr_manager", "finance"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "finance"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     reviews = await db.salary_reviews.find(tenant_query(tenant_of(user))).sort("created_at", -1).to_list(100)
@@ -97,7 +97,7 @@ async def get_salary_reviews(request: Request):
 async def create_salary_review(request: Request):
     user = await get_current_user(request)
     compensation_access(user,write=True)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     from utils.employee_integrity import integrity_write, tenant_of, employee_key
@@ -130,7 +130,7 @@ async def create_salary_review(request: Request):
 async def get_bonus_calculator(request: Request, tier: str = "Tier1"):
     user = await get_current_user(request)
     compensation_access(user,write=False)
-    if user["role"] not in ["hr_admin", "hr_manager", "finance"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "finance"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     # Get active employees with performance scores
@@ -177,7 +177,7 @@ async def get_bonus_calculator(request: Request, tier: str = "Tier1"):
 async def get_gp_gate(request: Request):
     user = await get_current_user(request)
     compensation_access(user,write=False)
-    if user["role"] not in ["hr_admin", "finance", "executive"]:
+    if user["role"] not in ["hr_admin", "general_manager", "finance", "executive"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     gate = await db.gp_gate.find_one(tenant_query(tenant_of(user)), sort=[("created_at", -1)])

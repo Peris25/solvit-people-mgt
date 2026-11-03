@@ -59,7 +59,7 @@ export default function Surveys() {
           <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', margin: 0 }}>Alignment Surveys</h1>
           <p style={{ color: '#525252', fontSize: '13px', margin: 0, marginTop: '4px' }}>FTE and Solver engagement surveys</p>
         </div>
-        {['hr_admin', 'hr_manager'].includes(user?.role) && (
+        {['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) && (
           <div style={{ display: 'flex', gap: '8px' }}>
             <button data-testid="quick-launch-fte" onClick={() => quickLaunch('alignment_fte')} disabled={launching} style={{ padding: '10px 16px', backgroundColor: '#22C55E', color: '#fff', border: 'none', cursor: launching ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial', opacity: launching ? 0.6 : 1 }}>
               {launching ? 'Launching...' : '⚡ One-Click Launch (FTE)'}

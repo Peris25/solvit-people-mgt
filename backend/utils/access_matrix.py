@@ -25,7 +25,7 @@ Scope qualifiers (string suffixes):
 from fastapi import HTTPException
 
 # Role list (must match utils/auth.ROLES + "executive")
-ROLES = ("hr_admin", "hr_manager", "line_manager", "finance", "employee", "solver", "executive")
+ROLES = ("hr_admin", "hr_manager", "line_manager", "finance", "employee", "solver", "executive", "general_manager")
 
 
 def _level(value: str, scope: str = None) -> dict:
@@ -216,7 +216,17 @@ ACCESS_MATRIX = {
 }
 
 
-# Section B: destructive actions restricted to HR Admin only.
+# General Manager has the existing HR business module permissions. Account and
+# permission administration remain IT-only endpoint checks, not module grants.
+for _module in ACCESS_MATRIX.values():
+    _module["general_manager"] = dict(_module["hr_admin"]) if _module.get("hr_admin") else None
+
+# IT administrators keep technical administration and gain a strictly scoped
+# manager layer for employees who actually report to them. No HR-wide access.
+for _team_module in ("M04", "M05", "M08", "M09", "M18"):
+    ACCESS_MATRIX[_team_module]["it_admin"] = _level("Manage", "own_team")
+
+# Section B: HR business actions; technical/security administration is separate.
 DESTRUCTIVE_ACTIONS = {
     "employee.lifecycle.manual_change",
     "automation.rule.toggle",
@@ -392,6 +402,6 @@ def enforce_module(module_id: str, role: str, required_level: str = "Read") -> d
 
 
 def enforce_destructive(action: str, role: str) -> None:
-    """Section B restriction — only HR Admin may invoke listed destructive actions."""
-    if action in DESTRUCTIVE_ACTIONS and role != "hr_admin":
-        raise HTTPException(status_code=403, detail=f"Destructive action '{action}' restricted to HR Admin only")
+    """Section B restriction: HR Admin and General Manager business actions only."""
+    if action in DESTRUCTIVE_ACTIONS and role not in {"hr_admin", "general_manager"}:
+        raise HTTPException(status_code=403, detail=f"Destructive action '{action}' restricted to HR Admin or General Manager")

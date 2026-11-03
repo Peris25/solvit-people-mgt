@@ -45,7 +45,7 @@ async def list_projects(request: Request):
 @router.post("")
 async def create_project(proj: ProjectCreate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     target = await authorize_employee(db, user, proj.employee_id, "M09", write=True)
@@ -86,7 +86,7 @@ async def create_project(proj: ProjectCreate, request: Request):
 @router.get("/eligible")
 async def get_eligible_employees(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     employees = await db.employees.find({
@@ -108,7 +108,7 @@ async def update_project(project_id: str, request: Request):
     allowed = {"project_name", "project_objective", "success_criteria", "milestones", "support_resources", "reward_on_completion", "expected_completion_date", "status", "progress_notes"}
     if set(body) - allowed:
         raise HTTPException(422, "Only project workflow fields may be updated")
-    if user.get("role") == "line_manager" and set(body) - {"milestones", "progress_notes", "status"}:
+    if user.get("role") in {"line_manager", "it_admin"} and set(body) - {"milestones", "progress_notes", "status"}:
         raise HTTPException(403, "Managers may update project progress only")
     if body.get("status") and body["status"] not in {"Assigned", "In Progress", "At Risk", "Completed - Pending Review"}:
         raise HTTPException(409, "Reward release requires the approved Finance workflow")

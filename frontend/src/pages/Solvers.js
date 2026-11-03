@@ -43,7 +43,7 @@ export default function Solvers() {
 
   const current = loadedFor === user?.id;
   const canEdit = current && stats?.can_manage === true;
-  const canEditStatus = current && ['hr_admin', 'hr_manager'].includes(user?.role) &&
+  const canEditStatus = current && ['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) &&
     (stats?.can_edit_profile ?? stats?.can_manage ?? !stats?.directory_only);
 
 

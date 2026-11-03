@@ -50,12 +50,12 @@ export default function EmployeeProfile({ selfService = false }) {
   ];
 
   // Documents tab — HR Admin/HR Manager full, Line Manager view-only for direct reports
-  const canSeeDocs = selfService || ['hr_admin', 'hr_manager'].includes(user?.role)
+  const canSeeDocs = selfService || ['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role)
     || (user?.role === 'line_manager' && e.line_manager_id && [...(user?.employee_reference_ids || []), user?.employee_id].includes(e.line_manager_id));
   if (canSeeDocs) {
     TABS.push({ k: 'documents', l: 'Documents' });
   }
-  if (selfService || ['hr_admin', 'hr_manager', 'finance'].includes(user?.role)) TABS.push({ k: 'changes', l: 'Profile changes' });
+  if (selfService || ['hr_admin', 'hr_manager', 'general_manager', 'finance'].includes(user?.role)) TABS.push({ k: 'changes', l: 'Profile changes' });
   if (selfService) TABS.push({ k: 'account', l: 'Account security' });
 
   return (
@@ -75,7 +75,7 @@ export default function EmployeeProfile({ selfService = false }) {
               <Stat label="Email" value={e.work_email} />
               <Stat label="Phone" value={e.phone_number || '—'} />
               <Stat label="Started" value={fmtDate(e.start_date)} />
-              {['hr_admin', 'hr_manager', 'finance'].includes(user?.role) && <Stat label="Salary" value={fmtKES(e.current_salary_kes)} />}
+              {['hr_admin', 'hr_manager', 'general_manager', 'finance'].includes(user?.role) && <Stat label="Salary" value={fmtKES(e.current_salary_kes)} />}
               <Stat label="Manager" value={e.reports_to_board ? 'Board of Directors' : e.line_manager_id ? (e.line_manager_name || 'Manager not found') : '—'} />
               <Stat label="Last Score" value={e.last_performance_score ?? '—'} />
               {e.flight_risk_level && <Stat label="Flight Risk" value={<span style={{ color: e.flight_risk_level === 'Critical' ? '#FF353F' : e.flight_risk_level === 'High' ? '#F97316' : e.flight_risk_level === 'Elevated' ? '#FCD34D' : '#22C55E', fontWeight: 900 }}>{e.flight_risk_level}</span>} />}

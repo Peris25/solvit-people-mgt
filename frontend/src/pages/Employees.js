@@ -66,7 +66,7 @@ export default function Employees() {
     } finally { setBulkBusy(false); }
   };
 
-  const canEdit = ['hr_admin', 'hr_manager'].includes(user?.role);
+  const canEdit = ['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role);
 
   useEffect(() => {
     let cancelled = false;
@@ -270,7 +270,7 @@ export default function Employees() {
                 ].map(f => (
                   <div key={f.key}>
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>{f.label}</label>
-                    <select disabled={f.key === 'lifecycle_state' && !!selected && user?.role !== 'hr_admin'} required={f.key === 'department' && !selected} data-testid={`employee-${f.key}`} value={form[f.key] || ''} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
+                    <select disabled={f.key === 'lifecycle_state' && !!selected && !['hr_admin', 'general_manager'].includes(user?.role)} required={f.key === 'department' && !selected} data-testid={`employee-${f.key}`} value={form[f.key] || ''} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
                       style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', boxSizing: 'border-box', outline: 'none' }}>
                       {f.key === 'department' && <option value="">Select department</option>}
                       {f.key !== 'department' && !form[f.key] && <option value="">Not specified</option>}

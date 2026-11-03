@@ -352,12 +352,12 @@ EXECUTORS = {
 
 # ---- RBAC: who can confirm what ----
 ACTION_REQUIRED_ROLES = {
-    "approve_leave":      ("hr_admin", "hr_manager", "line_manager"),
-    "reject_leave":       ("hr_admin", "hr_manager", "line_manager"),
-    "send_recognition":   ("hr_admin", "hr_manager", "line_manager"),
-    "send_email":         ("hr_admin", "hr_manager"),
-    "mark_task_complete": ("hr_admin", "hr_manager", "line_manager", "employee", "finance", "executive", "it_admin"),
-    "assign_training":    ("hr_admin", "hr_manager", "line_manager"),
+    "approve_leave":      ("hr_admin", "hr_manager", "general_manager", "line_manager"),
+    "reject_leave":       ("hr_admin", "hr_manager", "general_manager", "line_manager"),
+    "send_recognition":   ("hr_admin", "hr_manager", "general_manager", "line_manager"),
+    "send_email":         ("hr_admin", "hr_manager", "general_manager"),
+    "mark_task_complete": ("hr_admin", "hr_manager", "general_manager", "line_manager", "employee", "finance", "executive", "it_admin"),
+    "assign_training":    ("hr_admin", "hr_manager", "general_manager", "line_manager"),
 }
 
 

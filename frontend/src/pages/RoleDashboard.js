@@ -17,16 +17,17 @@ export default function RoleDashboard() {
   const { user } = useAuth();
   const [view, setView] = useState('home');
   if (!user) return null;
+  const isManager = ['line_manager', 'it_admin'].includes(user.role);
   if (user.role === 'solver') return <SolverDashboard />;
   if (user.role === 'employee') return <EmployeeDashboard key={user.id} />;
   if (user.employee_id) return <>
     <nav aria-label="Dashboard views" style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
       <button onClick={() => setView('home')} aria-pressed={view === 'home'} style={{ minHeight: '44px', padding: '10px 16px' }}>Staff Home</button>
-      <button onClick={() => setView('role')} aria-pressed={view === 'role'} style={{ minHeight: '44px', padding: '10px 16px' }}>{user.role === 'line_manager' ? 'My Team' : 'Role Dashboard'}</button>
+      <button onClick={() => setView('role')} aria-pressed={view === 'role'} style={{ minHeight: '44px', padding: '10px 16px' }}>{isManager ? 'My Team' : 'Role Dashboard'}</button>
     </nav>
-    {view === 'home' ? <EmployeeDashboard key={user.id} /> : user.role === 'line_manager' ? <LineManagerDashboard /> : <HRDashboard />}
+    {view === 'home' ? <EmployeeDashboard key={user.id} /> : isManager ? <LineManagerDashboard /> : <HRDashboard />}
   </>;
-  if (user.role === 'line_manager') return <LineManagerDashboard />;
+  if (isManager) return <LineManagerDashboard />;
   // Default: HR Admin / Manager / Executive / Finance see operational dashboard
   return <HRDashboard />;
 }

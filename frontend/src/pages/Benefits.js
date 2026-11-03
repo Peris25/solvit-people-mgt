@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../services/api';
 
-const hrRoles=['hr_admin','hr_manager'];
+const hrRoles=['hr_admin','hr_manager', 'general_manager'];
 const message=e=>typeof e.response?.data?.detail==='string'?e.response.data.detail:'Benefits information is unavailable. Please retry.';
 const label={display:'grid',gap:5,marginBottom:12};
 const button={minHeight:44,padding:'8px 14px',cursor:'pointer'};

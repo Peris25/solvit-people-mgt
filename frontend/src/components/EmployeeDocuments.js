@@ -22,7 +22,7 @@ export default function EmployeeDocuments({ employeeId, user }) {
   const [editing, setEditing] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [downloading, setDownloading] = useState(null);
-  const canWrite = ['hr_admin', 'hr_manager'].includes(user?.role);
+  const canWrite = ['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role);
 
   const load = useCallback(async () => {
     const sequence = ++generation.current;

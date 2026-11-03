@@ -86,7 +86,7 @@ def calculate_flight_risk(employee: dict, alignment_score: float = None, perform
 @router.get("")
 async def list_flight_risks(request: Request, risk_level: Optional[str] = None):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     query = {"tenant_id": "solvit", "lifecycle_state": {"$in": ["Active", "PIP", "Realignment"]}}
@@ -99,7 +99,7 @@ async def list_flight_risks(request: Request, risk_level: Optional[str] = None):
 @router.post("/calculate/{employee_id}")
 async def calculate_risk(employee_id: str, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     emp = await find_employee(db, employee_id, tenant_of(user))
@@ -142,7 +142,7 @@ async def calculate_risk(employee_id: str, request: Request):
 @router.get("/stay-interviews")
 async def list_stay_interviews(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     interviews = await db.stay_interviews.find({"tenant_id": "solvit"}).sort("created_at", -1).to_list(100)
@@ -152,7 +152,7 @@ async def list_stay_interviews(request: Request):
 @router.post("/stay-interviews")
 async def create_stay_interview(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     body = await request.json()
     db = get_db()
@@ -196,7 +196,7 @@ async def create_stay_interview(request: Request):
 @router.put("/stay-interviews/{interview_id}")
 async def update_stay_interview(interview_id: str, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     body = await request.json()
     # Whitelist allowed fields to prevent injection of tenant_id, conducted_by, _id, etc.
@@ -221,7 +221,7 @@ async def update_stay_interview(interview_id: str, request: Request):
 @router.get("/exit-insights")
 async def get_exit_insights(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "executive"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "executive"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     interviews = await db.exit_interviews.find({"tenant_id": "solvit"}).sort("exit_date", -1).to_list(100)
@@ -233,7 +233,7 @@ async def voluntary_attrition_kpi(request: Request):
     """Voluntary attrition % over rolling 12 months. Target: ≤10%.
     Excludes probation exits (Month 3 fail). Classified Regrettable / Non-Regrettable."""
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "executive"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "executive"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     from datetime import timedelta
@@ -289,7 +289,7 @@ async def voluntary_attrition_kpi(request: Request):
 @router.get("/risk-summary")
 async def get_risk_summary(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "executive"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "executive"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     pipeline = [

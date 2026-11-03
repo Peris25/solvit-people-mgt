@@ -191,7 +191,7 @@ async def get_review_panel(employee_id: str, request: Request):
     Casting vote: HR Admin (recorded in `casting_vote_role`).
     """
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "line_manager", "executive", "board", "it_admin"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "line_manager", "executive", "board", "it_admin"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     emp = await find_employee(db, employee_id, tenant_of(user))
@@ -269,7 +269,7 @@ async def get_review_panel(employee_id: str, request: Request):
 async def get_talent_density_kpi(request: Request, cycle_year: Optional[int] = None):
     """Composite organisational health metric. Target 85%."""
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "executive"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "executive"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     from utils.access_matrix import get_module_access
     if not get_module_access("M05", user.get("role")):

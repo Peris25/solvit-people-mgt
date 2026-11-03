@@ -411,7 +411,7 @@ async def start_form_submission(form_id: str, request: Request):
     if form_id == "form-15":
         raise HTTPException(409, "Submit leave through Leave Management (/leave) for policy checks and two-stage approval")
     # Starting a workflow is not permission to impersonate its later signers.
-    if user["role"] not in sequence and user["role"] != "hr_admin" and not ("employee" in sequence and employee and employee_key(employee) == user.get("employee_id")):
+    if user["role"] not in sequence and user["role"] not in {"hr_admin", "general_manager"} and not ("employee" in sequence and employee and employee_key(employee) == user.get("employee_id")):
         raise HTTPException(403, "No permission to start this form")
     schema = FORM_SCHEMAS[form_id]
     doc = {
@@ -542,7 +542,7 @@ async def get_form_schema(form_id: str, request: Request):
     matrix = FORM_WORKFLOW_MATRIX.get(form_id, {})
     from copy import deepcopy
     enriched = deepcopy({**schema, **matrix})
-    if form_id in {'form-02', 'form-03'} and user.get('role') not in {'hr_admin', 'hr_manager'}:
+    if form_id in {'form-02', 'form-03'} and user.get('role') not in {'hr_admin', 'hr_manager', "general_manager"}:
         for section in enriched.get('sections', []):
             for field in section.get('fields', []):
                 field.pop('correct_answer', None)
@@ -575,7 +575,7 @@ async def submit_form(form_id: str, request: Request):
     if form_id == "form-15":
         raise HTTPException(409, "Submit leave through Leave Management (/leave) for policy checks and two-stage approval")
     sequence = matrix.get("completing_users_sequence", [])
-    if user["role"] not in sequence and user["role"] != "hr_admin" and not ("employee" in sequence and employee and employee_key(employee) == user.get("employee_id")):
+    if user["role"] not in sequence and user["role"] not in {"hr_admin", "general_manager"} and not ("employee" in sequence and employee and employee_key(employee) == user.get("employee_id")):
         raise HTTPException(403, "No permission to submit this form")
     for signer in (body.get("signatures") or {}):
         if signer not in matrix.get("required_signatures", []):
@@ -678,7 +678,7 @@ async def get_submissions(entity_id: str, request: Request, form_id: Optional[st
             except HTTPException as error:
                 if error.status_code in (403, 404): continue
                 raise
-        if (module == "M14" or user.get("role") == "line_manager" and sub.get("form_id") == "form-01") and user.get("role") not in {"hr_admin", "hr_manager"}:
+        if (module == "M14" or user.get("role") == "line_manager" and sub.get("form_id") == "form-01") and user.get("role") not in {"hr_admin", "hr_manager", "general_manager"}:
             sub = {key: value for key, value in sub.items() if key in {"_id", "id", "form_id", "form_title", "status", "created_at", "submitted_at"}}
         if sub.get("form_id") == "form-06":
             from utils.performance_workflows import employee_access
@@ -688,7 +688,7 @@ async def get_submissions(entity_id: str, request: Request, form_id: Optional[st
             except HTTPException as error:
                 if error.status_code in (403, 404): continue
                 raise
-            if employee_key(employee) == user.get("employee_id") or user.get("role") not in ("hr_admin", "hr_manager", "line_manager"):
+            if employee_key(employee) == user.get("employee_id") or user.get("role") not in ("hr_admin", "hr_manager", "general_manager", "line_manager"):
                 sub = {key: value for key, value in sub.items() if key in {"_id", "id", "form_id", "form_title", "status", "created_at", "submitted_at"}}
                 sub["data"] = {}
                 sub["workflow_path"] = "/performance"

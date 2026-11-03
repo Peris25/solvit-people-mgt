@@ -35,7 +35,7 @@ export default function Recognition() {
       }
     };
     try {
-      const awardsRole = ['hr_admin', 'hr_manager', 'line_manager', 'solver'].includes(role);
+      const awardsRole = ['hr_admin', 'hr_manager', 'general_manager', 'line_manager', 'solver'].includes(role);
       const [r, s] = await Promise.all([
         role === 'solver' ? Promise.resolve({data: []}) : permittedOrEmpty(api.getRecognitions),
         awardsRole ? permittedOrEmpty(api.getSolverAwards) : Promise.resolve({data: []})

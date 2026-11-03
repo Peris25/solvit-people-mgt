@@ -233,13 +233,13 @@ async def list_requisitions(request: Request):
     async for r in db.solver_requisitions.find({"tenant_id": tenant_of(user)}).sort("created_at", -1):
         items.append(_serialise(r))
     return {"requisitions": items, "count": len(items),
-            "can_edit": user.get("role") in ("hr_admin", "hr_manager")}
+            "can_edit": user.get("role") in ("hr_admin", "hr_manager", "general_manager")}
 
 
 @router.post("/requisitions")
 async def create_requisition(body: RequisitionCreate, request: Request):
     user = await get_current_user(request)
-    if user.get("role") not in ("hr_admin", "hr_manager") or not await _hr_or_solvers(user):
+    if user.get("role") not in ("hr_admin", "hr_manager", "general_manager") or not await _hr_or_solvers(user):
         raise HTTPException(status_code=403, detail="HR Admin only")
     db = get_db()
     # Validate counties
@@ -273,7 +273,7 @@ async def create_requisition(body: RequisitionCreate, request: Request):
 @router.put("/requisitions/{rid}")
 async def update_requisition(rid: str, body: RequisitionUpdate, request: Request):
     user = await get_current_user(request)
-    if user.get("role") not in ("hr_admin", "hr_manager") or not await _hr_or_solvers(user):
+    if user.get("role") not in ("hr_admin", "hr_manager", "general_manager") or not await _hr_or_solvers(user):
         raise HTTPException(status_code=403, detail="HR Admin only")
     db = get_db()
     existing = await db.solver_requisitions.find_one({"id": rid, "tenant_id": tenant_of(user)})

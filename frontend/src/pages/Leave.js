@@ -61,8 +61,8 @@ export default function Leave() {
   // the users-collection id which can differ from employees.id (e.g. Finance,
   // HR Admin), so always prefer the resolved id when available.
   const [myEmpId, setMyEmpId] = useState(user?.employee_id || '');
-  const isLM = user?.role === 'line_manager';
-  const isHR = ['hr_admin', 'hr_manager'].includes(user?.role);
+  const isLM = ['line_manager', 'it_admin'].includes(user?.role);
+  const isHR = ['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role);
   const canDecide = isLM || isHR || ['finance', 'executive', 'board'].includes(user?.role);
 
   const [tab, setTab] = useState(isHR ? 'team' : 'my');

@@ -56,7 +56,7 @@ async def _can_view_employee_docs(user: dict, employee_id: str) -> bool:
     role = user.get("role")
     try:
         employee = await authorize_employee(get_db(), user, employee_id, "M01")
-        if role not in {'hr_admin', 'hr_manager'} and str(employee.get('lifecycle_state') or '').lower() in {'exited', 'suspended', 'terminated'}:
+        if role not in {'hr_admin', 'hr_manager', "general_manager"} and str(employee.get('lifecycle_state') or '').lower() in {'exited', 'suspended', 'terminated'}:
             return False
         return role != "solver"
     except HTTPException:
@@ -64,7 +64,7 @@ async def _can_view_employee_docs(user: dict, employee_id: str) -> bool:
 
 
 def _visible(doc, employee, user):
-    if user.get("role") in ("hr_admin", "hr_manager"):
+    if user.get("role") in ("hr_admin", "hr_manager", "general_manager"):
         return True
     category = " ".join(str(doc.get(key) or "") for key in ("category", "category_label", "title")).lower()
     if doc.get("restricted") or doc.get("confidential") is not False or any(term in category for term in ("disciplin", "medical", "salary", "payslip", "p9", "warning", "hearing", "improvement plan")):
@@ -81,7 +81,7 @@ def _restricted(doc):
 
 
 def _can_write(user: dict) -> bool:
-    return user.get("role") in ("hr_admin", "hr_manager")
+    return user.get("role") in ("hr_admin", "hr_manager", "general_manager")
 
 
 def _display_name(value):
@@ -342,7 +342,7 @@ async def delete_document(doc_id: str, request: Request):
 @router.get("/audit-log")
 async def document_audit_log(request: Request, employee_id: Optional[str] = None, limit: int = 200):
     user = await get_current_user(request)
-    if user.get("role") not in ("hr_admin", "hr_manager", "it_admin"):
+    if user.get("role") not in ("hr_admin", "hr_manager", "general_manager", "it_admin"):
         raise HTTPException(status_code=403, detail="Audit log restricted")
     db = get_db()
     personal_grant(user, 'M01')

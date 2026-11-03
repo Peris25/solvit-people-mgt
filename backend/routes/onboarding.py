@@ -152,13 +152,13 @@ async def update_task(task_id: str, upd: TaskUpdate, request: Request):
         record = await authorize_solver(db, user, current.get("entity_id"))
         if current.get('task_key') in {'S01','S02','S03','S04','S05','S06'}:
             raise HTTPException(409, 'Use the evidence-backed Solver verification and activation actions')
-        if user.get("role") not in ("hr_admin", "hr_manager"):
+        if user.get("role") not in ("hr_admin", "hr_manager", "general_manager"):
             if current.get("assigned_role") != user.get("role"):
                 raise HTTPException(403, "This induction task belongs to another role")
         from utils.solver_access import audit_solver
         await audit_solver(db, user, 'solver.induction.task.changed', [record], ['status','notes'])
     elif current.get("entity_type") != "employee":
-        if user["role"] not in ("hr_admin", "hr_manager"):
+        if user["role"] not in ("hr_admin", "hr_manager", "general_manager"):
             raise HTTPException(403, "No permission for this induction task")
     else:
         from utils.lifecycle_workflows import task_access
@@ -185,7 +185,7 @@ async def update_task(task_id: str, upd: TaskUpdate, request: Request):
 @router.get("/all")
 async def get_all_onboarding(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     # Get employees in onboarding/probation

@@ -171,7 +171,7 @@ def _build_template(kind: str) -> io.BytesIO:
 @router.get("/template/{kind}")
 async def download_template(kind: str, request: Request):
     user = await get_current_user(request)
-    if user.get("role") not in ("hr_admin", "hr_manager", "it_admin"):
+    if user.get("role") not in ("hr_admin", "hr_manager", "general_manager", "it_admin"):
         raise HTTPException(status_code=403, detail="HR/IT Admin only")
     if kind not in TEMPLATES:
         raise HTTPException(status_code=404, detail="Unknown template kind")
@@ -318,7 +318,7 @@ def _read_xlsx(content: bytes) -> list:
 @router.post("/validate")
 async def validate_import(request: Request, kind: str = Form(...), file: UploadFile = File(...)):
     user = await get_current_user(request)
-    if user.get("role") not in ("hr_admin", "hr_manager"):
+    if user.get("role") not in ("hr_admin", "hr_manager", "general_manager"):
         raise HTTPException(status_code=403, detail="HR Admin only")
     if kind not in TEMPLATES:
         raise HTTPException(status_code=400, detail="Unknown import kind")
@@ -350,7 +350,7 @@ async def validate_import(request: Request, kind: str = Form(...), file: UploadF
 @router.post("/import")
 async def execute_import(request: Request):
     user = await get_current_user(request)
-    if user.get("role") not in ("hr_admin", "hr_manager"):
+    if user.get("role") not in ("hr_admin", "hr_manager", "general_manager"):
         raise HTTPException(status_code=403, detail="HR Admin only")
     body = await request.json()
     kind = body.get("kind")
@@ -489,7 +489,7 @@ async def execute_import(request: Request):
 @router.get("/history")
 async def import_history(request: Request, limit: int = 50):
     user = await get_current_user(request)
-    if user.get("role") not in ("hr_admin", "hr_manager", "it_admin"):
+    if user.get("role") not in ("hr_admin", "hr_manager", "general_manager", "it_admin"):
         raise HTTPException(status_code=403, detail="HR/IT Admin only")
     db = get_db()
     rows = await db.data_import_log.find({"tenant_id": "solvit"}).sort("imported_at", -1).to_list(min(limit, 200))
@@ -503,7 +503,7 @@ async def import_history(request: Request, limit: int = 50):
 @router.get("/history/{log_id}/download")
 async def download_original_import(log_id: str, request: Request):
     user = await get_current_user(request)
-    if user.get("role") not in ("hr_admin", "hr_manager", "it_admin"):
+    if user.get("role") not in ("hr_admin", "hr_manager", "general_manager", "it_admin"):
         raise HTTPException(status_code=403, detail="HR/IT Admin only")
     db = get_db()
     log = await db.data_import_log.find_one({"id": log_id})
@@ -520,7 +520,7 @@ async def download_original_import(log_id: str, request: Request):
 async def error_report_xlsx(request: Request):
     """Generate an Excel error report from a previously-cached validation result."""
     user = await get_current_user(request)
-    if user.get("role") not in ("hr_admin", "hr_manager"):
+    if user.get("role") not in ("hr_admin", "hr_manager", "general_manager"):
         raise HTTPException(status_code=403, detail="HR Admin only")
     body = await request.json()
     rows = body.get("rows") or []

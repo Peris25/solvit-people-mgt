@@ -16,7 +16,7 @@ export default function Projects() {
     try {
       const [pRes, eRes] = await Promise.all([
         api.get('/projects'),
-        ['hr_admin', 'hr_manager'].includes(user?.role) ? api.get('/projects/eligible') : Promise.resolve({ data: [] })
+        ['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) ? api.get('/projects/eligible') : Promise.resolve({ data: [] })
       ]);
       setProjects(pRes.data);
       setEligible(eRes.data);

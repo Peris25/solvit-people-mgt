@@ -34,14 +34,14 @@ export default function Performance() {
       setViewReview(previous => revRes.data.find(row => row.id === (previous?.id || new URLSearchParams(window.location.search).get('review'))) || null);
       setReviews(revRes.data);
       setCycle(cycleRes.data);
-      if (['hr_admin', 'hr_manager'].includes(user?.role)) {
+      if (['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role)) {
         const empRes = await api.getEmployees();
         setEmployees(empRes.data.filter(e => e.lifecycle_state === 'Active'));
       }
     } catch { setError('Unable to load performance information. Please retry.'); } finally { setLoading(false); }
   }, [user?.role]);
 
-  useEffect(() => { load(); if (['hr_admin', 'hr_manager', 'executive'].includes(user?.role)) api.getTalentDensity().then(r => setTalentDensity(r.data)).catch(() => {}); }, [load, user?.role]);
+  useEffect(() => { load(); if (['hr_admin', 'hr_manager', 'general_manager', 'executive'].includes(user?.role)) api.getTalentDensity().then(r => setTalentDensity(r.data)).catch(() => {}); }, [load, user?.role]);
 
   const loadNineBox = async () => {
     try { const res = await api.getNineBoxMatrix(); setNineBox(res.data); }
@@ -196,13 +196,13 @@ export default function Performance() {
           <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', margin: 0 }}>Performance Reviews</h1>
           {cycle?.is_active ? <p style={{ color: '#525252', fontSize: '13px', margin: 0, marginTop: '4px' }}>Active cycle: {cycle.cycle_type} {cycle.cycle_year}</p> : <p>No review cycle currently active</p>}
         </div>
-        {['hr_admin', 'hr_manager'].includes(user?.role) && (
+        {['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) && (
           <button data-testid="create-review-btn" onClick={() => setShowCreate(true)} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>+ Create Review</button>
         )}
       </div>
 
       {error && <div role="alert">{error} <button onClick={load}>Retry</button></div>}
-      {['hr_admin', 'hr_manager'].includes(user?.role) && <CycleConfiguration cycles={cycles} onUpdated={load} />}
+      {['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) && <CycleConfiguration cycles={cycles} onUpdated={load} />}
       <p style={{ fontSize: '12px', color: '#525252' }}>Talent-density component weights below describe the aggregate dashboard metric, not an individual review score. Each review uses its approved cycle policy.</p>
       {/* Talent Density Score banner (correction §3) */}
       {talentDensity && (
@@ -236,7 +236,7 @@ export default function Performance() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid rgba(25,25,25,0.1)', marginBottom: '20px' }}>
-        {(['hr_admin', 'hr_manager'].includes(user?.role) ? ['reviews', '9-box'] : ['reviews']).map(t => (
+        {(['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) ? ['reviews', '9-box'] : ['reviews']).map(t => (
           <button key={t} onClick={() => { setTab(t); if (t === '9-box') loadNineBox(); }}
             style={{ padding: '10px 20px', backgroundColor: 'transparent', border: 'none', borderBottom: tab === t ? '2px solid #FF353F' : '2px solid transparent', marginBottom: '-2px', cursor: 'pointer', fontSize: '12px', fontWeight: tab === t ? 700 : 400, color: tab === t ? '#FF353F' : '#525252', fontFamily: 'Arial', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
             {t === '9-box' ? '9-Box Matrix' : 'Reviews'}

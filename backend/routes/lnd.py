@@ -168,7 +168,7 @@ async def create_or_update_idp(idp: IDPCreate, request: Request):
 async def bulk_assign_training(request: Request):
     """Assign the same training to multiple employees at once. HR Admin / Manager only."""
     user = await get_current_user(request)
-    if user.get("role") not in ("hr_admin", "hr_manager", "line_manager"):
+    if user.get("role") not in ("hr_admin", "hr_manager", "general_manager", "line_manager", "it_admin"):
         raise HTTPException(403, "Insufficient permissions")
     body = await object_body(request)
     ids = body.get("employee_ids")

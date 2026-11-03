@@ -108,3 +108,18 @@ test('HR notification preview hides unlinked generic updates and opens an action
   expect(markRead).toHaveBeenCalledWith('leave');
   expect(container.querySelector('[data-testid="notif-dropdown"]')).toBeNull();
 });
+
+
+test('General Manager sees HR business modules but no technical or account setup', async () => {
+  useAuth.mockReturnValue({ user: { id: 'gm', role: 'general_manager', full_name: 'Synthetic GM' } });
+  await render(<Sidebar collapsed={false} onToggle={jest.fn()} />);
+  for (const route of ['employees', 'leave', 'performance', 'lnd', 'reporting', 'compensation']) {
+    expect(container.querySelector(`[data-testid="nav-${route}"]`)).not.toBeNull();
+  }
+  for (const route of ['roles-permissions', 'settings', 'masters']) {
+    expect(container.querySelector(`[data-testid="nav-${route}"]`)).toBeNull();
+  }
+  await render(<EmployeeLoginReview />);
+  expect(container.textContent).toBe('');
+  expect(api.getEmployeeLoginReview).not.toHaveBeenCalled();
+});

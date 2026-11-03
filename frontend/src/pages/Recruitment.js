@@ -52,7 +52,7 @@ export default function Recruitment() {
           <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', margin: 0 }}>Recruitment Pipeline</h1>
           <p style={{ color: '#525252', fontSize: '13px', margin: 0, marginTop: '4px' }}>{totalCandidates} total candidates - {closedCount} in closed or accepted stages</p>
         </div>
-        {['hr_admin', 'hr_manager'].includes(user?.role) && (
+        {['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) && (
           <button data-testid="add-candidate-btn" onClick={() => setShowForm(true)} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>+ Add Candidate</button>
         )}
       </div>
@@ -75,10 +75,10 @@ export default function Recruitment() {
                       <div style={{ fontSize: '11px', color: '#525252', margin: '2px 0' }}>{c.position_applied}</div>
                       <div style={{ fontSize: '10px', color: '#9CA3AF' }}>{c.department} · {c.role_level}</div>
                       <div style={{ display: 'flex', gap: '4px', marginTop: '8px' }}>
-                        {['hr_admin', 'hr_manager'].includes(user?.role) && (!c.status || c.status === 'Active') && STAGES.indexOf(stage) >= 0 && STAGES.indexOf(stage) < 5 && (
+                        {['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) && (!c.status || c.status === 'Active') && STAGES.indexOf(stage) >= 0 && STAGES.indexOf(stage) < 5 && (
                           <button onClick={() => moveStage(c.id, STAGES[STAGES.indexOf(stage) + 1])} style={{ padding: '3px 8px', fontSize: '10px', border: '1px solid #22C55E', backgroundColor: 'transparent', color: '#22C55E', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>→ Next</button>
                         )}
-                        {['hr_admin', 'hr_manager'].includes(user?.role) && (!c.status || c.status === 'Active') && !['Rejected', 'Withdrawn', 'Offer Accepted'].includes(stage) && <button onClick={() => moveStage(c.id, 'Rejected')} style={{ padding: '3px 8px', fontSize: '10px', border: '1px solid #FF353F', backgroundColor: 'transparent', color: '#FF353F', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>✗ Reject</button>}
+                        {['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) && (!c.status || c.status === 'Active') && !['Rejected', 'Withdrawn', 'Offer Accepted'].includes(stage) && <button onClick={() => moveStage(c.id, 'Rejected')} style={{ padding: '3px 8px', fontSize: '10px', border: '1px solid #FF353F', backgroundColor: 'transparent', color: '#FF353F', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>✗ Reject</button>}
                       </div>
                     </div>
                   ))}

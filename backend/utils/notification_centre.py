@@ -78,7 +78,7 @@ async def inbox_user(db, user):
             user["employee_id"] = employee_key(employee)
             user["employee_reference_ids"] = [employee_key(employee), str(employee["_id"]), employee["_id"]]
             user["notification_active_fte"] = status == "active" and token(employee.get("employment_type")) in {"", "fulltime", "fte"}
-        elif user.get("role") not in {"hr_admin", "hr_manager", "it_admin", "finance", "executive", "board"}:
+        elif user.get("role") not in {"hr_admin", "hr_manager", "general_manager", "it_admin", "finance", "executive", "board"}:
             raise HTTPException(409, "This account needs an employee link from HR")
         else:
             user["employee_id"] = None
@@ -184,7 +184,7 @@ async def related_link(db, user, row, category):
         if category == "Benefits":
             record = await find_linked_record(db.benefit_requests, str(data.get("benefit_request_id") or ""), user)
             employee = await authorize_employee(db, user, record.get("employee_id"), "M01")
-            if user.get("role") not in {"hr_admin", "hr_manager"} and employee_key(employee) != user.get("employee_id"):
+            if user.get("role") not in {"hr_admin", "hr_manager", "general_manager"} and employee_key(employee) != user.get("employee_id"):
                 return None, None
             return "/benefits", None
         if category in ("Leave", "Approvals", "Training"):
@@ -234,8 +234,8 @@ async def leave_preview(db, user, row, action):
     except HTTPException:
         return PREVIEWS["Leave"]
     if action:
-        title = "Leave awaiting HR review" if user.get("role") in {"hr_admin", "hr_manager"} else "Leave awaiting manager review"
-        message = "A team member's leave request needs your review. Open it to approve or deny." if user.get("role") in {"hr_admin", "hr_manager"} else "A direct report's leave request needs your review. Open it to recommend approval or deny."
+        title = "Leave awaiting HR review" if user.get("role") in {"hr_admin", "hr_manager", "general_manager"} else "Leave awaiting manager review"
+        message = "A team member's leave request needs your review. Open it to approve or deny." if user.get("role") in {"hr_admin", "hr_manager", "general_manager"} else "A direct report's leave request needs your review. Open it to recommend approval or deny."
     elif record.get("status") == "Approved":
         title, message = "Leave approved", "Your leave request is approved." if employee_key(employee) == user.get("employee_id") else "A leave request you follow has been approved."
     elif record.get("status") in {"Rejected", "Denied"}:

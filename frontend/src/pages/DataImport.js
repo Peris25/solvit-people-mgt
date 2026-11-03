@@ -11,7 +11,7 @@ const KINDS = [
 
 export default function DataImport() {
   const { user } = useAuth();
-  const isHR = ['hr_admin', 'hr_manager'].includes(user?.role);
+  const isHR = ['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role);
   const isITAuditView = user?.role === 'it_admin';
 
   const [tab, setTab] = useState(isHR ? 'upload' : 'templates');

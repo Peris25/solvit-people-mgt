@@ -378,7 +378,7 @@ async def chat_with_agent(msg: ChatMessage, request: Request):
     required = ["M01"] + [intent_modules[x] for x in classify_intents(msg.message)]
     if has_entity_question(msg.message): required += ["M18", "M05", "M08", "M14"]
     authorize_context(user, required)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Only HR Admin/Manager can use the AI Assistant")
     db = get_db()
     settings = await db.platform_settings.find_one({"tenant_id": "solvit"})
@@ -465,7 +465,7 @@ def _fallback_brief(context: str, message: str) -> str:
 @router.get("/compliance-check")
 async def run_compliance_check(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     authorize_context(user, ["M01", "M19"])
     db = get_db()
@@ -477,7 +477,7 @@ async def run_compliance_check(request: Request):
 async def daily_brief(request: Request):
     """Single-call daily brief for the HR Admin landing page."""
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     authorize_context(user, ["M01", "M02", "M03", "M04", "M05", "M08", "M11", "M12", "M14", "M18", "M19"])
     db = get_db()
@@ -500,7 +500,7 @@ async def daily_brief(request: Request):
 @router.get("/employee-status")
 async def employee_status(request: Request, query: str):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "line_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "line_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     module_access(user, "M16")
@@ -618,7 +618,7 @@ async def cancel_action(action_id: str, request: Request):
 @router.get("/actions/audit")
 async def actions_audit(request: Request, limit: int = 50):
     user = await get_current_user(request)
-    if user["role"] not in ("hr_admin", "hr_manager", "it_admin"):
+    if user["role"] not in ("hr_admin", "hr_manager", "general_manager", "it_admin"):
         raise HTTPException(status_code=403, detail="HR / IT Admin only")
     from utils import administrative_reporting as reporting
     db=get_db()

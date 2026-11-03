@@ -71,7 +71,7 @@ async def staff_home_data(db, user, balance_loader):
             link('Solver Directory', '/solvers')
         except HTTPException as error:
             if error.status_code != 403: raise
-    if user.get('role') in {'hr_admin', 'hr_manager', 'line_manager'}:
+    if user.get('role') in {'hr_admin', 'hr_manager', "general_manager", 'line_manager'}:
         from utils import solver_assessments
         try:
             if user.get('role') in solver_assessments.HR_ROLES: solver_assessments.hr(user)

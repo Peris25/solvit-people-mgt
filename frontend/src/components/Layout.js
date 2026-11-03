@@ -48,7 +48,7 @@ export default function Layout() {
       <Sidebar collapsed={sidebarCollapsed} onToggle={setSidebarCollapsed} onAIToggle={() => setAiOpen(p => !p)} aiOpen={aiOpen} />
       <div className="portal-content" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', marginRight: aiOpen ? '380px' : 0, transition: 'margin-right 0.3s' }}>
         <header className="portal-topbar">
-          <div className="portal-workspace-label"><span className="portal-brand-dot" aria-hidden="true" /><span>Solvit People</span><span className="portal-topbar-divider" aria-hidden="true">/</span><strong>{['hr_admin', 'hr_manager'].includes(user.role) ? 'HR workspace' : 'My workspace'}</strong></div>
+          <div className="portal-workspace-label"><span className="portal-brand-dot" aria-hidden="true" /><span>Solvit People</span><span className="portal-topbar-divider" aria-hidden="true">/</span><strong>{['hr_admin', 'hr_manager', 'general_manager'].includes(user.role) ? 'HR workspace' : 'My workspace'}</strong></div>
           <Link to="/my-profile" className="portal-account-link"><span className="portal-account-initial" aria-hidden="true">{user.full_name?.[0] || 'S'}</span><span>{user.full_name || 'My Profile'}</span></Link>
         </header>
         <a href="#portal-page-content" className="portal-skip-link">Skip to page content</a>

@@ -21,7 +21,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.exceptions import InvalidTag
 from utils.employee_integrity import tenant_of
 
-PRIVILEGED = {"hr_admin", "hr_manager", "finance", "it_admin", "executive"}
+PRIVILEGED = {"hr_admin", "hr_manager", "finance", "it_admin", "executive", "general_manager"}
 STEP = 30
 WINDOW = 15 * 60
 PENDING_SECONDS = 5 * 60

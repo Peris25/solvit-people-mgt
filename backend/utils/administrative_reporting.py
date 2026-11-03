@@ -16,7 +16,7 @@ from utils.employee_integrity import employee_key, is_direct_report, resolve_use
 from utils.staff_directory import employment_type, normalized
 from utils.staff_views import restricted
 
-HR={'hr_admin','hr_manager'}
+HR={'hr_admin','hr_manager', "general_manager"}
 KINDS={'solver_assessments':('M02','form_submissions','created_at'),'solvers':('M02','solvers','created_at'),'employees':('M01','employees','start_date'),'leave':('M18','leave_requests','start_date'),
        'leave_balances':('M18','leave_balances','updated_at'),'onboarding':('M04','onboarding_tasks','due_date'),
        'performance':('M05','performance_reviews','review_date'),'training':('M08','training_requests','proposed_start_date'),

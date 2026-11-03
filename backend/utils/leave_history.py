@@ -125,7 +125,7 @@ async def approve_recorded(db, user, body):
 
 
 def require_hr(user):
-    if user.get("role") not in {"hr_admin", "hr_manager"}:
+    if user.get("role") not in {"hr_admin", "hr_manager", "general_manager"}:
         raise HTTPException(403, "Historical leave is managed by HR only")
 
 

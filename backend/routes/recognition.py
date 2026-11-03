@@ -106,7 +106,7 @@ async def create_peer_nomination(nom: PeerNomination, request: Request):
 @router.post("/manager")
 async def create_manager_recognition(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "line_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "line_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     return await record_manager_recognition(db, user, await request.json())
@@ -186,7 +186,7 @@ async def list_solver_awards(request: Request):
 @router.post("/solver-awards")
 async def create_solver_award(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "line_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "line_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     body = await request.json()
@@ -224,7 +224,7 @@ async def create_solver_award(request: Request):
 @router.get("/long-service")
 async def get_long_service_milestones(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     module_access(user, "M11")

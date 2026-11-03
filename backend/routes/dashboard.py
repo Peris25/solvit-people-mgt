@@ -43,7 +43,7 @@ async def line_manager_widget(request: Request):
     - my_open_tasks: count of tasks assigned to me that are still open
     """
     user = await get_current_user(request)
-    if user["role"] not in ("line_manager", "hr_admin", "hr_manager", "it_admin"):
+    if user["role"] not in ("line_manager", "hr_admin", "hr_manager", "general_manager", "it_admin"):
         raise HTTPException(status_code=403, detail="Line Manager widget access only")
     db = get_db()
     my_emp_id = await _resolve_emp_id(db, user)

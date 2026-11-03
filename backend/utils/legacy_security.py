@@ -6,7 +6,7 @@ from utils.access_matrix import get_module_access
 from utils.employee_integrity import tenant_of, tenant_query, find_employee, employee_key
 from utils.employee_access import find_linked_record
 
-HR = {"hr_admin", "hr_manager"}
+HR = {"hr_admin", "hr_manager", "general_manager"}
 
 
 def module_access(user, module, write=False):

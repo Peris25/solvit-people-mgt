@@ -24,7 +24,7 @@ def fmt(doc):
 @router.get("/statutory")
 async def get_statutory_status(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "finance"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "finance"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     module_access(user, "M19", write=request.method != "GET")
     db = get_db()
@@ -170,7 +170,7 @@ async def get_nssf_rates(request: Request):
 @router.get("/deadlines")
 async def get_upcoming_deadlines(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["finance", "hr_admin", "hr_manager"]:
+    if user["role"] not in ["finance", "hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     module_access(user, "M19")
     now = datetime.now(timezone(timedelta(hours=3)))

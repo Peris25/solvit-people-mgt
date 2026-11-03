@@ -22,7 +22,7 @@ export default function ProfileChanges({ employee, user, selfService, onApplied 
   const [value, setValue] = useState('');
   const [structured, setStructured] = useState({});
   const [reason, setReason] = useState('');
-  const canReview = ['hr_admin', 'hr_manager', 'finance'].includes(user?.role);
+  const canReview = ['hr_admin', 'hr_manager', 'general_manager', 'finance'].includes(user?.role);
   const load = useCallback(async () => {
     setLoaded(null); setRows([]); setInbox([]); setError('');
     try {
@@ -61,7 +61,7 @@ export default function ProfileChanges({ employee, user, selfService, onApplied 
     {row.employee_name && <strong>{row.employee_name}</strong>}<p>Status: {row.status}</p>
     <dl>{Object.entries(row.changes || {}).map(([name, detail]) => <React.Fragment key={name}><dt>{fields[name] || name}</dt><dd style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{typeof detail === 'object' ? JSON.stringify(detail) : detail}</dd></React.Fragment>)}</dl>
     {row.review_reason && <p>Review: {row.review_reason}</p>}
-    {row.employee_id !== user?.employee_id && ((['hr_admin', 'hr_manager'].includes(user?.role) && row.status === 'Pending_HR') || (user?.role === 'finance' && row.status === 'Pending_Finance')) && <>
+    {row.employee_id !== user?.employee_id && ((['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) && row.status === 'Pending_HR') || (user?.role === 'finance' && row.status === 'Pending_Finance')) && <>
       <button disabled={busy} style={buttonStyle} onClick={() => decide(row, 'Approve')}>{row.status === 'Pending_Finance' ? 'Finance approve and apply' : 'HR approve'}</button>
       <button disabled={busy} style={buttonStyle} onClick={() => decide(row, 'Reject')}>Reject</button>
     </>}

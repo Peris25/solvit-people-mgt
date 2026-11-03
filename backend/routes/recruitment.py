@@ -49,7 +49,7 @@ def fmt(doc):
 @router.get("")
 async def list_candidates(request: Request, stage: Optional[str] = None, candidate_type: Optional[str] = None):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "line_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "line_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     query = await recruitment_scope(db, user)
@@ -64,7 +64,7 @@ async def list_candidates(request: Request, stage: Optional[str] = None, candida
 @router.post("")
 async def create_candidate(candidate: CandidateCreate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     await recruitment_scope(db, user, write=True)
@@ -105,7 +105,7 @@ async def create_candidate(candidate: CandidateCreate, request: Request):
 @router.get("/pipeline")
 async def get_pipeline(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "line_manager", "executive"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "line_manager", "executive"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     scope = await recruitment_scope(db, user)
@@ -133,7 +133,7 @@ async def get_candidate(candidate_id: str, request: Request):
 @router.put("/{candidate_id}")
 async def update_candidate(candidate_id: str, upd: CandidateUpdate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "line_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "line_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     if upd.stage in STAGE_ALIASES:
@@ -203,7 +203,7 @@ async def update_candidate(candidate_id: str, upd: CandidateUpdate, request: Req
 @router.post("/{candidate_id}/convert-to-employee")
 async def convert_to_employee(candidate_id: str, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     c = await candidate_record(db, user, candidate_id, write=True)

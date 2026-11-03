@@ -44,6 +44,7 @@ MODULE_LABELS = {
 }
 
 ROLE_LABELS = {
+    "general_manager": "General Manager",
     "hr_admin": "HR Admin",
     "hr_manager": "HR Manager",
     "line_manager": "Line Manager",
@@ -69,7 +70,7 @@ async def get_access_matrix(request: Request):
     role_labels = dict(ROLE_LABELS)
     for k, cdef in CUSTOM_ROLE_DEFINITIONS.items():
         role_labels[k] = cdef.get("label", k)
-    base_order = ["hr_admin", "hr_manager", "line_manager", "finance", "employee", "solver", "executive", "board", "it_admin"]
+    base_order = ["general_manager", "hr_admin", "hr_manager", "line_manager", "finance", "employee", "solver", "executive", "board", "it_admin"]
     custom_order = list(CUSTOM_ROLE_DEFINITIONS.keys())
     return {
         "role": role,

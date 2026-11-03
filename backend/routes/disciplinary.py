@@ -35,7 +35,7 @@ def fmt(doc):
 @router.get("")
 async def list_cases(request: Request, status: Optional[str] = None):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "line_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "line_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     module_access(user, "M14", write=request.method != "GET")
     db = get_db()
@@ -52,7 +52,7 @@ async def list_cases(request: Request, status: Optional[str] = None):
 @router.post("")
 async def create_case(case: CaseCreate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     module_access(user, "M14", write=request.method != "GET")
     db = get_db()
@@ -99,7 +99,7 @@ async def get_case(case_id: str, request: Request):
 @router.put("/{case_id}")
 async def update_case(case_id: str, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     module_access(user, "M14", write=request.method != "GET")
     db = get_db()
@@ -131,7 +131,7 @@ async def update_case(case_id: str, request: Request):
 @router.post("/{case_id}/issue-notice")
 async def issue_notice(case_id: str, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     module_access(user, "M14", write=request.method != "GET")
     db = get_db()

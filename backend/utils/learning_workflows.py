@@ -13,7 +13,7 @@ from utils.employee_integrity import employee_key, find_employee, is_direct_repo
 from utils.staff_directory import employment_type, normalized
 from utils.staff_views import restricted
 
-HR = {"hr_admin", "hr_manager"}
+HR = {"hr_admin", "hr_manager", "general_manager"}
 PENDING = {"Pending_Manager_Approval", "Pending_HR_Approval"}
 
 

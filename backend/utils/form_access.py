@@ -9,7 +9,7 @@ async def form_subject(db, user, body, matrix):
     data = dict(body.get("data") or {})
     solver_reference = body.get("solver_id") or data.get("solver_id")
     if solver_reference:
-        if user.get("role") not in ("hr_admin", "hr_manager", "solver"):
+        if user.get("role") not in ("hr_admin", "hr_manager", "general_manager", "solver"):
             raise HTTPException(403, "No access to this solver's form")
         solver = await authorize_solver(db, user, solver_reference)
         solver_key = str(solver.get("id") or solver["_id"])
@@ -51,7 +51,10 @@ async def authorize_signature(db, user, expected_role, subject_id, started_by=No
         return
     if user.get("role") == "hr_admin":
         return  # Existing HR delegation, never the employee's own signature.
-    if expected_role != user.get("role"):
+    if expected_role == "hr_admin" and user.get("role") == "general_manager":
+        return  # Business HR sign-off only; Finance and IT signatures stay separate.
+    manager_delegate = expected_role == "line_manager" and user.get("role") == "it_admin"
+    if expected_role != user.get("role") and not manager_delegate:
         raise HTTPException(403, "This form step is assigned to a different role")
     if expected_role in ("line_manager", "executive") and employee:
         if not is_direct_report(employee, user):

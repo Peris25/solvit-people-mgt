@@ -9,7 +9,7 @@ export default function Documents() {
   const key = `${user?.id}:${user?.role}`;
   const [selectionKey, setSelectionKey] = useState(key);
   useEffect(() => { setSelected(null); setSelectionKey(key); }, [key]);
-  const canManage = ['hr_admin', 'hr_manager'].includes(user?.role);
+  const canManage = ['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role);
   const employee = selectionKey === key ? selected : null;
   return <div data-testid="documents-page" style={{ fontFamily: 'Nunito Sans, sans-serif' }}>
     <h1 style={{ fontFamily: 'Barlow', fontSize: '32px', marginBottom: '6px' }}>Documents</h1>

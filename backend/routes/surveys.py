@@ -109,7 +109,7 @@ async def list_survey_windows(request: Request):
 @router.post("/windows")
 async def create_survey_window(sw: SurveyWindowCreate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     module_access(user, "M06", write=True)
@@ -143,7 +143,7 @@ async def launch_quick_survey(request: Request):
     Body: { survey_type: 'alignment_fte' | 'alignment_solver' | 'engagement_fte', period_label?: 'Q3 2026' }
     """
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     body = await request.json()
     module_access(user, "M06", write=True)
@@ -297,7 +297,7 @@ async def submit_response(resp: SurveyResponse, request: Request):
 @router.get("/results/{window_id}")
 async def get_survey_results(window_id: str, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "executive"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "executive"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     module_access(user, "M06")

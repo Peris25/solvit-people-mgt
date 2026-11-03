@@ -20,7 +20,7 @@ async def export_employees(request:Request):
 
 async def financial_export(request,kind,module,fields):
     user=await get_current_user(request);entry=get_module_access(module,user.get('role'))
-    if user.get('role') not in {'hr_admin','hr_manager','finance'} or not entry or entry.get('level') not in {'Read','Manage','Full'} or entry.get('scope') not in (None,'no_perf_no_disciplinary'):raise HTTPException(403,'Financial report permission is required')
+    if user.get('role') not in {'hr_admin','hr_manager', "general_manager",'finance'} or not entry or entry.get('level') not in {'Read','Manage','Full'} or entry.get('scope') not in (None,'no_perf_no_disciplinary'):raise HTTPException(403,'Financial report permission is required')
     db=get_db();rows=await getattr(db,kind).find(tenant_query(tenant_of(user))).to_list(10001)
     if len(rows)>10000:raise HTTPException(413,'Financial export exceeds 10000 rows')
     result=[]

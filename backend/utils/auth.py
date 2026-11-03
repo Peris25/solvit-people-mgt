@@ -8,7 +8,7 @@ from bson import ObjectId
 
 JWT_ALGORITHM = "HS256"
 ROLES = ["hr_admin", "hr_manager", "line_manager", "finance", "employee",
-         "solver", "executive", "it_admin", "board"]
+         "solver", "executive", "it_admin", "board", "general_manager"]
 
 # Short-lived access; refresh is bounded by a stable original session age.
 ACCESS_TOKEN_MINUTES = min(15, max(1, int(os.environ.get("ACCESS_TOKEN_MINUTES", "15"))))

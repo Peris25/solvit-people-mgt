@@ -8,7 +8,7 @@ from utils.employee_integrity import (employee_key, find_employee, is_direct_rep
                                       tenant_of, tenant_query, validate_manager_departure)
 from utils.security import revoke_all_user_refresh_tokens
 
-HR = {"hr_admin", "hr_manager"}
+HR = {"hr_admin", "hr_manager", "general_manager"}
 
 
 def now():

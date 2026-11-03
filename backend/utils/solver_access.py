@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from utils.access_matrix import get_module_access, CUSTOM_ROLE_DEFINITIONS
 from utils.employee_integrity import tenant_of, tenant_query, find_employee, email_matches, normalize_email
 
-HR_ROLES = {"hr_admin", "hr_manager"}
+HR_ROLES = {"hr_admin", "hr_manager", "general_manager"}
 OPERATIONAL_FIELDS = ("full_name", "phone_number", "email", "region", "area_covered", "solver_code", "lifecycle_state",
                       "vehicle_categories", "zones_covered", "county", "sub_county", "onboarded_at",
                       "activation_date", "performance_tier", "accuracy_score", "reliability_score",

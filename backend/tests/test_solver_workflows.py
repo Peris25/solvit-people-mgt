@@ -105,7 +105,7 @@ def test_induction_get_is_read_only_and_explicit_start_is_idempotent():
     assert db.onboarding_tasks.writes == 0
     with routes(db, user):
         run(solvers.initiate_induction('one', request())); run(solvers.initiate_induction('one', request()))
-    assert len(db.onboarding_tasks.docs) == 6 and len(db.notifications.docs) == 3
+    assert len(db.onboarding_tasks.docs) == 6 and len(db.notifications.docs) == 4
     assert all(task['entity_id'] == 'one' for task in db.onboarding_tasks.docs)
 
 
@@ -293,7 +293,7 @@ def test_workflow_notifications_are_idempotent_private_and_recipient_isolated():
     from utils.notification_centre import list_inbox, read_notification
     db,user,record=fixture()
     run(service.notify(db,record,'initiated','initial')); run(service.notify(db,record,'initiated','initial'))
-    assert len(db.notifications.docs)==3
+    assert len(db.notifications.docs)==4
     own=actor('solver',solver_id='one'); other=actor('solver',solver_id='two')
     inbox=run(list_inbox(db,own))
     assert inbox['unread_count']==1 and inbox['items'][0]['link']=='/solvers'

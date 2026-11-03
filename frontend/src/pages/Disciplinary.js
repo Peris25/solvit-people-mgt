@@ -14,7 +14,7 @@ export default function Disciplinary() {
   const [form, setForm] = useState({ employee_id: '', employee_name: '', allegation_category: 'Misconduct', allegation_details: '', incident_date: new Date().toISOString().slice(0, 10), case_type: 'Disciplinary' });
   const [saving, setSaving] = useState(false);
 
-  const canCreate = ['hr_admin', 'hr_manager'].includes(user?.role);
+  const canCreate = ['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role);
 
   useEffect(() => { load(); }, []);
 

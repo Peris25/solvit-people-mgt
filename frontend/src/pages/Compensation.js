@@ -17,7 +17,7 @@ export default function Compensation() {
   const [editForm, setEditForm] = useState({ min_kes: 0, mid_kes: 0, max_kes: 0, roles_csv: '', note: '' });
   const [saving, setSaving] = useState(false);
 
-  const canEditBands = ['hr_admin', 'hr_manager'].includes(user?.role);
+  const canEditBands = ['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role);
 
   useEffect(() => {
     Promise.all([api.getPayBands(), api.getPayBandAlerts()])

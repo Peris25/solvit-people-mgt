@@ -18,46 +18,46 @@ const ICON_SIZE = 17;
 
 const MENU_ITEMS = [
   { section: 'Core', items: [
-    { path: '/dashboard',   label: 'Dashboard',    Icon: LayoutDashboard, roles: ['hr_admin','hr_manager','executive','line_manager','finance','employee','solver','board','it_admin'] },
-    { path: '/account-security', label: 'Account security', Icon: KeyRound, roles: ['hr_admin','hr_manager','executive','line_manager','finance','employee','board','it_admin','solver'] },
-    { path: '/my-profile', label: 'My Profile', Icon: Users, roles: ['hr_admin','hr_manager','executive','line_manager','finance','employee','board','it_admin'] },
-    { path: '/documents', label: 'Documents', Icon: FileText, roles: ['hr_admin','hr_manager','executive','line_manager','finance','employee','board','it_admin'] },
-    { path: '/employees',   label: 'Employees',    Icon: Users,           roles: ['hr_admin','hr_manager','line_manager','finance','executive'] },
-    { path: '/staff-directory', label: 'Staff Directory', Icon: Users, roles: ['employee','line_manager','hr_admin','hr_manager','finance','executive','it_admin','board'] },
-    { path: '/organogram',  label: 'Organogram',   Icon: Network,         roles: ['hr_admin','hr_manager','line_manager','finance','executive','employee','it_admin','board'] },
-    { path: '/solvers',     label: 'Solvers',      Icon: Zap,             roles: ['hr_admin','hr_manager','line_manager','solver','executive','solvers_manager'],
+    { path: '/dashboard',   label: 'Dashboard',    Icon: LayoutDashboard, roles: ['hr_admin','hr_manager', 'general_manager','executive','line_manager','finance','employee','solver','board','it_admin'] },
+    { path: '/account-security', label: 'Account security', Icon: KeyRound, roles: ['hr_admin','hr_manager', 'general_manager','executive','line_manager','finance','employee','board','it_admin','solver'] },
+    { path: '/my-profile', label: 'My Profile', Icon: Users, roles: ['hr_admin','hr_manager', 'general_manager','executive','line_manager','finance','employee','board','it_admin'] },
+    { path: '/documents', label: 'Documents', Icon: FileText, roles: ['hr_admin','hr_manager', 'general_manager','executive','line_manager','finance','employee','board','it_admin'] },
+    { path: '/employees',   label: 'Employees',    Icon: Users,           roles: ['hr_admin','hr_manager', 'general_manager','line_manager','finance','executive'] },
+    { path: '/staff-directory', label: 'Staff Directory', Icon: Users, roles: ['employee','line_manager','hr_admin','hr_manager', 'general_manager','finance','executive','it_admin','board'] },
+    { path: '/organogram',  label: 'Organogram',   Icon: Network,         roles: ['hr_admin','hr_manager', 'general_manager','line_manager','finance','executive','employee','it_admin','board'] },
+    { path: '/solvers',     label: 'Solvers',      Icon: Zap,             roles: ['hr_admin','hr_manager', 'general_manager','line_manager','solver','executive','solvers_manager'],
       children: [
-        { path: '/solver-requisitions', label: 'Solver Requisitions', Icon: Target,   roles: ['hr_admin','hr_manager','executive','solvers_manager'] },
-        { path: '/solver-eligible',     label: 'Eligible Solvers',    Icon: FileCheck, roles: ['hr_admin','hr_manager','executive','solvers_manager'] },
-        { path: '/solver-ineligible',   label: 'Ineligible Solvers',  Icon: FileX,    roles: ['hr_admin','hr_manager','executive','solvers_manager'] },
+        { path: '/solver-requisitions', label: 'Solver Requisitions', Icon: Target,   roles: ['hr_admin','hr_manager', 'general_manager','executive','solvers_manager'] },
+        { path: '/solver-eligible',     label: 'Eligible Solvers',    Icon: FileCheck, roles: ['hr_admin','hr_manager', 'general_manager','executive','solvers_manager'] },
+        { path: '/solver-ineligible',   label: 'Ineligible Solvers',  Icon: FileX,    roles: ['hr_admin','hr_manager', 'general_manager','executive','solvers_manager'] },
       ]
     },
-    { path: '/recruitment', label: 'Recruitment',  Icon: Target,          roles: ['hr_admin','hr_manager','line_manager','executive'] },
-    { path: '/solver-assessments', label: 'Solver Assessments', Icon: FileCheck, roles: ['hr_admin','hr_manager','line_manager','solver'] },
-    { path: '/onboarding',  label: 'Onboarding / Exit',   Icon: Rocket,          roles: ['hr_admin','hr_manager','line_manager','employee','solver','finance','it_admin'] },
+    { path: '/recruitment', label: 'Recruitment',  Icon: Target,          roles: ['hr_admin','hr_manager', 'general_manager','line_manager','executive'] },
+    { path: '/solver-assessments', label: 'Solver Assessments', Icon: FileCheck, roles: ['hr_admin','hr_manager', 'general_manager','line_manager','solver'] },
+    { path: '/onboarding',  label: 'Onboarding / Exit',   Icon: Rocket,          roles: ['hr_admin','hr_manager', 'general_manager','line_manager','employee','solver','finance','it_admin'] },
   ]},
   // Line Manager team views — visible to anyone with the manager layer
   // (`line_manager` OR `finance` since Finance & Admin includes the LM layer).
   { section: 'Performance', items: [
-    { path: '/performance', label: 'Performance',  Icon: BarChart3,       roles: ['hr_admin','hr_manager','line_manager','finance','employee','executive'] },
-    { path: '/surveys',     label: 'Surveys',      Icon: ClipboardList,   roles: ['hr_admin','hr_manager','employee','solver','executive'] },
-    { path: '/retention',   label: 'Retention',    Icon: ShieldCheck,     roles: ['hr_admin','hr_manager','executive'] },
-    { path: '/lnd',         label: 'L&D',          Icon: BookOpen,        roles: ['hr_admin','hr_manager','line_manager','finance','employee'] },
-    { path: '/projects',    label: 'Projects',     Icon: Briefcase,       roles: ['hr_admin','hr_manager','line_manager','finance','employee'] },
+    { path: '/performance', label: 'Performance',  Icon: BarChart3,       roles: ['it_admin','hr_admin','hr_manager', 'general_manager','line_manager','finance','employee','executive'] },
+    { path: '/surveys',     label: 'Surveys',      Icon: ClipboardList,   roles: ['hr_admin','hr_manager', 'general_manager','employee','solver','executive'] },
+    { path: '/retention',   label: 'Retention',    Icon: ShieldCheck,     roles: ['hr_admin','hr_manager', 'general_manager','executive'] },
+    { path: '/lnd',         label: 'L&D',          Icon: BookOpen,        roles: ['it_admin','hr_admin','hr_manager', 'general_manager','line_manager','finance','employee'] },
+    { path: '/projects',    label: 'Projects',     Icon: Briefcase,       roles: ['it_admin','hr_admin','hr_manager', 'general_manager','line_manager','finance','employee'] },
   ]},
   { section: 'HR Operations', items: [
-    { path: '/benefits', label: 'Benefits & Payroll Info', Icon: FileText, roles: ['hr_admin','hr_manager','line_manager','finance','employee'] },
-    { path: '/leave',        label: 'Leave',        Icon: Palmtree,       roles: ['hr_admin','hr_manager','line_manager','finance','employee'] },
-    { path: '/compensation', label: 'Compensation', Icon: Wallet,         roles: ['hr_admin','hr_manager','finance','executive'] },
-    { path: '/recognition',  label: 'Recognition',  Icon: Award,          roles: ['hr_admin','hr_manager','line_manager','finance','employee','solver'] },
-    { path: '/disciplinary', label: 'Disciplinary', Icon: Scale,          roles: ['hr_admin','hr_manager','line_manager','finance','employee'] },
-    { path: '/policies',     label: 'Policies',     Icon: FileText,       roles: ['hr_admin','hr_manager','line_manager','finance','employee','solver','executive'] },
+    { path: '/benefits', label: 'Benefits & Payroll Info', Icon: FileText, roles: ['hr_admin','hr_manager', 'general_manager','line_manager','finance','employee'] },
+    { path: '/leave',        label: 'Leave',        Icon: Palmtree,       roles: ['it_admin','hr_admin','hr_manager', 'general_manager','line_manager','finance','employee'] },
+    { path: '/compensation', label: 'Compensation', Icon: Wallet,         roles: ['hr_admin','hr_manager', 'general_manager','finance','executive'] },
+    { path: '/recognition',  label: 'Recognition',  Icon: Award,          roles: ['hr_admin','hr_manager', 'general_manager','line_manager','finance','employee','solver'] },
+    { path: '/disciplinary', label: 'Disciplinary', Icon: Scale,          roles: ['hr_admin','hr_manager', 'general_manager','line_manager','finance','employee'] },
+    { path: '/policies',     label: 'Policies',     Icon: FileText,       roles: ['hr_admin','hr_manager', 'general_manager','line_manager','finance','employee','solver','executive'] },
   ]},
   // "Budget & Operations" section is the HR & Admin view — Budget label maps to the HR envelope split (R&R / L&D), NOT the Finance panel.
   { section: 'Budget & Operations', items: [
-    { path: '/budget',     label: 'Budget',         Icon: TrendingUp,    roles: ['hr_admin','hr_manager','executive'] },
-    { path: '/compliance', label: 'Compliance',     Icon: CheckCircle2,  roles: ['hr_admin','hr_manager'] },
-    { path: '/calendar',   label: 'Calendar',       Icon: CalendarDays,  roles: ['hr_admin','hr_manager','line_manager','finance'] },
+    { path: '/budget',     label: 'Budget',         Icon: TrendingUp,    roles: ['hr_admin','hr_manager', 'general_manager','executive'] },
+    { path: '/compliance', label: 'Compliance',     Icon: CheckCircle2,  roles: ['hr_admin','hr_manager', 'general_manager'] },
+    { path: '/calendar',   label: 'Calendar',       Icon: CalendarDays,  roles: ['hr_admin','hr_manager', 'general_manager','line_manager','finance'] },
   ]},
   // "Finance & Admin" is gated to the `finance` role ONLY (per UAT Fix 4).
   // The same `/budget` path renders as Finance's full panel when accessed by Finance — guarded server-side.
@@ -67,10 +67,10 @@ const MENU_ITEMS = [
     { path: '/compensation', label: 'Compensation', Icon: Wallet,        roles: ['finance'] },
   ]},
   { section: 'Tools', items: [
-    { path: '/reporting', label: 'Reports & Audit', Icon: FileText, roles: ['hr_admin','hr_manager','line_manager','finance','executive','it_admin'] },
-    { path: '/forms',      label: 'Forms',          Icon: FileEdit,      roles: ['hr_admin','hr_manager','line_manager','finance','employee','solver'] },
-    { path: '/my-tasks',   label: 'My Tasks',       Icon: ListChecks,    roles: ['hr_admin','hr_manager','line_manager','employee','solver','finance','executive','it_admin'] },
-    { path: '/data-import', label: 'Data Import',    Icon: UploadCloud,   roles: ['hr_admin','hr_manager','it_admin'] },
+    { path: '/reporting', label: 'Reports & Audit', Icon: FileText, roles: ['hr_admin','hr_manager', 'general_manager','line_manager','finance','executive','it_admin'] },
+    { path: '/forms',      label: 'Forms',          Icon: FileEdit,      roles: ['hr_admin','hr_manager', 'general_manager','line_manager','finance','employee','solver'] },
+    { path: '/my-tasks',   label: 'My Tasks',       Icon: ListChecks,    roles: ['hr_admin','hr_manager', 'general_manager','line_manager','employee','solver','finance','executive','it_admin'] },
+    { path: '/data-import', label: 'Data Import',    Icon: UploadCloud,   roles: ['hr_admin','hr_manager', 'general_manager','it_admin'] },
     { path: '/roles-permissions', label: 'Roles & Permissions', Icon: KeyRound, roles: ['it_admin'] },
     { path: '/masters',    label: 'Masters Settings', Icon: Cog,          roles: ['it_admin','hr_admin','hr_manager','finance'] },
     { path: '/settings',   label: 'AI & Email Setup', Icon: SettingsIcon, roles: ['hr_admin','hr_manager','it_admin'] },
@@ -78,6 +78,7 @@ const MENU_ITEMS = [
 ];
 
 const ROLE_LABELS = {
+  general_manager: 'General Manager',
   hr_admin: 'HR Admin', hr_manager: 'HR Manager', line_manager: 'Line Manager',
   finance: 'Finance', employee: 'Employee', solver: 'Solver',
   executive: 'MD / Executive', board: 'Board', it_admin: 'IT Admin'
@@ -97,7 +98,7 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
   const { items: notifications, unreadCount: unread, loading: notificationsLoading, error: notificationError, refresh: refreshNotifications, markRead: saveRead, markAllRead } = useNotifications();
   const [readError, setReadError] = useState('');
   const [showNotif, setShowNotif] = useState(false);
-  const panelNotifications = notifications.filter(item => !['hr_admin', 'hr_manager'].includes(user?.role) || item.link || item.category === 'Announcements')
+  const panelNotifications = notifications.filter(item => !['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) || item.link || item.category === 'Announcements')
     .slice().sort((a, b) => Number(!!b.action) - Number(!!a.action));
   const openNotification = async item => {
     await markRead(item.id);

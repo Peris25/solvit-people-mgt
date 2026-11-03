@@ -9,7 +9,7 @@ async def authorize_task(db, user, task, write=False):
         from utils.lifecycle_workflows import task_access
         await task_access(db, user, task, write=write)
         return
-    if user.get("role") in ("hr_admin", "hr_manager"):
+    if user.get("role") in ("hr_admin", "hr_manager", "general_manager"):
         return
     solver_reference = task.get("solver_id") or (task.get("entity_id") if task.get("entity_type") == "solver" else None)
     if solver_reference and user.get("role") in ("solver", "line_manager"):

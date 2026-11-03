@@ -11,7 +11,7 @@ from utils.employee_access import personal_grant, find_linked_record, reference_
 from utils.staff_directory import employment_type, normalized
 from utils.staff_views import restricted
 
-HR = {'hr_admin', 'hr_manager'}
+HR = {'hr_admin', 'hr_manager', "general_manager"}
 SCHEME = {'title','insurer','policy_number','cover_type','cover_levels','starts_on','ends_on','renewal_on',
           'worker_types','minimum_service_days','max_dependants','enrolment_deadline','insurer_contact',
           'claim_instructions','approval_reference','status'}

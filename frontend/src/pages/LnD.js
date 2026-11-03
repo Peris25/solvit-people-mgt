@@ -139,7 +139,7 @@ export default function LnD() {
             </div>
             <form onSubmit={submit} style={{ padding: '24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
               {error && <p role="alert" style={{ gridColumn:'1 / -1' }}>{error}</p>}
-              {['hr_admin','hr_manager','line_manager'].includes(user?.role) && <div style={{ gridColumn:'1 / -1' }}><label>Nominate employee</label><EmployeePicker value={form.employee_id} onChange={value => setForm(previous => ({ ...previous, employee_id:value.id }))} /></div>}
+              {['hr_admin','hr_manager', 'general_manager','line_manager','it_admin'].includes(user?.role) && <div style={{ gridColumn:'1 / -1' }}><label>Nominate employee</label><EmployeePicker value={form.employee_id} onChange={value => setForm(previous => ({ ...previous, employee_id:value.id }))} /></div>}
               {[
                 { k: 'training_name', l: 'Training Name', type: 'text', span: true },
                 { k: 'provider', l: 'Provider', type: 'text' },
@@ -180,7 +180,7 @@ const LEVEL_COLOR = { Beginner: '#9CA3AF', Intermediate: '#3B82F6', Advanced: '#
 
 function SkillsMatrixPanel({ user }) {
   const myEmpId = user?.employee_id || user?.id;
-  const canEditAny = ['hr_admin', 'hr_manager', 'line_manager'].includes(user?.role);
+  const canEditAny = ['hr_admin', 'hr_manager', 'general_manager', 'line_manager', 'it_admin'].includes(user?.role);
   const [empId, setEmpId] = useState(myEmpId || '');
   const [empName, setEmpName] = useState('');
   const [skills, setSkills] = useState([]);

@@ -10,7 +10,7 @@ from utils.employee_access import authorize_employee, find_linked_record, person
 from utils.employee_integrity import employee_key, find_employee, is_direct_report, tenant_of, tenant_query
 from utils.staff_views import restricted
 
-HR = {"hr_admin", "hr_manager"}
+HR = {"hr_admin", "hr_manager", "general_manager"}
 POLICIES = {"handbook_frd": {"weights": [50, 30, 20], "section_c": "Client Feedback"},
             "developer_brief": {"weights": [60, 25, 15], "section_c": "Alignment"}}
 
@@ -66,6 +66,8 @@ def projection(row, user, employee=None):
                       role_title=employee.get("role_title"), department=employee.get("department"))
     own = (employee_key(employee) if employee else row.get("employee_id")) == user.get("employee_id")
     privileged = user.get("role") in HR or (not own and user.get("role") in {"line_manager", "finance", "executive"})
+    if user.get("role") == "it_admin":
+        privileged = bool(employee and not own and is_direct_report(employee, user))
     result["scores_released"] = released(row)
     result["section_a_kpis"] = deepcopy(row.get("section_a_kpis") or []) if row.get("workflow_version") == 1 else []
     result["self_assessment"] = deepcopy(row.get("self_assessment")) if row.get("workflow_version") == 1 else None

@@ -10,7 +10,7 @@ from utils.access_matrix import get_module_access
 from utils.employee_access import authorize_employee, find_linked_record, reference_ids, personal_grant
 from utils.employee_integrity import employee_key, resolve_user_employee, tenant_of, tenant_query, integrity_write
 
-HR = {"hr_admin", "hr_manager"}
+HR = {"hr_admin", "hr_manager", "general_manager"}
 BANK = {"bank_name", "bank_branch", "bank_account_number", "bank_account", "mpesa_number", "payment_method", "preferred_payment_method"}
 LEGACY = {"bank_account_number": "bank_account", "payment_method": "preferred_payment_method"}
 TEXT = {"full_name": 160, "preferred_name": 100, "personal_email": 254, "phone_number": 30,

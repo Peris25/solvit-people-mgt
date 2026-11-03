@@ -97,6 +97,13 @@ test('linked managers get Staff Home first and retain their team dashboard', asy
   await click('My Team'); expect(container.textContent).toContain('Existing team dashboard');
 });
 
+test('linked IT administrators retain self-service and gain a scoped team dashboard', async () => {
+  useAuth.mockReturnValue({ user: { ...user, role: 'it_admin' } }); await render(<RoleDashboard />);
+  expect(container.textContent).toContain('Synthetic Ada');
+  await click('My Team'); expect(container.textContent).toContain('Existing team dashboard');
+  expect(container.textContent).not.toContain('Existing HR dashboard');
+});
+
 test('unlinked HR and Solver accounts retain their existing dashboards', async () => {
   useAuth.mockReturnValue({ user: { id: 'hr', role: 'hr_admin' } }); await render(<RoleDashboard />);
   expect(container.textContent).toContain('Existing HR dashboard');

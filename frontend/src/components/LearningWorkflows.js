@@ -8,7 +8,7 @@ const button = { minHeight: 44, padding: '8px 14px', cursor: 'pointer' };
 const message = error => typeof error.response?.data?.detail === 'string' ? error.response.data.detail : 'The learning update could not be saved.';
 
 export function TrainingCatalogue({ user, onUpdated }) {
-  const hr = ['hr_admin', 'hr_manager'].includes(user?.role);
+  const hr = ['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role);
   const blank = { title:'', kind:'Course', parent_id:'', description:'', provider:'', delivery_method:'Internal', location:'', starts_on:'', ends_on:'', due_on:'', departments:[], employment_types:[], completion_requirements:'', evidence_required:false, cost_kes:0, duration_days:1, status:'Draft' };
   const [items, setItems] = useState([]);
   const [values, setValues] = useState(blank);

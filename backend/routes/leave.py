@@ -187,7 +187,7 @@ async def upload_leave_evidence(request: Request, file: UploadFile = File(...), 
     db = get_db()
     target = employee_id or user.get("employee_id")
     employee = await authorize_employee(db, user, target, "M18", write=True)
-    if employee_key(employee) != user.get("employee_id") and user.get("role") not in ("hr_admin", "hr_manager"):
+    if employee_key(employee) != user.get("employee_id") and user.get("role") not in ("hr_admin", "hr_manager", "general_manager"):
         raise HTTPException(403, "Only HR may provide a document for another employee")
     if document_type not in ("medical_certificate", "maternity_confirmation", "birth_notification"):
         raise HTTPException(422, "Unsupported leave document type")
@@ -280,7 +280,7 @@ async def download_leave_evidence(document_id: str, request: Request):
     db = get_db()
     row = await find_linked_record(db.leave_evidence, document_id, user)
     employee = await authorize_employee(db, user, row.get("employee_id"), "M18")
-    if employee_key(employee) != user.get("employee_id") and user.get("role") not in ("hr_admin", "hr_manager"):
+    if employee_key(employee) != user.get("employee_id") and user.get("role") not in ("hr_admin", "hr_manager", "general_manager"):
         raise HTTPException(403, "Medical/birth documents are restricted to the employee and HR")
     if row.get("publication_state") not in (None, "Ready"):
         raise HTTPException(503, "Supporting document requires administrator review")

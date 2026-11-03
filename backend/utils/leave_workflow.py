@@ -16,7 +16,7 @@ from utils.employee_access import authorize_employee, find_linked_record, saved_
 from utils.leave_policy import preview, day, today, own_requests, department_cover, VERSION
 
 PENDING = {"Pending_Manager", "Pending_HR", "Discussion_Requested", "Pending", "Submitted"}
-HR = {"hr_admin", "hr_manager"}
+HR = {"hr_admin", "hr_manager", "general_manager"}
 
 
 def stamp(): return datetime.now(timezone.utc).isoformat()
@@ -144,7 +144,7 @@ async def notify(db, record, event):
     if record["status"] in {"Pending_Manager", "Pending_HR"} or record.get("extended_sick_followup_required") or record.get("flag_hr_attention") or (record.get("sick_pay") or {}).get("unpaid_days", 0) > 0:
         from utils.employee_integrity import resolve_user_employee
         covered = {reference for kind, reference in recipients if kind == "employee"}
-        for role in ("hr_admin", "hr_manager"):
+        for role in ("hr_admin", "hr_manager", "general_manager"):
             accounts = await db.users.find({"$and": [tenant_query(tenant_of(record)), {"role": role, "is_active": {"$ne": False}}]}).to_list(None)
             if not accounts:
                 recipients.append(("role", role))

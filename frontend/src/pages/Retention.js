@@ -37,7 +37,7 @@ export default function Retention() {
 
   useEffect(() => {
     load();
-    if (['hr_admin', 'hr_manager', 'executive'].includes(user?.role)) {
+    if (['hr_admin', 'hr_manager', 'general_manager', 'executive'].includes(user?.role)) {
       api.getVoluntaryAttrition().then(r => setAttrition(r.data)).catch(() => {});
     }
   }, [load, user?.role]);

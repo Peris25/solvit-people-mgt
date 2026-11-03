@@ -77,7 +77,7 @@ def task_query(record):
 async def notify(db, record, event, version):
     # Stable IDs prevent retries from delivering the same event twice. Generic
     # Notification Centre previews never contain contact, scores or statutory data.
-    for role in ('hr_admin', 'hr_manager', 'solver'):
+    for role in ('hr_admin', 'hr_manager', "general_manager", 'solver'):
         key = f'solver:{tenant_of(record)}:{solver_key(record)}:{event}:{version}:{role}'
         recipient = {'recipient_type': 'solver', 'recipient_id': solver_key(record)} if role == 'solver' else {'recipient_role': role}
         await db.notifications.update_one({'_id': key}, {'$setOnInsert': {

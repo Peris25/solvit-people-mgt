@@ -6,7 +6,7 @@ import * as api from '../services/api';
 
 export default function Onboarding() {
   const { user } = useAuth();
-  const hr = ['hr_admin', 'hr_manager'].includes(user?.role);
+  const hr = ['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role);
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);

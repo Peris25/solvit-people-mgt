@@ -91,7 +91,7 @@ async def list_policies(request: Request):
 @router.post("")
 async def create_policy(policy: PolicyCreate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     module_access(user, "M13", write=True)
@@ -147,7 +147,7 @@ async def notify_publication(db, doc):
 @router.post("/{policy_id}/upload")
 async def upload_policy_file(policy_id: str, request: Request, file: UploadFile = File(...)):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Only HR can upload policy files")
     db = get_db()
     module_access(user, "M13", write=True)
@@ -229,7 +229,7 @@ async def acknowledge_policy(policy_id: str, request: Request):
 @router.get("/{policy_id}/acknowledgements")
 async def get_acknowledgements(policy_id: str, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     p = await policy_record(db, user, policy_id)
@@ -240,7 +240,7 @@ async def get_acknowledgements(policy_id: str, request: Request):
 @router.put("/{policy_id}")
 async def update_policy(policy_id: str, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     module_access(user, "M13", write=True)

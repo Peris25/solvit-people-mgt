@@ -25,7 +25,7 @@ from utils.employee_integrity import tenant_of
 async def get_current_user(request):
     user = await authenticate(request)
     # Preserve the existing HR allocation-administration operation, not GP authority.
-    allocation_admin = user.get("role") == "hr_admin" and "/allocations" in request.url.path
+    allocation_admin = user.get("role") in {"hr_admin", "general_manager"} and "/allocations" in request.url.path
     module_access(user, "M12", write=request.method != "GET" and not allocation_admin)
     if tenant_of(user) != "solvit":
         raise HTTPException(403, "Legacy budget data is available only in its original company")
@@ -133,7 +133,7 @@ async def _compute_total_people_cost(db) -> dict:
 async def get_envelope(request: Request):
     """§1–§4 Returns envelope, total cost, headroom and gating status."""
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "finance", "executive", "it_admin"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "finance", "executive", "it_admin"]:
         raise HTTPException(status_code=403, detail="No access to Budget Governance")
     db = get_db()
     # Reads never create financial baseline records.
@@ -197,7 +197,7 @@ async def get_envelope(request: Request):
 async def get_summary(request: Request):
     """§8 Department breakdown + headcount + average salary."""
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "finance", "executive", "it_admin"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "finance", "executive", "it_admin"]:
         raise HTTPException(status_code=403, detail="No access to Budget Governance")
     db = get_db()
     cost = await _compute_total_people_cost(db)
@@ -333,7 +333,7 @@ async def submit_form28(request: Request):
 @router.get("/allocations")
 async def list_allocations(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "finance"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "finance"]:
         raise HTTPException(status_code=403, detail="No access")
     db = get_db()
     allocs = await db.budget_allocations.find({"tenant_id": "solvit"}).sort("created_at", -1).to_list(200)
@@ -343,7 +343,7 @@ async def list_allocations(request: Request):
 @router.get("/allocations/summary")
 async def allocations_summary(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["hr_admin", "hr_manager", "finance", "it_admin"]:
+    if user["role"] not in ["hr_admin", "hr_manager", "general_manager", "finance", "it_admin"]:
         raise HTTPException(status_code=403, detail="No access")
     db = get_db()
     gp = await db.gp_records.find_one({"tenant_id": "solvit"}, sort=[("submitted_at", -1)])
@@ -380,7 +380,7 @@ async def create_allocation(request: Request):
     """HR Admin creates an allocation against confirmed headroom.
     Allocations > KES 50k require Finance approval (Pending_Finance status)."""
     user = await get_current_user(request)
-    if user["role"] != "hr_admin":
+    if user["role"] not in {"hr_admin", "general_manager"}:
         raise HTTPException(status_code=403, detail="HR Admin only")
     db = get_db()
     body = await request.json()
@@ -468,7 +468,7 @@ async def update_allocation(alloc_id: str, request: Request):
         update["approved_at"] = datetime.now(timezone.utc).isoformat()
     # HR Admin marks Spent
     elif body.get("status") == "Spent":
-        if user["role"] != "hr_admin":
+        if user["role"] not in {"hr_admin", "general_manager"}:
             raise HTTPException(status_code=403, detail="HR Admin only")
         if alloc.get("status") != "Approved":
             raise HTTPException(409, "Only approved allocations can be marked spent")
@@ -481,7 +481,7 @@ async def update_allocation(alloc_id: str, request: Request):
         update["spent_at"] = datetime.now(timezone.utc).isoformat()
     # HR Admin amends amount/notes/initiative_name on a Planned/Pending entry
     else:
-        if user["role"] != "hr_admin":
+        if user["role"] not in {"hr_admin", "general_manager"}:
             raise HTTPException(status_code=403, detail="HR Admin only")
         if body.get("status"):
             raise HTTPException(422, "Invalid allocation transition")
@@ -514,7 +514,7 @@ async def update_allocation(alloc_id: str, request: Request):
 @serialize_write
 async def delete_allocation(alloc_id: str, request: Request):
     user = await get_current_user(request)
-    if user["role"] != "hr_admin":
+    if user["role"] not in {"hr_admin", "general_manager"}:
         raise HTTPException(status_code=403, detail="HR Admin only")
     db = get_db()
     alloc = await find_linked_record(db.budget_allocations, alloc_id, user)

@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import HTTPException
 from utils.employee_integrity import resolve_user_employee, tenant_of
 
-STAFF_ROLES = frozenset(("employee", "line_manager", "hr_admin", "hr_manager", "finance",
+STAFF_ROLES = frozenset(("employee", "line_manager", "hr_admin", "hr_manager", "general_manager", "finance",
                          "executive", "it_admin", "board"))
 PRIVILEGED_DIRECTORY_ROLES = STAFF_ROLES - {"employee"}
 # Interim conservative policy, pending HR UAT. Never publish performance or
