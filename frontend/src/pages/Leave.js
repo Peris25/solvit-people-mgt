@@ -80,6 +80,7 @@ export default function Leave() {
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(new Date().getMonth() + 1);
   const [loading, setLoading] = useState(true);
+  const [balancesLoading, setBalancesLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   // Auto-resolved line manager (read-only on the Apply form per UAT Fix).
   const [myLM, setMyLM] = useState({ id: '', name: '' });
@@ -89,12 +90,17 @@ export default function Leave() {
   const load = useCallback(async () => {
     const generation = ++loadSequence.current;
     const valid = () => activeAccount.current === accountKey && generation === loadSequence.current;
-    setLoading(true); setError(''); setHistoryAvailable(false); setRequests([]); setBalances(null); setRollover(null);
+    setLoading(true); setBalancesLoading(true); setError(''); setHistoryAvailable(false); setRequests([]); setBalances(null); setRollover(null); setTypes({});
+    setMyEmpId(user?.employee_id || ''); setMyLM({ id: '', name: '' });
     try {
-      const [r, t, me] = await Promise.allSettled([api.getLeaveRequests(), api.getLeaveTypes(), api.getMyEmployee()]);
+      const details = Promise.allSettled([api.getLeaveTypes(), api.getMyEmployee()]);
+      const r = await api.getLeaveRequests();
       if (!valid()) return;
-      if (r.status !== 'fulfilled' || !Array.isArray(r.value.data) || t.status !== 'fulfilled' || !t.value.data) throw new Error('Leave information could not be loaded. Please retry.');
-      setRequests(r.value.data); setTypes(t.value.data); setHistoryAvailable(true);
+      if (!Array.isArray(r.data)) throw new Error('Leave information could not be loaded. Please retry.');
+      setRequests(r.data); setHistoryAvailable(true); setLoading(false); setLoadedFor(accountKey);
+      const [t, me] = await details;
+      if (!valid()) return;
+      setTypes(t.status === 'fulfilled' ? t.value.data || {} : {});
       const employee = me.status === 'fulfilled' ? me.value.data : null;
       const id = employee?.id || user?.employee_id || '';
       setMyEmpId(id); setMyLM({ id: employee?.line_manager_id || '', name: employee?.line_manager_name || '' });
@@ -105,9 +111,28 @@ export default function Leave() {
         setRollover(ro.status === 'fulfilled' ? ro.value.data : null);
       }
     } catch (err) { if (valid()) setError(message(err)); }
-    finally { if (valid()) { setLoading(false); setLoadedFor(accountKey); } }
+    finally { if (valid()) { setLoading(false); setBalancesLoading(false); setLoadedFor(accountKey); } }
   }, [accountKey, user?.employee_id]);
   useEffect(() => { setShowForm(false); setReview(null); setHistoricalReview(null); setCalendar(null); setForm(freshForm()); load(); }, [load]);
+  useEffect(() => {
+    if (!isHR || tab !== 'team' || loadedFor !== accountKey || !historyAvailable) return undefined;
+    let stopped = false;
+    let inFlight = false;
+    const generation = loadSequence.current;
+    const refreshQueue = async () => {
+      if (window.document.hidden || inFlight) return;
+      inFlight = true;
+      try {
+        const response = await api.getLeaveRequests();
+        if (!stopped && activeAccount.current === accountKey && generation === loadSequence.current && Array.isArray(response.data)) setRequests(response.data);
+      } catch {
+        // Keep the last authorized queue visible; manual Refresh reports errors.
+      } finally { inFlight = false; }
+    };
+    const timer = setInterval(refreshQueue, 30000);
+    window.addEventListener('focus', refreshQueue);
+    return () => { stopped = true; clearInterval(timer); window.removeEventListener('focus', refreshQueue); };
+  }, [isHR, tab, loadedFor, accountKey, historyAvailable]);
   const loadCalendar = useCallback(async () => {
     setCalendar(null);
     try { const c = await api.getLeaveCalendar(calYear, calMonth); if (activeAccount.current === accountKey) setCalendar(c.data); }
@@ -247,7 +272,7 @@ export default function Leave() {
           ))}
         </div>
       )}
-      {!balances && !loading && loadedFor === accountKey && <p>Leave balances are unavailable. HR must check the recorded balance.</p>}
+      {!balances && !loading && loadedFor === accountKey && <p>{balancesLoading ? 'Loading personal balances...' : 'Leave balances are unavailable. HR must check the recorded balance.'}</p>}
 
       {/* Tabs */}
       {linkedRequest && <div style={{ padding: '12px', marginBottom: '12px', background: '#fff' }}>
@@ -257,7 +282,7 @@ export default function Leave() {
       <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid rgba(25,25,25,0.1)', marginBottom: '20px' }}>
         <TabButton id="my" label="My Applications" Icon={ClipboardList} />
         {hasTeam && <TabButton id="team" label="Team Leave" Icon={UsersIcon} />}
-        {isHR && <TabButton id="history" label="Historical records" Icon={ClipboardList} />}
+        {isHR && <TabButton id="history" label="Imported leave history" Icon={ClipboardList} />}
         <TabButton id="calendar" label="Calendar" Icon={CalendarIcon} />
         <TabButton id="rollover" label="Rollover" Icon={RotateCcw} />
       </div>
@@ -267,7 +292,7 @@ export default function Leave() {
         <>
           {tab === 'my' && <RequestsTable rows={myRequests} withdraw={withdraw} edit={openForm} review={openReview} saving={saving} testId="my-applications" />}
           {tab === 'team' && hasTeam && <>
-            <p>All matching applications are listed below with their review actions. Pending entries imported from the workbook can also be reviewed here; full corrections remain under Historical records.</p>
+            <p>All matching applications are listed below with their review actions. This queue refreshes every 30 seconds and when you return to this window. Workbook corrections remain under Imported leave history.</p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
               <input aria-label="Search team leave" placeholder="Search employee, leave type or date" value={teamSearch} onChange={event => setTeamSearch(event.target.value)} style={{ ...inp, maxWidth: '360px' }} />
               <select aria-label="Team leave status" value={teamStatus} onChange={event => setTeamStatus(event.target.value)} style={{ ...inp, maxWidth: '200px' }}>{['All', 'Pending', 'Approved', 'Denied', 'Withdrawn'].map(status => <option key={status}>{status}</option>)}</select>

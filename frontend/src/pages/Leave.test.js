@@ -86,6 +86,29 @@ test('HR starts in the pending application queue including pending imported entr
   expect(container.textContent).not.toContain('Synthetic Joseph');
 });
 
+test('HR queue appears without waiting for personal metadata or balances', async () => {
+  useAuth.mockReturnValue({ user: { ...user, role: 'hr_admin' } });
+  api.getMyEmployee.mockReturnValue(new Promise(() => {}));
+  api.getLeaveTypes.mockReturnValue(new Promise(() => {}));
+  api.getLeaveRequests.mockResolvedValue({ data: [{ ...row, employee_id: 'report', can_hr_override: true }] });
+  await render();
+  expect(container.querySelector('[data-testid="team-leave"]')).not.toBeNull();
+  expect(container.querySelector('[data-testid="leave-request"]').textContent).toContain('Synthetic Ada');
+  expect(container.textContent).toContain('Loading personal balances...');
+  await click('Review');
+  expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+});
+
+test('HR queue refreshes on focus without reloading personal balances', async () => {
+  useAuth.mockReturnValue({ user: { ...user, role: 'hr_admin' } });
+  await render();
+  const balanceCalls = api.getLeaveBalances.mock.calls.length;
+  api.getLeaveRequests.mockResolvedValue({ data: [{ ...row, id: 'new', employee_id: 'report', employee_name: 'New applicant' }] });
+  await act(async () => window.dispatchEvent(new Event('focus')));
+  expect(container.textContent).toContain('New applicant');
+  expect(api.getLeaveBalances.mock.calls.length).toBe(balanceCalls);
+});
+
 test('employee edits dates and resubmits through the authorized API', async () => {
   api.getLeaveRequests.mockResolvedValue({ data: [{ ...row, can_edit: true }] });
   api.resubmitLeave.mockResolvedValue({ data: { ...row, end_date: '2026-11-09' } });

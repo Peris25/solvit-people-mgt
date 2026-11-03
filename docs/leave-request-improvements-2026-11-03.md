@@ -74,3 +74,22 @@ real employee request or make a real leave decision solely to test this release.
 Remaining verification: an authenticated employee/HR end-to-end acceptance check using
 authorized test records and the separate localhost integration suite. Large histories
 may eventually benefit from explicit pagination; they are no longer silently truncated.
+
+## Leave queue loading follow-up
+
+- HR's request table now becomes available as soon as the request API completes,
+  without waiting for employee metadata, leave types, balances or rollover. Secondary
+  fields have their own loading state; changing account still clears prior data.
+- The open HR Team Leave queue refreshes every 30 seconds and on window focus without
+  reloading personal balances or replacing the page with a spinner. Hidden windows
+  skip timed refreshes. Requests are serialized and stale responses are discarded.
+- List serialization reuses an authorized employee identity within a single request,
+  avoiding repeated employee lookups for imported rows. No permission or identity
+  cache survives that request, so worker consistency safeguards are preserved.
+- Historical records are labelled **Imported leave history**: an administrative view
+  of the workbook entries, not another leave application or a second balance ledger.
+- Validation: **263 frontend tests / 35 suites**, **136 focused backend tests passed,
+  one localhost integration skip**; strict CI build, compilation and whitespace checks
+  passed. New regressions cover delayed metadata, focus refresh, and authorization
+  reuse without cross-request caching. No end-to-end latency measurement or hosting
+  cold-start conclusion is claimed from these tests.

@@ -46,8 +46,14 @@ async def stage_for(db, user, record):
     return None
 
 
-async def view(db, user, record):
-    employee = await authorize_employee(db, user, record.get("employee_id"), "M18")
+async def view(db, user, record, *, authorized_employees=None):
+    reference = record.get("employee_id")
+    cacheable = isinstance(reference, (str, ObjectId))
+    employee = authorized_employees.get(reference) if authorized_employees is not None and cacheable else None
+    if employee is None:
+        employee = await authorize_employee(db, user, reference, "M18")
+        if authorized_employees is not None and cacheable:
+            authorized_employees[reference] = employee
     result = deepcopy(record)
     result["id"] = str(record.get("id") or record["_id"])
     result["storage_id"] = str(record["_id"])

@@ -89,7 +89,10 @@ async def list_leave_requests(request: Request, employee_id: Optional[str] = Non
         query = {"$and": [query, {"status": status}]}
     requests = await db.leave_requests.find(query).sort("created_at", -1).to_list(None)
     from utils.leave_workflow import view
-    return [await view(db, user, row) for row in requests]
+    # Reuse checked identities only within this one authorized HTTP request.
+    # Never cache permissions or employee data across requests/workers.
+    authorized_employees = {}
+    return [await view(db, user, row, authorized_employees=authorized_employees) for row in requests]
 
 
 @router.post("")

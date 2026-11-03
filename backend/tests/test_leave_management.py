@@ -297,6 +297,16 @@ def test_authorized_leave_list_does_not_silently_stop_at_200_records():
     assert {row["employee_id"] for row in result} == {"staff"}
 
 
+def test_leave_list_reuses_authorization_only_inside_one_request():
+    db, actors = fixture()
+    db.leave_requests.docs = [{"_id": ObjectId(), "id": str(index), "tenant_id": "solvit", **payload(), "status": "Approved", "historical_import": True, "working_days": 2} for index in range(20)]
+    with patch.object(leave, "get_db", return_value=db), patch.object(leave, "get_current_user", AsyncMock(return_value=actors["staff"])), patch.object(workflow, "authorize_employee", wraps=workflow.authorize_employee) as authorize:
+        result = run(leave.list_leave_requests(SimpleNamespace()))
+        assert len(result) == 20 and authorize.call_count == 1
+        run(leave.list_leave_requests(SimpleNamespace()))
+        assert authorize.call_count == 2  # No worker-local permission cache.
+
+
 def test_approved_leave_cannot_be_self_cancelled_and_other_department_approval_does_not_block():
     db, actors = fixture()
     row = {"_id": ObjectId(), "id": "approved", "employee_id": "staff", "tenant_id": "solvit", "start_date": "2026-11-05", "end_date": "2026-11-06", "status": "Approved"}
