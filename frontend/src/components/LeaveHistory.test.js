@@ -68,6 +68,19 @@ test('Edit opens a modal immediately and Cancel closes it without writing', () =
   expect(api.correctLeaveHistory).not.toHaveBeenCalled();
 });
 
+test('changing historical dates automatically locks stale units for server recalculation', async () => {
+  act(() => root.render(<LeaveHistory rows={[row]} onSaved={jest.fn()} />));
+  act(() => button('Edit historical record').click());
+  const end = document.body.querySelector('[aria-label="Historical end_date"]');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(end, '2026-11-12');
+    end.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  expect(document.body.querySelector('[aria-label="Historical working_days"]').readOnly).toBe(true);
+  expect(document.body.querySelector('[aria-label="Recalculate historical days"]').checked).toBe(true);
+  expect(document.body.textContent).toContain('recalculate days using');
+});
+
 test('HR can explicitly confirm only recorded source entries with a reason', async () => {
   const saved = jest.fn(); api.approveRecordedLeaveHistory.mockResolvedValue({ data: { approved: 1, already_approved: 0 } });
   act(() => root.render(<LeaveHistory rows={[{ ...row, status: 'Recorded' }]} onSaved={saved} />));

@@ -21,6 +21,9 @@ export default function LeaveHistory({ rows, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const original = editing && rows.find(row => row.id === editing.id);
+  const datesChanged = !!original && ['start_date', 'end_date', 'leave_type', 'day_basis'].some(field => editing[field] !== (original[field] || (field === 'day_basis' ? 'Recorded units' : original[field])));
+  const recalculateDays = datesChanged || editing?.recalculate_days === true;
   const run = async action => { setBusy(true); setError(''); setMessage(''); try { await action(); } catch (error) { setError(fail(error)); } finally { setBusy(false); } };
   const read = async event => {
     setBatch(null); setPreview(null); setError(''); setMessage('');
@@ -68,15 +71,17 @@ export default function LeaveHistory({ rows, onSaved }) {
         <p id="historical-correction-description" style={{ marginBottom: '20px', color: '#525252', fontSize: '13px' }}>Update the recorded leave details and explain the correction. Changes are audited.</p>
         <form aria-label="Historical leave correction" onSubmit={event => { event.preventDefault(); run(async () => {
       const { id, employee_name, ...data } = editing;
-      const response = await api.correctLeaveHistory(id, { ...data, resumption_date: data.resumption_date || null, working_days: Number(data.working_days) });
+      const response = await api.correctLeaveHistory(id, { ...data, recalculate_days: recalculateDays, resumption_date: data.resumption_date || null, working_days: Number(data.working_days) });
       if (!response.data?.id) throw new Error(); setEditing(null); setMessage('Historical record corrected.'); onSaved();
     }); }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '12px' }}>
         {['leave_type', 'status', 'day_basis'].map(field => <label key={field}>{labels[field]}<select aria-label={`Historical ${field}`} style={style} disabled={busy} value={editing[field]} onChange={event => setEditing({ ...editing, [field]: event.target.value })}>
           {(field === 'leave_type' ? ['Annual', 'Sick', 'Paternity', 'Maternity', 'Compassionate', 'Unpaid'] : field === 'status' ? ['Pending', 'Approved', 'Denied', 'Withdrawn'] : ['Recorded units', 'Calendar days']).map(value => <option key={value}>{value}</option>)}
         </select></label>)}
-        {['start_date', 'end_date', 'resumption_date', 'working_days', 'reason'].map(field => <label key={field}>{labels[field]}<input aria-label={`Historical ${field}`} style={style} disabled={busy} type={field.endsWith('date') ? 'date' : field === 'working_days' ? 'number' : 'text'} required={field !== 'resumption_date'} step={field === 'working_days' ? 'any' : undefined} min={field === 'working_days' ? '0.01' : undefined} minLength={field === 'reason' ? 5 : undefined} maxLength={field === 'reason' ? 1000 : undefined} value={editing[field]} onChange={event => setEditing({ ...editing, [field]: event.target.value })} /></label>)}
+        {['start_date', 'end_date', 'resumption_date', 'working_days', 'reason'].map(field => <label key={field}>{labels[field]}<input aria-label={`Historical ${field}`} style={style} disabled={busy} readOnly={field === 'working_days' && recalculateDays} type={field.endsWith('date') ? 'date' : field === 'working_days' && !recalculateDays ? 'number' : 'text'} required={field !== 'resumption_date'} step={field === 'working_days' ? 'any' : undefined} min={field === 'working_days' ? '0.01' : undefined} minLength={field === 'reason' ? 5 : undefined} maxLength={field === 'reason' ? 1000 : undefined} value={field === 'working_days' && recalculateDays ? 'Calculated automatically when saved' : editing[field]} onChange={event => setEditing({ ...editing, [field]: event.target.value })} /></label>)}
       </div>
+      <label style={{ display: 'block', marginTop: '16px' }}><input type="checkbox" aria-label="Recalculate historical days" checked={recalculateDays} disabled={busy || datesChanged} onChange={event => setEditing({ ...editing, recalculate_days: event.target.checked })} /> Recalculate days from these dates</label>
+      {recalculateDays && <p role="status">The server will recalculate days using the employee's work schedule and configured holidays. Calendar-day records count all dates.</p>}
       {error && <p role="alert" style={{ color: '#991B1B', marginTop: '16px' }}>{error}</p>}
       <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
         <button style={buttonStyle} type="button" disabled={busy} onClick={() => { setEditing(null); setError(''); }}>Cancel</button>

@@ -130,3 +130,25 @@ skipped**, five existing dependency/lifecycle warnings; focused leave/authorizat
 suite **139 passed, one integration skip**; full frontend **264 passed / 35 suites**.
 Strict CI build, Python compilation and whitespace checks passed. Tests used only
 synthetic records and guarded localhost configuration, with jobs/email disabled.
+
+
+## Historical date/day consistency fix
+
+Code review confirmed that the historical editor sent dates and recorded day units
+independently. The correction endpoint previously trusted both, so editing dates could
+retain the old 2.5-day amount. No live-record inspection was needed to confirm that
+code-level defect. The specific stored Joseph record has not been changed by this fix.
+
+The server now recalculates units whenever dates, category or day basis change. Recorded
+working units use the employee's configured work schedule and holidays; Calendar days
+uses the inclusive calendar period. HR can also select Recalculate days from these dates
+to repair an existing mismatch without changing its dates. The editor locks the old day
+field while recalculation is selected and explains that the saved value comes from the
+server. Status-only edits preserve source half-days, and standalone HR unit corrections
+still require a reason. Existing revisions, overlap checks, before/after audit records,
+permissions and balance-snapshot preservation remain intact. No bulk rewrite occurs.
+
+Regression examples: 16?19 October / 2.5 units changed to 6?12 November recalculates
+to 5.5 under the default calendar; a configured 9 November holiday yields 4.5; shortening
+to 6 November yields 1. Explicit recalculation repairs a pre-existing November / 2.5
+mismatch. Focused backend validation: 83 passed, one integration skip.

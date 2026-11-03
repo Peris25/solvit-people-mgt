@@ -73,6 +73,17 @@ class HistoricalBatch(BaseModel):
 class HistoricalCorrection(HistoricalFields):
     revision: int = Field(ge=1)
     reason: str = Field(min_length=5, max_length=1000)
+    recalculate_days: bool = False
+
+    @model_validator(mode="after")
+    def period(self):
+        # The submitted units may belong to the old date range. The service
+        # recalculates changed periods before validating their final units.
+        if self.end_date < self.start_date or self.end_date.year > date.today().year:
+            raise ValueError("Source dates must be ordered and belong to the current or an earlier calendar year")
+        if self.start_date.year != self.end_date.year:
+            raise ValueError("Split historical leave spanning calendar years")
+        return self
 
 
 class RecordedTarget(BaseModel):
@@ -184,12 +195,23 @@ async def correct(db, user, reference, body):
     require_hr(user)
     async with integrity_write(db):
         current = await find_linked_record(db.leave_requests, reference, user)
-        await authorize_employee(db, user, current.get("employee_id"), "M18", write=True)
+        employee = await authorize_employee(db, user, current.get("employee_id"), "M18", write=True)
         if not current.get("historical_import"):
             raise HTTPException(409, "Live requests must use the existing approval workflow")
         if body.revision != current.get("revision"):
             raise HTTPException(409, "This record changed. Reload before correcting it")
-        fields = body.model_dump(mode="json", exclude={"reason", "revision"})
+        fields = body.model_dump(mode="json", exclude={"reason", "revision", "recalculate_days"})
+        if body.recalculate_days or any(fields[key] != current.get(key, "Recorded units" if key == "day_basis" else None) for key in ("start_date", "end_date", "leave_type", "day_basis")):
+            from utils.leave_policy import contract_policy, working_units
+            if fields["day_basis"] == "Calendar days":
+                fields["working_days"] = float((body.end_date - body.start_date).days + 1)
+            else:
+                policy = await contract_policy(db, employee)
+                holidays = await db.public_holidays.find(tenant_query(tenant_of(user))).to_list(None)
+                fields["working_days"] = working_units(fields["start_date"], fields["end_date"],
+                    {row.get("date") for row in holidays}, policy["saturday_weight"], policy.get("workday_weights"))
+        if not 0 < fields["working_days"] <= (body.end_date - body.start_date).days + 1:
+            raise HTTPException(422, "Corrected days must be positive and cannot exceed the date range")
         other_rows = await db.leave_requests.find({"$and": [tenant_query(tenant_of(user)), {"employee_id": current["employee_id"]}]}).to_list(None)
         for other in other_rows:
             if other["_id"] != current["_id"] and other.get("status") not in {"Cancelled", "Rejected"} and fields["status"] not in {"Cancelled", "Rejected"} and other.get("start_date", "") <= fields["end_date"] and other.get("end_date", "") >= fields["start_date"]:

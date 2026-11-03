@@ -24,6 +24,39 @@ def import_one(db, user, **values):
     return run(history.import_rows(db, user, batch))
 
 
+def test_corrected_dates_recalculate_units_instead_of_retaining_old_2_point_5():
+    db, actors = fixture()
+    import_one(db, actors['hr'], start_date='2026-10-16', end_date='2026-10-19', working_days=2.5, status='Pending')
+    record = db.leave_requests.docs[0]
+    data = {key: record[key] for key in history.HistoricalFields.model_fields if key in record}
+    result = run(history.correct(db, actors['hr'], record['id'], history.HistoricalCorrection(**{**data, 'start_date': '2026-11-06', 'end_date': '2026-11-12'}, revision=record['revision'], reason='HR corrected the requested dates')))
+    assert result['working_days'] == 5.5
+    assert db.audit_logs.docs[-1]['before']['working_days'] == 2.5
+    assert db.leave_balances.writes == 0
+
+
+def test_date_recalculation_handles_holidays_and_shorter_ranges():
+    db, actors = fixture()
+    import_one(db, actors['hr'], working_days=2.0)
+    db.public_holidays.docs = [{'tenant_id': 'solvit', 'date': '2026-11-09'}]
+    record = db.leave_requests.docs[0]
+    data = {key: record[key] for key in history.HistoricalFields.model_fields if key in record}
+    result = run(history.correct(db, actors['hr'], record['id'], history.HistoricalCorrection(**{**data, 'start_date': '2026-11-06', 'end_date': '2026-11-12'}, revision=1, reason='Correct dates using configured holidays')))
+    assert result['working_days'] == 4.5
+    result = run(history.correct(db, actors['hr'], record['id'], history.HistoricalCorrection(**{**data, 'start_date': '2026-11-06', 'end_date': '2026-11-06', 'working_days': 4.5}, revision=2, reason='Correct to a single working day')))
+    assert result['working_days'] == 1
+
+
+def test_hr_can_recalculate_existing_mismatch_without_changing_dates():
+    db, actors = fixture()
+    import_one(db, actors['hr'], start_date='2026-11-06', end_date='2026-11-12', working_days=2.5)
+    record = db.leave_requests.docs[0]
+    data = {key: record[key] for key in history.HistoricalFields.model_fields if key in record}
+    result = run(history.correct(db, actors['hr'], record['id'], history.HistoricalCorrection(**data, revision=1, reason='Recalculate stale day total', recalculate_days=True)))
+    assert result['working_days'] == 5.5
+    assert 'recalculate_days' not in db.leave_requests.docs[0]
+
+
 @pytest.mark.parametrize("role", ["employee", "line_manager", "finance", "executive", "it_admin"])
 def test_only_hr_can_import_or_correct_history(role):
     db, actors = fixture()
