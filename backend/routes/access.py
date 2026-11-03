@@ -14,8 +14,11 @@ from typing import Optional
 from pydantic import BaseModel, SecretStr
 from utils.employee_accounts import provision_employee_account, employee_login_review
 from utils.employee_access import find_linked_record
+from utils.employee_integrity import resolve_user_employee, tenant_of, tenant_query
 
 router = APIRouter(prefix="/access", tags=["access"])
+
+HR_ASSIGNABLE_ROLES = frozenset({"employee", "line_manager", "general_manager", "hr_manager", "finance", "executive"})
 
 VALID_LEVELS = ("Full", "Manage", "Read")
 SYSTEM_ROLES = set(ROLES)  # Anything in utils.auth.ROLES is system, non-deletable
@@ -74,6 +77,7 @@ async def get_access_matrix(request: Request):
     custom_order = list(CUSTOM_ROLE_DEFINITIONS.keys())
     return {
         "role": role,
+        "assignable_roles": sorted(HR_ASSIGNABLE_ROLES) if role == "hr_admin" else list(SYSTEM_ROLES) + list(CUSTOM_ROLE_DEFINITIONS),
         "matrix": eff,
         "destructive_actions": sorted(DESTRUCTIVE_ACTIONS),
         "my_access": role_view,
@@ -262,16 +266,19 @@ async def check_module_access(module_id: str, request: Request):
 
 @router.get("/users")
 async def list_users_with_roles(request: Request):
-    """List all platform users with their primary role. IT Admin only."""
+    """List all platform users with their primary role. IT Admin, or HR Admin business-account review."""
     user = await get_current_user(request)
-    if user.get("role") != "it_admin":
-        raise HTTPException(status_code=403, detail="IT Admin only")
+    if user.get("role") not in {"it_admin", "hr_admin"}:
+        raise HTTPException(status_code=403, detail="IT Admin or HR Admin only")
     db = get_db()
-    rows = await db.users.find({"tenant_id": "solvit"}).sort("full_name", 1).to_list(500)
+    rows = await db.users.find(tenant_query(tenant_of(user))).sort("full_name", 1).to_list(500)
     out = []
     for u in rows:
+        if user.get("role") == "hr_admin" and u.get("role") not in HR_ASSIGNABLE_ROLES:
+            continue
         out.append({
             "id": str(u.get("_id")),
+            "can_assign_role": user.get("role") == "it_admin" or (str(u["_id"]) != str(user["id"]) and bool(u.get("employee_id"))),
             "email": u.get("email"),
             "full_name": u.get("full_name"),
             "department": u.get("department"),
@@ -284,14 +291,14 @@ async def list_users_with_roles(request: Request):
 
 @router.put("/users/{user_id}/role")
 async def update_user_role(user_id: str, request: Request):
-    """Change a user's primary role. IT Admin only.
+    """Change a user role. HR Admin is limited to linked FTE business roles.
 
     Body: { "role": "<one of ROLES>" }
     Audit trail recorded with old + new role.
     """
     actor = await get_current_user(request)
-    if actor.get("role") != "it_admin":
-        raise HTTPException(status_code=403, detail="IT Admin only")
+    if actor.get("role") not in {"it_admin", "hr_admin"}:
+        raise HTTPException(status_code=403, detail="IT Admin or HR Admin only")
     body = await request.json()
     new_role = body.get("role")
     allowed_roles = set(ROLES) | set(CUSTOM_ROLE_DEFINITIONS.keys())
@@ -300,16 +307,27 @@ async def update_user_role(user_id: str, request: Request):
     db = get_db()
     target = await find_linked_record(db.users, user_id, actor)
     old_role = target.get("role")
+    if actor.get("role") == "hr_admin":
+        if str(target["_id"]) == str(actor["id"]):
+            raise HTTPException(403, "HR cannot change its own role")
+        if old_role not in HR_ASSIGNABLE_ROLES or new_role not in HR_ASSIGNABLE_ROLES:
+            raise HTTPException(403, "HR may assign business roles only; protected and custom roles require IT")
+        employee = await resolve_user_employee(db, target)
+        from utils.staff_directory import employment_type
+        if not employee or employment_type(employee.get("employment_type")) != "Full_Time" or employee.get("board_only") or employee.get("is_board_chair"):
+            raise HTTPException(403, "HR role assignment requires an unambiguous FTE account")
     if old_role == new_role:
         return {"id": user_id, "role": new_role, "unchanged": True}
 
-    await db.users.update_one(
-        {"_id": target["_id"]},
+    changed = await db.users.update_one(
+        {"$and": [tenant_query(tenant_of(actor)), {"_id": target["_id"], "role": old_role, "employee_id": target.get("employee_id")}]},
         {"$set": {"role": new_role, "updated_at": datetime.now(timezone.utc).isoformat(), "sessions_invalidated_at": datetime.now(timezone.utc).isoformat()}},
     )
+    if not changed.modified_count:
+        raise HTTPException(409, "Account changed while assigning its role; refresh and retry")
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),
-        "tenant_id": "solvit",
+        "tenant_id": tenant_of(actor),
         "action": "user.role_changed",
         "entity": "user",
         "entity_id": str(target["_id"]),

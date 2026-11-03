@@ -9,7 +9,7 @@
  *  Tab 3 (Custom Roles): create new roles that inherit from a base role. Any
  *                  per-cell overrides for the role are applied via Tab 1.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../services/api';
 import EmployeeAccountForm from '../components/EmployeeAccountForm';
@@ -27,7 +27,9 @@ const NO_ACCESS = { bg: '#F5F5F5', fg: '#9CA3AF', label: '—' };
 
 export default function RolesPermissions() {
   const { user } = useAuth();
-  const [tab, setTab] = useState('matrix');
+  const isIT = user?.role === 'it_admin';
+  const authorized = isIT || user?.role === 'hr_admin';
+  const [tab, setTab] = useState(isIT ? 'matrix' : 'users');
   const [matrix, setMatrix] = useState(null);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -36,7 +38,8 @@ export default function RolesPermissions() {
   const [editCell, setEditCell] = useState(null);          // { module_id, role }
   const [showRoleModal, setShowRoleModal] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    if (!authorized) return;
     setLoading(true);
     try {
       const [m, u] = await Promise.all([
@@ -46,19 +49,19 @@ export default function RolesPermissions() {
       setMatrix(m.data);
       setUsers(u.data || []);
     } finally { setLoading(false); }
-  };
+  }, [authorized]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const toast = (msg, ok = true) => {
     setFlash((ok ? '✓ ' : '✗ ') + msg);
     setTimeout(() => setFlash(''), 4500);
   };
 
-  if (user?.role !== 'it_admin') {
+  if (!authorized) {
     return (
       <div data-testid="roles-not-allowed" style={{ padding: '40px', textAlign: 'center', backgroundColor: '#FEE2E2', border: '1px solid #FF353F', color: '#7F1D1D' }}>
-        <strong>IT Admin only.</strong> Ask your IT administrator to grant access.
+        <strong>HR Admin or IT Admin only.</strong> Ask your IT administrator to grant access.
       </div>
     );
   }
@@ -127,7 +130,7 @@ export default function RolesPermissions() {
             Roles & Permissions
           </h1>
           <p style={{ color: '#525252', fontSize: '12px', margin: '4px 0 0' }}>
-            Click any matrix cell to edit. Changes take effect immediately and are audited.
+            {isIT ? 'Manage permissions and roles. Changes are audited.' : 'Assign employee and management roles. IT and security roles remain protected.'}
           </p>
         </div>
         <button data-testid="roles-refresh" onClick={load} style={btnSecondary}>
@@ -142,22 +145,22 @@ export default function RolesPermissions() {
       )}
 
       <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid rgba(25,25,25,0.1)', marginBottom: '20px' }}>
-        <TabButton id="matrix" label="Access Matrix" Icon={Shield} />
+        {isIT && <TabButton id="matrix" label="Access Matrix" Icon={Shield} />}
         <TabButton id="users" label="User Assignments" Icon={UsersIcon} />
-        <TabButton id="roles" label="Custom Roles" Icon={KeyRound} />
+        {isIT && <TabButton id="roles" label="Custom Roles" Icon={KeyRound} />}
       </div>
 
       {loading ? <div style={{ padding: '40px', textAlign: 'center', color: '#525252' }}>Loading…</div> : (
-        tab === 'matrix' ? (
+        isIT && tab === 'matrix' ? (
           <MatrixTable matrix={matrix} onEdit={(m, r) => setEditCell({ module_id: m, role: r })} saving={saving} />
-        ) : tab === 'users' ? (
-          <UsersTable onProvisioned={load} users={users} matrix={matrix} onChange={changeRole} saving={saving} />
+        ) : !isIT || tab === 'users' ? (
+          <UsersTable limited={!isIT} onProvisioned={load} users={users} matrix={matrix} onChange={changeRole} saving={saving} />
         ) : (
           <CustomRoles matrix={matrix} onDelete={deleteRole} onNew={() => setShowRoleModal(true)} saving={saving} />
         )
       )}
 
-      {editCell && matrix && (
+      {isIT && editCell && matrix && (
         <CellEditor
           matrix={matrix}
           cell={editCell}
@@ -167,7 +170,7 @@ export default function RolesPermissions() {
         />
       )}
 
-      {showRoleModal && matrix && (
+      {isIT && showRoleModal && matrix && (
         <NewRoleModal
           matrix={matrix}
           onClose={() => setShowRoleModal(false)}
@@ -300,8 +303,8 @@ function CellEditor({ matrix, cell, onClose, onSave, onReset }) {
   );
 }
 
-function UsersTable({ users, matrix, onChange, saving, onProvisioned }) {
-  const roles = matrix?.roles_order || [];
+function UsersTable({ users, matrix, onChange, saving, onProvisioned, limited }) {
+  const roles = (limited ? matrix?.assignable_roles : matrix?.roles_order) || [];
   return (
     <div data-testid="users-tab" style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
       <div style={panelHeader}>
@@ -326,7 +329,7 @@ function UsersTable({ users, matrix, onChange, saving, onProvisioned }) {
                 </span>
               </td>
               <td style={td}>
-                <select data-testid={`role-select-${u.id}`} disabled={saving === u.id} value={u.role}
+                <select data-testid={`role-select-${u.id}`} disabled={saving === u.id || (limited && !u.can_assign_role)} value={u.role}
                   onChange={(e) => onChange(u, e.target.value)}
                   style={{ padding: '6px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '12px', fontFamily: 'Nunito Sans' }}>
                   {roles.map(r => <option key={r} value={r}>{matrix?.role_labels?.[r] || r}</option>)}

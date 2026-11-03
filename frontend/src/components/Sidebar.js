@@ -71,7 +71,7 @@ const MENU_ITEMS = [
     { path: '/forms',      label: 'Forms',          Icon: FileEdit,      roles: ['hr_admin','hr_manager', 'general_manager','line_manager','finance','employee','solver'] },
     { path: '/my-tasks',   label: 'My Tasks',       Icon: ListChecks,    roles: ['hr_admin','hr_manager', 'general_manager','line_manager','employee','solver','finance','executive','it_admin'] },
     { path: '/data-import', label: 'Data Import',    Icon: UploadCloud,   roles: ['hr_admin','hr_manager', 'general_manager','it_admin'] },
-    { path: '/roles-permissions', label: 'Roles & Permissions', Icon: KeyRound, roles: ['it_admin'] },
+    { path: '/roles-permissions', label: 'Roles & Permissions', Icon: KeyRound, roles: ['it_admin', 'hr_admin'] },
     { path: '/masters',    label: 'Masters Settings', Icon: Cog,          roles: ['it_admin','hr_admin','hr_manager','finance'] },
     { path: '/settings',   label: 'AI & Email Setup', Icon: SettingsIcon, roles: ['hr_admin','hr_manager','it_admin'] },
   ]},

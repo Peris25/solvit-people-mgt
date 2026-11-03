@@ -29,3 +29,16 @@ An authorized IT administrator must review each existing linked account and assi
 ## Remaining verification
 
 Production deployment status and live role assignments must be distinguished. After both services run the release and IT assigns roles, verify one direct report and one unrelated employee per manager, plus General Manager business access and denied account/technical administration. No live leave decisions should be made merely for testing.
+
+## Approved HR delegation ? subsequent update
+
+The user approved HR Admin assigning business roles without waiting for IT. This supersedes the original IT-only assignment boundary above.
+
+- HR Admin can open Roles & Permissions directly on User Assignments and assign Employee, Line Manager, General Manager, HR Manager, Finance or Executive to an existing unambiguously linked full-time employee account.
+- HR cannot edit its own role or protected HR Admin, IT Admin, Board, Solver, system or custom-role accounts, nor grant those protected roles. General Manager does not receive this delegation.
+- Access matrix editing, custom-role administration and technical/security settings remain IT-only. Existing limited HR employee-login provisioning remains unchanged.
+- Assignment validates the stored target identity server-side, uses tenant scoping and a conditional update to reject concurrent role/link changes, records an audit event and invalidates existing sessions.
+- No production assignments have been performed by this code change. HR can now make the reviewed assignments in the portal after the backend/frontend release is live. Manager visibility still follows saved employee reporting links.
+- Updated full validation: backend 1,329 passed / 321 skipped; frontend 269 passed across 36 suites. Strict build, normal build, Python compilation and whitespace checks pass. Integration skips remain as documented above.
+
+HR usage: Roles & Permissions ? User Assignments ? select the person's approved role and confirm. Affected users sign in again. Review Martin for General Manager; Grace, Timothy and Brian for Line Manager; retain Peris's protected IT Admin account. Do not infer or rewrite team assignments during role changes.
