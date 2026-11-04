@@ -32,8 +32,8 @@ export default function Login() {
       <div className="portal-login-brand" style={{ flex: 1, background: '#191919', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '48px', minHeight: '100vh', position: 'relative', overflow: 'hidden' }}>
         <div className="portal-login-art" aria-hidden="true" />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(25,25,25,0.85) 0%, rgba(25,25,25,0.55) 100%)' }} />
-        <div style={{ position: 'relative', zIndex: 1 }}>
-          <img src="/solvit-logo.png" alt="Solvit" style={{ height: '44px', width: 'auto', display: 'block', backgroundColor: '#fff', borderRadius: '4px', padding: '6px 10px', boxSizing: 'content-box' }} />
+        <div className="portal-login-logo" style={{ position: 'relative', zIndex: 1 }}>
+          <img src="/solvit-logo.png" alt="Solvit" width="289" height="98" />
         </div>
         <div style={{ position: 'relative', zIndex: 1 }}>
           <h1 style={{ color: '#fff', fontSize: '42px', fontWeight: 900, lineHeight: 1.1, letterSpacing: '-0.05em', margin: 0, marginBottom: '16px' }}>
