@@ -9,11 +9,13 @@ export function CycleConfiguration({ cycles, onUpdated }) {
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [launchId, setLaunchId] = useState('');
+  const [distribution, setDistribution] = useState(null);
   const change = (key, value) => setValues(previous => ({ ...previous, [key]: value }));
   return <details style={{ background: '#fff', padding: 20, marginBottom: 20 }}><summary>Configure review cycle (HR)</summary>
     <p role="note">Policy conflict: Handbook/FRD specify 50/30/20 with Client Feedback; the Developer Brief specifies 60/25/15 with Alignment. Record HR approval before using either for a new cycle. Historical scores stay unchanged.</p>
     {error && <p role="alert">{error}</p>}
-    <form onSubmit={async e => { e.preventDefault(); setBusy(true); setError(''); try { await api.configureReviewCycle(values); await onUpdated(); } catch (err) { setError(typeof err.response?.data?.detail === 'string' ? err.response.data.detail : 'Unable to configure the cycle.'); } finally { setBusy(false); } }}>
+    <form onSubmit={async e => { e.preventDefault(); setBusy(true); setError(''); try { const response = await api.configureReviewCycle(values); if (!response?.data?.id) throw new Error(); await onUpdated(); } catch (err) { setError(typeof err.response?.data?.detail === 'string' ? err.response.data.detail : 'Unable to configure the cycle.'); } finally { setBusy(false); } }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
         <label style={field}>Cycle<select value={values.cycle_type} onChange={e => change('cycle_type', e.target.value)}><option value="Mid_Year">Mid-year</option><option value="Year_End">Year-end</option></select></label>
         <label style={field}>Year<input required type="number" min="2000" max="2100" value={values.cycle_year} onChange={e => change('cycle_year', Number(e.target.value))} /></label>
@@ -25,7 +27,13 @@ export function CycleConfiguration({ cycles, onUpdated }) {
       <label style={field}><span><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} /> HR has approved this policy and the meaning of Section C for this cycle.</span></label>
       <button style={button} disabled={busy || !confirmed}>Configure cycle</button>
     </form>
-    <ul>{cycles.map(cycle => <li key={cycle.id}>{cycle.cycle_type?.replaceAll('_', ' ')} {cycle.cycle_year}: {cycle.starts_on} to {cycle.ends_on}</li>)}</ul>
+    <ul>{cycles.map(cycle => <li key={cycle.id} style={{ margin: '16px 0' }}>{cycle.cycle_type?.replaceAll('_', ' ')} {cycle.cycle_year}: {cycle.starts_on} to {cycle.ends_on}
+      <button type="button" style={button} disabled={busy} onClick={() => setLaunchId(cycle.id)}>Send reviews to employees</button>
+      {launchId === cycle.id && <div><p>Send to eligible FTEs with valid managers. Existing reviews remain unchanged. Employees with missing links or restricted reviews will be listed for HR follow-up.</p>
+        <button type="button" style={button} disabled={busy} onClick={async () => { setBusy(true); setError(''); try { const response = await api.launchReviewCycle(cycle.id); if (!response.data) throw new Error(); setDistribution(response.data); setLaunchId(''); await onUpdated(); } catch { setError('Review distribution could not finish. Retry safely; existing reviews will not be duplicated.'); } finally { setBusy(false); } }}>Confirm send reviews</button>
+        <button type="button" style={button} onClick={() => setLaunchId('')}>Cancel sending</button></div>}
+    </li>)}</ul>
+    {distribution && <div role="status"><p>{distribution.created.length} reviews sent · {distribution.existing.length} already assigned · {distribution.needs_review.length} need HR attention</p><ul>{distribution.needs_review.map((row, index) => <li key={row.employee_id + index}>{row.name}: {row.reason}</li>)}</ul></div>}
   </details>;
 }
 
@@ -40,6 +48,7 @@ export default function PerformanceWorkflow({ review, onUpdated }) {
   const [legacyReference, setLegacyReference] = useState('');
   const [progress, setProgress] = useState({});
   const [evidence, setEvidence] = useState({});
+  const [meeting, setMeeting] = useState({ scheduled_at: '', location: '' });
   const goals = review.section_a_kpis || [];
   const perform = async action => { setBusy(true); setError(''); try { await action(); await onUpdated(); } catch (err) { setError(typeof err.response?.data?.detail === 'string' ? err.response.data.detail : 'The assessment could not be saved.'); } finally { setBusy(false); } };
   if (review.workflow_version !== 1) return <section><p>Historical review. Existing scores are preserved; updates require an approved reconciliation process.</p>
@@ -79,9 +88,17 @@ export default function PerformanceWorkflow({ review, onUpdated }) {
     {review.can_manage && review.status === 'Self_Submitted' && <form onSubmit={e => { e.preventDefault(); perform(() => api.submitReviewAssessment(review.id, 'manager', { summary: managerSummary, kpi_scores: goals.map(item => ({ goal_id: item.id, score: Number(scores[item.id]?.score), evidence: scores[item.id]?.evidence })) })); }}>
       <h4>Manager assessment</h4><label style={field}>Assessment summary<textarea required value={managerSummary} onChange={e => setManagerSummary(e.target.value)} /></label>
       {goals.map(item => <div key={item.id}><strong>{item.objective}</strong><label style={field}>Score (1–3)<input required type="number" min="1" max="3" step="0.1" value={scores[item.id]?.score || ''} onChange={e => setScores(previous => ({ ...previous, [item.id]: { ...previous[item.id], score: e.target.value } }))} /></label><label style={field}>Evidence<textarea required value={scores[item.id]?.evidence || ''} onChange={e => setScores(previous => ({ ...previous, [item.id]: { ...previous[item.id], evidence: e.target.value } }))} /></label></div>)}
-      <button style={button} disabled={busy}>Submit manager assessment</button>
+      <button style={button} disabled={busy}>Approve and send to HR</button>
     </form>}
     {review.manager_assessment && <div><h4>Manager assessment</h4><p>{review.manager_assessment.summary}</p></div>}
+    {review.review_meeting && <aside><h4>Review meeting</h4><p>{new Date(review.review_meeting.scheduled_at).toLocaleString()} · {review.review_meeting.location}</p></aside>}
+    {review.can_hr_review && ['Manager_Submitted', 'HR_Reviewed'].includes(review.status) && <form onSubmit={e => { e.preventDefault(); perform(async () => { const response = await api.scheduleReviewMeeting(review.id, { ...meeting, scheduled_at: new Date(meeting.scheduled_at).toISOString() }); if (!response?.data?.id) throw new Error('The meeting could not be saved.'); }); }}>
+      <h4>{review.review_meeting ? 'Reschedule review meeting' : 'Arrange review meeting'}</h4>
+      <p>The manager has approved the assessment. Arrange the employee’s review meeting; the employee and reporting manager will receive an in-app notification.</p>
+      <label style={field}>Meeting date and time (your local time)<input required type="datetime-local" aria-label="Review meeting time" value={meeting.scheduled_at} onChange={e => setMeeting(v => ({ ...v, scheduled_at: e.target.value }))} /></label>
+      <label style={field}>Location or meeting link<input required maxLength={500} aria-label="Review meeting location" value={meeting.location} onChange={e => setMeeting(v => ({ ...v, location: e.target.value }))} /></label>
+      <button style={button} disabled={busy}>Save review meeting</button>
+    </form>}
     {review.can_hr_review && review.status === 'Manager_Submitted' && <form onSubmit={e => { e.preventDefault(); perform(() => api.submitReviewAssessment(review.id, 'hr', { ...hr, section_b_score: Number(hr.section_b_score), section_c_score: Number(hr.section_c_score) })); }}>
       <h4>HR review</h4><p>Approved policy: {review.scoring_policy?.weights?.join(' / ')} · Section C: {review.scoring_policy?.section_c}. Use verified normalized evidence; do not infer missing feedback.</p>
       {[['section_b_score','Section B score'],['section_c_score','Section C score']].map(([key, label]) => <label key={key} style={field}>{label}<input required type="number" min="1" max="3" step="0.1" value={hr[key]} onChange={e => setHr(previous => ({ ...previous, [key]: e.target.value }))} /></label>)}

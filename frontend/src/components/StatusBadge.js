@@ -33,6 +33,10 @@ const STATUS_CONFIG = {
   'Submitted': { bg: '#DBEAFE', color: '#1D4ED8', label: 'Submitted' },
   'Draft': { bg: '#F3F4F6', color: '#374151', label: 'Draft' },
   // Performance ratings
+  'Self_Draft': { bg: '#F3F4F6', color: '#374151', label: 'Self-assessment draft' },
+  'Self_Submitted': { bg: '#DBEAFE', color: '#1D4ED8', label: 'Awaiting manager review' },
+  'Manager_Submitted': { bg: '#FEF3C7', color: '#92400E', label: 'Manager approved / HR review' },
+  'HR_Reviewed': { bg: '#DCFCE7', color: '#166534', label: 'HR reviewed' },
   'Exceeded': { bg: '#DCFCE7', color: '#166534', label: 'Exceeded' },
   'Met': { bg: '#DBEAFE', color: '#1D4ED8', label: 'Met' },
   'Below': { bg: '#FEF3C7', color: '#92400E', label: 'Below' },

@@ -293,6 +293,35 @@ async def list_inbox(db, user, *, category=None, kind=None, read_status="all", o
         title, message = PREVIEWS[category_value]
         if category_value in {"Leave", "Approvals"} and link:
             title, message = await leave_preview(db, user, row, action)
+        if category_value == "Performance" and link:
+            event = (row.get("data") or {}).get("performance_event")
+            if event in {"performance.assessment.manager", "performance.assessment.self", "created"}:
+                from utils.performance_workflows import record as performance_record
+                reference = (row.get("data") or {}).get("performance_review_id")
+                if not reference:
+                    return None
+                try:
+                    current_review, _ = await performance_record(db, user, reference)
+                except HTTPException as error:
+                    if error.status_code in (403, 404, 409):
+                        return None
+                    raise
+                if event == "performance.assessment.manager" and (current_review.get("status") != "Manager_Submitted" or current_review.get("review_meeting")):
+                    return None
+                if event == "performance.assessment.self" and current_review.get("status") != "Self_Submitted":
+                    return None
+                if event == "created" and current_review.get("status") not in {"Draft", "Self_Draft"}:
+                    return None
+            if event == "performance.assessment.manager":
+                if (row.get("data") or {}).get("employee_id") == user.get("employee_id"):
+                    return None  # Another HR user must arrange this person's meeting.
+                title, message = "Arrange performance review meeting", "A manager has approved a performance assessment. Open the review to schedule the meeting."
+            elif event == "performance.assessment.self":
+                title, message = "Performance assessment awaiting manager review", "An employee has submitted their self-assessment. Open the review to assess and approve."
+            elif event == "created":
+                title, message = "Your performance review is available", "Open your review to agree goals and complete your self-assessment."
+            elif event == "performance.meeting.scheduled":
+                title, message = "Performance review meeting scheduled", "HR has arranged the review meeting. Open the review for its date, time and location."
         if link and isinstance(row.get("data"), dict) and row["data"].get("public_solver_assessment_id"):
             title, message = "New Solver assessment received", "A new applicant assessment is ready for HR review. Open it to view the answers."
         elif link and category_value == "System":
@@ -307,6 +336,8 @@ async def list_inbox(db, user, *, category=None, kind=None, read_status="all", o
             elif user.get("role") in {"hr_admin", "hr_manager", "general_manager"}:
                 return None
         kind_value = "Approvals" if action else "Action required" if category_value in ("Onboarding", "Training", "Policies") else "Updates"
+        if category_value == "Performance" and (row.get("data") or {}).get("performance_event") in {"created", "performance.assessment.self", "performance.assessment.manager"}:
+            kind_value = "Action required"
         created = date_value(row.get("created_at"))
         return {"id": storage_key(row), "title": title, "message": message,
                         "category": category_value, "kind": kind_value, "sender": "System" if row.get("rule_id") else "Solvit People",

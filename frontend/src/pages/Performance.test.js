@@ -48,7 +48,7 @@ test('self-assessment submits only employee fields through the staged endpoint',
 });
 test('manager form has KPI scores and evidence but no final score or HR inputs', async () => {
   await render(<PerformanceWorkflow review={review({ can_manage:true, status:'Self_Submitted', section_a_kpis:[1,2,3].map(id => ({ id, objective:'Agreed goal' })) })} onUpdated={jest.fn()} />);
-  expect(container.textContent).toContain('Submit manager assessment'); expect(container.textContent).not.toContain('Section B score');
+  expect(container.textContent).toContain('Approve and send to HR'); expect(container.textContent).not.toContain('Section B score');
   expect(container.querySelectorAll('input[type="number"]').length).toBe(3);
 });
 test('HR releases scores separately after HR assessment', async () => {
@@ -60,6 +60,30 @@ test('cycle configuration identifies conflicting policies and requires explicit 
   await render(<CycleConfiguration cycles={[]} onUpdated={jest.fn()} />);
   expect(container.textContent).toContain('50/30/20'); expect(container.textContent).toContain('60/25/15');
   expect([...container.querySelectorAll('button')].find(b => b.textContent === 'Configure cycle').disabled).toBe(true);
+});
+
+test('HR distributes configured reviews only after explicit confirmation', async () => {
+  api.launchReviewCycle.mockResolvedValue({ data: { created: [{ employee_id: 'staff' }], existing: [], needs_review: [] } });
+  await render(<CycleConfiguration cycles={[{ id: 'cycle', cycle_type: 'Year_End', cycle_year: 2026 }]} onUpdated={jest.fn()} />);
+  await click('Send reviews to employees');
+  expect(api.launchReviewCycle).not.toHaveBeenCalled();
+  await click('Confirm send reviews');
+  expect(api.launchReviewCycle).toHaveBeenCalledWith('cycle');
+  expect(container.textContent).toContain('1 reviews sent');
+});
+
+test('HR can schedule a meeting after manager approval using a timezone-aware time', async () => {
+  api.scheduleReviewMeeting.mockResolvedValue({ data: { id: 'review' } });
+  await render(<PerformanceWorkflow review={review({ can_hr_review: true, status: 'Manager_Submitted' })} onUpdated={jest.fn()} />);
+  await change(container.querySelector('[aria-label="Review meeting time"]'), '2099-11-05T10:00');
+  await change(container.querySelector('[aria-label="Review meeting location"]'), 'Office meeting room');
+  await submit(container.querySelector('form'));
+  expect(api.scheduleReviewMeeting).toHaveBeenCalledWith('review', { scheduled_at: new Date('2099-11-05T10:00').toISOString(), location: 'Office meeting room' });
+});
+
+test('employee cannot see HR meeting scheduling controls', async () => {
+  await render(<PerformanceWorkflow review={review({ status: 'Manager_Submitted' })} onUpdated={jest.fn()} />);
+  expect(container.querySelector('[aria-label="Review meeting time"]')).toBeNull();
 });
 test('historical publication has a separate approval reference and never sends new scores', async () => {
   api.submitReviewAssessment.mockResolvedValue({});

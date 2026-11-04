@@ -58,7 +58,7 @@ def released(row):
 
 def projection(row, user, employee=None):
     result = {key: deepcopy(row[key]) for key in ("employee_id", "cycle_id", "cycle_type", "cycle_label", "cycle_year", "review_date", "status",
-        "created_at", "updated_at", "self_due_on", "manager_due_on", "review_due_on", "workflow_version", "released_at") if key in row}
+        "created_at", "updated_at", "self_due_on", "manager_due_on", "review_due_on", "workflow_version", "released_at", "review_meeting") if key in row}
     result["goals_acknowledged_at"] = row.get("goals_acknowledged_at")
     result["id"] = str(row.get("id") or row.get("_id"))
     if employee:
@@ -96,15 +96,75 @@ def projection(row, user, employee=None):
 async def notify(db, row, event):
     employee = await find_employee(db, row.get("employee_id"), tenant_of(row))
     if not employee: fail("Review employee needs an integrity review", 409)
-    recipients = [("employee", employee_key(employee)), ("role", "hr_admin"), ("role", "hr_manager")]
     manager = await find_employee(db, employee.get("line_manager_id"), tenant_of(row))
-    if manager: recipients.append(("employee", employee_key(manager)))
+    base_event = event.split(":", 1)[0]
+    recipients = []
+    if base_event in {"created", "performance.goal.assign", "performance.assessment.release", "performance.historical.released", "performance.meeting.scheduled"}:
+        recipients.append(("employee", employee_key(employee)))
+    if manager and (base_event in {"performance.goals.acknowledged", "performance.meeting.scheduled"} or (base_event == "performance.assessment.self" and row.get("status") == "Self_Submitted")):
+        recipients.append(("employee", employee_key(manager)))
+    if base_event == "performance.assessment.manager":
+        recipients.extend(("role", role) for role in ("hr_admin", "hr_manager", "general_manager"))
     for kind, recipient in recipients:
         key = f"performance:{tenant_of(row)}:{row['id']}:{event}:{kind}:{recipient}"
         await db.notifications.update_one({"_id": key}, {"$setOnInsert": {"id": key,
             "tenant_id": tenant_of(row), "category": "Performance", "created_at": now(), "is_read": False,
             **({"recipient_role": recipient} if kind == "role" else {"recipient_type": "employee", "recipient_id": recipient}),
-            "data": {"employee_id": employee_key(employee), "performance_review_id": row["id"]}}}, upsert=True)
+            "data": {"employee_id": employee_key(employee), "performance_review_id": row["id"], "performance_event": base_event}}}, upsert=True)
+
+
+async def launch_cycle(db, user, reference):
+    """HR explicitly distributes a cycle; existing reviews are never replaced."""
+    require_hr(user)
+    cycle = await find_linked_record(db.performance_cycles, reference, user)
+    from utils.staff_views import token
+    result = {"created": [], "existing": [], "needs_review": []}
+    employees = await db.employees.find(tenant_query(tenant_of(user))).to_list(None)
+    for employee in employees:
+        if token(employee.get("employment_type")) not in {"", "fte", "fulltime"} or token(employee.get("lifecycle_state")) not in {"active", "onboarding", "probation", "onleave", "pip"}:
+            continue
+        item = {"employee_id": employee_key(employee), "name": employee.get("full_name")}
+        try:
+            await employee_access(db, user, employee_key(employee), write=True)
+            manager = await find_employee(db, employee.get("line_manager_id"), tenant_of(user))
+            if not manager or manager["_id"] == employee["_id"]:
+                fail("A valid reporting manager is required", 409)
+            if token(manager.get("lifecycle_state") or manager.get("status")) not in {"active", "probation", "onleave", "pip"}:
+                fail("An active reporting manager is required", 409)
+            prior = await db.performance_reviews.find({"$and": [tenant_query(tenant_of(user)), {"employee_id": {"$in": reference_ids(employee) + [employee["_id"]]}, "cycle_id": cycle["id"]}]}).to_list(2)
+            if len(prior) == 1 and prior[0].get("workflow_version") == 1:
+                result["existing"].append(item)
+                continue
+            review = await create_review(db, user, {"employee_id": employee_key(employee), "cycle_type": cycle["cycle_type"], "cycle_year": cycle["cycle_year"]})
+            result["created"].append({**item, "review_id": review["id"]})
+        except HTTPException as error:
+            if error.status_code not in (403, 404, 409):
+                raise
+            result["needs_review"].append({**item, "reason": error.detail})
+    await audit(db, user, "performance.cycle.distributed", cycle, created=len(result["created"]), existing=len(result["existing"]), needs_review=len(result["needs_review"]))
+    return result
+
+
+async def schedule_meeting(db, user, reference, body):
+    require_hr(user)
+    row, employee = await record(db, user, reference)
+    if employee_key(employee) == user.get("employee_id"):
+        fail("Another authorized HR user must arrange your review meeting", 403)
+    if row.get("workflow_version") != 1 or row.get("status") not in {"Manager_Submitted", "HR_Reviewed"}:
+        fail("Manager approval is required before arranging the review meeting", 409)
+    if set(body) != {"scheduled_at", "location"}:
+        fail("Provide the meeting date/time and location or meeting link")
+    try:
+        scheduled = datetime.fromisoformat(body["scheduled_at"].replace("Z", "+00:00"))
+        if scheduled.tzinfo is None or scheduled <= datetime.now(timezone.utc):
+            raise ValueError()
+    except (AttributeError, TypeError, ValueError):
+        fail("Choose a future meeting time with a timezone")
+    meeting = {"scheduled_at": scheduled.isoformat(), "location": text(body.get("location"), "meeting location", 500)}
+    if row.get("review_meeting") == meeting:
+        return projection(row, user, employee)
+    await save(db, user, row, {"review_meeting": meeting}, "performance.meeting.scheduled")
+    return projection(row, user, employee)
 
 
 async def create_cycle(db, user, body):

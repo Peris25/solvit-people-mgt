@@ -203,6 +203,12 @@ export default function Performance() {
 
       {error && <div role="alert">{error} <button onClick={load}>Retry</button></div>}
       {['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) && <CycleConfiguration cycles={cycles} onUpdated={load} />}
+      {['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) && <section style={{ background: '#fff', padding: 20, marginBottom: 20, borderRadius: 12 }}>
+        <h2>Review meetings to arrange</h2>
+        <p>Manager-approved assessments return to HR here. Open a review to arrange its meeting.</p>
+        {reviews.filter(r => r.can_hr_review && r.status === 'Manager_Submitted' && !r.review_meeting).length === 0 ? <p>No review meetings awaiting scheduling.</p> :
+          reviews.filter(r => r.can_hr_review && r.status === 'Manager_Submitted' && !r.review_meeting).map(r => <div key={r.id} style={{ display: 'flex', gap: 16, alignItems: 'center', padding: 12, borderBottom: '1px solid #eee' }}><strong>{r.employee_name || 'Employee unavailable'}</strong><span>{r.cycle_type?.replaceAll('_', ' ')} {r.cycle_year}</span><button onClick={() => openView(r)}>Arrange meeting</button></div>)}
+      </section>}
       <p style={{ fontSize: '12px', color: '#525252' }}>Talent-density component weights below describe the aggregate dashboard metric, not an individual review score. Each review uses its approved cycle policy.</p>
       {/* Talent Density Score banner (correction §3) */}
       {talentDensity && (

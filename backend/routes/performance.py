@@ -126,6 +126,24 @@ async def update_goals(review_id: str, request: Request):
         return await workflow.goals(db, user, review_id, body)
 
 
+@router.post("/cycles/{cycle_id}/launch")
+async def distribute_cycle(cycle_id: str, request: Request):
+    user = await get_current_user(request)
+    db = get_db()
+    async with integrity_write(db):
+        return await workflow.launch_cycle(db, user, cycle_id)
+
+
+@router.post("/{review_id}/meeting")
+async def arrange_review_meeting(review_id: str, request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    if not isinstance(body, dict): raise HTTPException(422, "An object body is required")
+    db = get_db()
+    async with integrity_write(db):
+        return await workflow.schedule_meeting(db, user, review_id, body)
+
+
 @router.post("/{review_id}/assessments/{stage}")
 async def submit_assessment(review_id: str, stage: str, request: Request):
     user = await get_current_user(request)

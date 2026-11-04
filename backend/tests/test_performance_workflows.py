@@ -164,9 +164,77 @@ def test_missing_policy_evidence_cannot_calculate_or_release():
 def test_notification_recipients_are_private_and_creation_deduplicated():
     db, users = fixture(); row = create(db, users); stored = db.performance_reviews.docs[0]
     count = len(db.notifications.docs); run(service.notify(db, stored, 'created'))
-    assert len(db.notifications.docs) == count == 4
-    assert {r.get('recipient_id') for r in db.notifications.docs if r.get('recipient_type') == 'employee'} == {'staff','manager'}
+    assert len(db.notifications.docs) == count == 1
+    assert {r.get('recipient_id') for r in db.notifications.docs if r.get('recipient_type') == 'employee'} == {'staff'}
     assert all('summary' not in row and 'overall_score' not in row for row in db.notifications.docs)
+
+
+def test_cycle_distribution_is_retry_safe_and_reports_missing_managers():
+    db, users = fixture(); before = deepcopy(db.employees.docs)
+    cycle = run(service.create_cycle(db, users['hr'], cycle_body()))
+    first = run(service.launch_cycle(db, users['hr'], cycle['id']))
+    assert [row['employee_id'] for row in first['created']] == ['staff']
+    assert first['needs_review']
+    second = run(service.launch_cycle(db, users['hr'], cycle['id']))
+    assert second['created'] == [] and len(second['existing']) == 1
+    assert len(db.performance_reviews.docs) == 1 and db.employees.docs == before
+
+
+@pytest.mark.parametrize('actor', ['staff', 'manager', 'finance', 'other'])
+def test_only_hr_can_distribute_a_cycle(actor):
+    db, users = fixture(); cycle = run(service.create_cycle(db, users['hr'], cycle_body()))
+    with pytest.raises(HTTPException): run(service.launch_cycle(db, users[actor], cycle['id']))
+    assert not db.performance_reviews.docs
+
+
+def test_workflow_notifications_follow_next_responsible_person_and_meeting_link():
+    from utils.notification_centre import list_inbox
+    db, users = fixture(); review = create(db, users); goals = assign(db, users, review['id'])
+    before = len(db.notifications.docs)
+    run(service.assess(db, users['staff'], review['id'], 'self', {**self_body(), 'submit': False}))
+    assert len(db.notifications.docs) == before
+    run(service.assess(db, users['staff'], review['id'], 'self', self_body()))
+    rows = [n for n in db.notifications.docs if n['data'].get('performance_event') == 'performance.assessment.self']
+    assert len(rows) == 1 and rows[0]['recipient_id'] == 'manager'
+    run(service.assess(db, users['manager'], review['id'], 'manager', manager_body(goals)))
+    rows = [n for n in db.notifications.docs if n['data'].get('performance_event') == 'performance.assessment.manager']
+    assert {n['recipient_role'] for n in rows} == {'hr_admin', 'hr_manager', 'general_manager'}
+    inbox = run(list_inbox(db, users['hr']))
+    assert inbox['items'][0]['title'] == 'Arrange performance review meeting'
+    assert inbox['items'][0]['link'] == '/performance?review=' + review['id']
+    assert 'kpi_scores' not in str(inbox) and 'summary' not in str(inbox)
+
+
+def test_hr_meeting_requires_manager_approval_and_preserves_scores():
+    from datetime import datetime, timedelta, timezone
+    db, users = fixture(); review = create(db, users)
+    body = {'scheduled_at': (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(), 'location': 'Meeting room'}
+    with pytest.raises(HTTPException): run(service.schedule_meeting(db, users['hr'], review['id'], body))
+    goals = assign(db, users, review['id'])
+    run(service.assess(db, users['staff'], review['id'], 'self', self_body()))
+    run(service.assess(db, users['manager'], review['id'], 'manager', manager_body(goals)))
+    stored = db.performance_reviews.docs[0]; before = deepcopy(stored)
+    for actor in ('staff', 'manager', 'other', 'finance'):
+        with pytest.raises(HTTPException): run(service.schedule_meeting(db, users[actor], review['id'], body))
+    result = run(service.schedule_meeting(db, users['hr'], review['id'], body))
+    assert result['review_meeting'] == body
+    assert stored['status'] == before['status'] == 'Manager_Submitted'
+    assert stored['section_a_score'] == before['section_a_score']
+    count = len(db.notifications.docs)
+    run(service.schedule_meeting(db, users['hr'], review['id'], body))
+    assert len(db.notifications.docs) == count
+    notices = [n for n in db.notifications.docs if n['data'].get('performance_event') == 'performance.meeting.scheduled']
+    assert {n.get('recipient_id') for n in notices} == {'staff', 'manager'}
+    assert not service.projection(stored, users['staff'], db.employees.docs[0])['scores_released']
+    from utils.notification_centre import list_inbox
+    assert not any(n['title'] == 'Arrange performance review meeting' for n in run(list_inbox(db, users['hr']))['items'])
+
+
+@pytest.mark.parametrize('body', [{'scheduled_at': '2020-01-01T10:00:00+00:00', 'location': 'Room'}, {'scheduled_at': '2099-01-01T10:00:00', 'location': 'Room'}, {'scheduled_at': '2099-01-01T10:00:00+00:00', 'location': 'Room', 'overall_score': 3}])
+def test_meeting_rejects_past_ambiguous_time_and_forged_scores(body):
+    db, users, reference = assessed()
+    with pytest.raises(HTTPException): run(service.schedule_meeting(db, users['hr'], reference, body))
+    assert 'review_meeting' not in db.performance_reviews.docs[0]
 
 
 def test_notification_centre_links_only_authorized_review_and_contains_no_scores():
