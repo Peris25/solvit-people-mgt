@@ -146,7 +146,7 @@
 .portal-login { background: #f5f6f8 !important; align-items: stretch; box-sizing: border-box; }
 .portal-login-brand { flex: 1.05 !important; padding: clamp(32px,6vw,88px) !important; box-sizing: border-box; background: #20252f !important; border-radius: 0 28px 28px 0; }
 .portal-login-brand h1 { font-family: var(--solvit-font-display); font-size: clamp(38px,4vw,64px) !important; line-height: 1.08 !important; font-weight: 700 !important; }
-.portal-login-art { position: absolute; inset: 0; background: radial-gradient(ellipse at 100% 0,#d9233659,transparent 60%), radial-gradient(ellipse at 0 100%,#505e7040,transparent 65%); }
+.portal-login-art { position: absolute; inset: 0; background: url('../assets/login-team.webp') center / cover no-repeat; }
 .portal-login-form { width: 100%; margin: auto; padding: clamp(28px,6vw,80px) !important; box-sizing: border-box; }
 .portal-login-form h2 { font-family: var(--solvit-font-display); font-weight: 700 !important; font-size: 34px !important; }
 .portal-login-form :is(input,button) { border-radius: 9px; min-height: 46px; font-family: var(--solvit-font-body) !important; }
