@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, StrictInt
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 from bson import ObjectId
@@ -62,6 +62,14 @@ async def get_rating_live(score: float) -> str:
 
 
 class ReviewCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    starts_on: Optional[str] = None
+    self_due_on: Optional[str] = None
+    manager_due_on: Optional[str] = None
+    review_due_on: Optional[str] = None
+    review_month: Optional[StrictInt] = None
+    policy: Optional[str] = None
+    policy_confirmed: bool = False
     employee_id: str
     cycle_type: str  # Mid_Year or Year_End
     cycle_year: int
@@ -196,7 +204,7 @@ async def create_review(review: ReviewCreate, request: Request):
     user = await get_current_user(request)
     db = get_db()
     async with integrity_write(db):
-        return await workflow.create_review(db, user, review.model_dump())
+        return await workflow.create_review(db, user, review.model_dump(exclude_unset=True))
 
 
 @router.get("/active-cycle")

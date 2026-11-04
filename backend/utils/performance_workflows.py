@@ -61,7 +61,7 @@ def released(row):
 
 def projection(row, user, employee=None):
     result = {key: deepcopy(row[key]) for key in ("employee_id", "cycle_id", "cycle_type", "cycle_label", "cycle_year", "review_date", "status",
-        "created_at", "updated_at", "self_due_on", "manager_due_on", "review_due_on", "workflow_version", "released_at", "review_meeting", "meeting_proposal") if key in row}
+        "created_at", "updated_at", "self_due_on", "manager_due_on", "review_due_on", "workflow_version", "released_at", "review_meeting", "meeting_proposal", "starts_on", "review_month", "review_scope") if key in row}
     result["goals_acknowledged_at"] = row.get("goals_acknowledged_at")
     result["id"] = str(row.get("id") or row.get("_id"))
     if employee:
@@ -299,6 +299,9 @@ async def create_cycle(db, user, body):
 
 
 async def create_review(db, user, body):
+    if body.get("starts_on") is not None or body.get("cycle_type") == "Probation":
+        from utils.individual_reviews import create
+        return await create(db, user, body)
     require_hr(user)
     employee = await employee_access(db, user, body["employee_id"], write=True)
     cycle = await db.performance_cycles.find_one({"$and": [tenant_query(tenant_of(user)), {
@@ -307,7 +310,7 @@ async def create_review(db, user, body):
     aliases = reference_ids(employee) + [employee["_id"]]
     prior = await db.performance_reviews.find({"$and": [tenant_query(tenant_of(user)), {
         "employee_id": {"$in": aliases}, "cycle_year": body["cycle_year"]}]}).to_list(None)
-    if any(row.get("cycle_type") == body["cycle_type"] or row.get("cycle_type") not in {"Mid_Year", "Year_End"} for row in prior):
+    if any(row.get("cycle_type") == body["cycle_type"] or row.get("cycle_type") not in {"Mid_Year", "Year_End", "Probation"} for row in prior):
         fail("An existing or ambiguous historical review requires HR reconciliation for this period", 409)
     row = {"id": str(uuid.uuid4()), "tenant_id": tenant_of(user), "employee_id": employee_key(employee),
         "cycle_id": cycle["id"], "cycle_type": body["cycle_type"], "cycle_year": body["cycle_year"],
@@ -402,6 +405,9 @@ async def assess(db, user, reference, stage, body):
                 "publication_approval_reference": reference}, "performance.historical.released")
         return projection(row, user, employee)
     if row.get("workflow_version") != 1: fail("Historical reviews require an approved reconciliation; scores are preserved", 409)
+    if row.get("cycle_type") == "Probation" and stage in {"manager", "hr"}:
+        from utils.individual_reviews import probation_assessment
+        return await probation_assessment(db,user,row,employee,stage,body)
     status, own = row.get("status"), employee_key(employee) == user.get("employee_id")
     if stage == "self":
         personal_grant(user, "M05", write=True)
@@ -409,9 +415,9 @@ async def assess(db, user, reference, stage, body):
         if status not in {"Draft", "Self_Draft"}: fail("Self-assessment has already been submitted", 409)
         if set(body) - {"summary", "achievements", "support_needed", "submit"}: fail("Self-assessments cannot contain manager or score fields")
         if "submit" in body and not isinstance(body["submit"], bool): fail("Submission must be a boolean")
-        if body.get("submit") and not 3 <= len(row.get("section_a_kpis") or []) <= 5:
+        if row.get("cycle_type") != "Probation" and body.get("submit") and not 3 <= len(row.get("section_a_kpis") or []) <= 5:
             fail("Agree three to five measurable KPIs before submitting the assessment", 409)
-        if body.get("submit") and not row.get("goals_acknowledged_at"):
+        if row.get("cycle_type") != "Probation" and body.get("submit") and not row.get("goals_acknowledged_at"):
             fail("Employee acknowledgement of agreed goals is required", 409)
         if body.get("submit"):
             manager = await find_employee(db, employee.get("line_manager_id"), tenant_of(user))
@@ -467,7 +473,7 @@ async def assess(db, user, reference, stage, body):
     await save(db, user, row, update, "performance.assessment." + stage)
     if stage == "self" and body.get("submit") is True:
         await email_submitted_review(db, row, employee, manager)
-    if stage == "release":
+    if stage == "release" and row.get("cycle_type") != "Probation":
         try:
             from utils.email_triggers import fire_and_forget
             await fire_and_forget(db, "performance.review_complete", employee_id=employee_key(employee), extra={

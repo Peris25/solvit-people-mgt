@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import StatusBadge from '../components/StatusBadge';
+import CreateReviewDialog from '../components/CreateReviewDialog';
 import PerformanceWorkflow, { CycleConfiguration } from '../components/PerformanceWorkflow';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -17,11 +18,6 @@ export default function Performance() {
   const [tab, setTab] = useState('reviews');
   const [employees, setEmployees] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
-  const [showSetup, setShowSetup] = useState(false);
-  const setupRef = useRef(null);
-  const [selectedCycle, setSelectedCycle] = useState('');
-  const [newReview, setNewReview] = useState({ employee_id: '' });
-  const [saving, setSaving] = useState(false);
   const [talentDensity, setTalentDensity] = useState(null);
   const [viewReview, setViewReview] = useState(null);
   const [viewEmpName, setViewEmpName] = useState('');
@@ -39,7 +35,7 @@ export default function Performance() {
       setCycle(cycleRes.data);
       if (['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role)) {
         const empRes = await api.getEmployees();
-        setEmployees(empRes.data.filter(e => e.lifecycle_state === 'Active'));
+        setEmployees(empRes.data);
       }
     } catch { setError('Unable to load performance information. Please retry.'); } finally { setLoading(false); }
   }, [user?.role]);
@@ -49,22 +45,6 @@ export default function Performance() {
   const loadNineBox = async () => {
     try { const res = await api.getNineBoxMatrix(); setNineBox(res.data); }
     catch { setError('Unable to load the HR matrix.'); }
-  };
-
-  const configureCycle = () => { setShowCreate(false); setShowSetup(true); setupRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); };
-  const configuredCycle = cycles.find(c => c.id === selectedCycle);
-  const existingReview = reviews.find(r => r.employee_id === newReview.employee_id && r.cycle_type === configuredCycle?.cycle_type && Number(r.cycle_year) === Number(configuredCycle?.cycle_year));
-
-  const createReview = async (e) => {
-    e.preventDefault();
-    if (!configuredCycle || existingReview) { setError('Choose a configured cycle without an existing review for this employee.'); return; }
-    setSaving(true); setError('');
-    try {
-      const result = await api.createReview({ employee_id: newReview.employee_id, cycle_type: configuredCycle.cycle_type, cycle_year: configuredCycle.cycle_year });
-      if (!result?.data?.id) throw new Error('Creation was not confirmed. Refresh before retrying.');
-      setShowCreate(false);
-      load();
-    } catch (err) { setError(typeof err.response?.data?.detail === 'string' ? err.response.data.detail : 'Unable to create the review.'); } finally { setSaving(false); }
   };
 
   const NINE_BOX_LABELS = { Stars: '#22C55E', Core_Contributor: '#3B82F6', Culture_Risk: '#F59E0B', Realignment_Needed: '#F97316', Exit_Track: '#EF4444' };
@@ -203,15 +183,15 @@ export default function Performance() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '24px' }}>
         <div>
           <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', margin: 0 }}>Performance Reviews</h1>
-          {cycle?.is_active ? <p style={{ color: '#525252', fontSize: '13px', margin: 0, marginTop: '4px' }}>Active cycle: {cycle.cycle_type} {cycle.cycle_year}</p> : <p>No review cycle currently active</p>}
+          {cycle?.is_active ? <p style={{ color: '#525252', fontSize: '13px', margin: 0, marginTop: '4px' }}>Active cycle: {cycle.cycle_type} {cycle.cycle_year}</p> : <p>{['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) ? 'Create an employee review with its own dates. Shared team cycles are optional.' : 'No review cycle currently active'}</p>}
         </div>
         {['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) && (
-          <button data-testid="create-review-btn" disabled={loading} onClick={() => { setError(''); if (!cycles.length) configureCycle(); else { setSelectedCycle(cycles[0].id); setShowCreate(true); } }} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>+ Create Review</button>
+          <button data-testid="create-review-btn" disabled={loading} onClick={() => { setError(''); setShowCreate(true); }} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>+ Create Review</button>
         )}
       </div>
 
       {error && <div role="alert">{error} <button onClick={load}>Retry</button></div>}
-      {['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) && <div ref={setupRef}><CycleConfiguration cycles={cycles} expanded={showSetup || cycles.length === 0} onUpdated={load} /></div>}
+      {['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) && <CycleConfiguration cycles={cycles} onUpdated={load} />}
       {['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) && <section style={{ background: '#fff', padding: 20, marginBottom: 20, borderRadius: 12 }}>
         <h2>Review meetings to arrange</h2>
         <p>Manager-approved assessments return to HR here. Open a review to arrange its meeting.</p>
@@ -388,37 +368,8 @@ export default function Performance() {
         </div>
       )}
 
-      {showCreate && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ backgroundColor: '#fff', width: '440px', border: '1px solid rgba(25,25,25,0.15)' }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between' }}>
-              <h3 style={{ margin: 0, fontWeight: 900 }}>Create Performance Review</h3>
-              <button onClick={() => setShowCreate(false)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}>×</button>
-            </div>
-            <form onSubmit={createReview} style={{ padding: '24px' }}>
-              {error && <p role="alert">{error}</p>}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Employee</label>
-                <select required aria-label="Review employee" value={newReview.employee_id} onChange={e => setNewReview(p => ({ ...p, employee_id: e.target.value }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', outline: 'none' }}>
-                  <option value="">Select employee...</option>
-                  {employees.map(e => <option key={e.id} value={e.id}>{e.full_name} — {e.role_title}</option>)}
-                </select>
-              </div>
-              <label style={{ display: 'grid', gap: 8, marginBottom: 20 }}>Review cycle
-                <select required aria-label="Configured review cycle" value={selectedCycle} onChange={e => setSelectedCycle(e.target.value)} style={{ padding: 10, borderRadius: 8, border: '1px solid #cbd5e1' }}>
-                  {cycles.map(c => <option key={c.id} value={c.id}>{c.cycle_type?.replaceAll('_', ' ')} {c.cycle_year} - self-assessment due {c.self_due_on}</option>)}
-                </select>
-              </label>
-              {existingReview && <p role="status">This employee already has a review for this cycle. <button type="button" onClick={() => { setShowCreate(false); openView(existingReview); }}>Open existing review</button></p>}
-              <button type="button" onClick={configureCycle} style={{ marginBottom: 16 }}>Set up another cycle</button>
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button type="button" onClick={() => setShowCreate(false)} style={{ padding: '10px 20px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '12px', fontFamily: 'Arial' }}>Cancel</button>
-                <button type="submit" disabled={saving || !selectedCycle || !newReview.employee_id || !!existingReview} style={{ padding: '10px 24px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Arial' }}>Create Review</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {showCreate && <CreateReviewDialog employees={employees} onClose={() => setShowCreate(false)} onCreated={async () => { setShowCreate(false); await load(); }} />}
+
     </div>
   );
 }

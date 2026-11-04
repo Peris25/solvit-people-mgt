@@ -15,7 +15,7 @@ export function CycleConfiguration({ cycles, onUpdated, expanded = false }) {
   const [distribution, setDistribution] = useState(null);
   const change = (key, value) => setValues(previous => ({ ...previous, [key]: value }));
   return <details open={expanded} style={{ background: '#fff', padding: 20, marginBottom: 20 }}><summary>Configure review cycle (HR)</summary>
-    <p>Set up the cycle once, then create a review by selecting an employee and that cycle. Use Send reviews to employees to distribute to the team.</p>
+    <p>Optional team setup: configure a shared cycle to distribute reviews to the team. For one employee, use the Create Review popup above.</p>
     <p role="note">Policy conflict: Handbook/FRD specify 50/30/20 with Client Feedback; the Developer Brief specifies 60/25/15 with Alignment. Record HR approval before using either for a new cycle. Historical scores stay unchanged.</p>
     {error && <p role="alert">{error}</p>}
     <form onSubmit={async e => { e.preventDefault(); setBusy(true); setError(''); try { const response = await api.configureReviewCycle(values); if (!response?.data?.id) throw new Error(); await onUpdated(); } catch (err) { setError(typeof err.response?.data?.detail === 'string' ? err.response.data.detail : 'Unable to configure the cycle.'); } finally { setBusy(false); } }}>
@@ -46,6 +46,8 @@ export default function PerformanceWorkflow({ review, onUpdated }) {
   const [goal, setGoal] = useState({ objective: '', metric: '', target: '', due_on: '' });
   const [self, setSelf] = useState({ summary: review.self_assessment?.summary || '', achievements: review.self_assessment?.achievements || '', support_needed: review.self_assessment?.support_needed || '' });
   const [managerSummary, setManagerSummary] = useState('');
+  const probation = review.cycle_type === 'Probation';
+  const [probationValues, setProbationValues] = useState({ delivery_rating:'', values_rating:'', specific_examples:'', areas_for_improvement:'', recommendation:'' });
   const [scores, setScores] = useState({});
   const [hr, setHr] = useState({ section_b_score: '', section_c_score: '', evidence_reference: '', summary: '' });
   const [legacyReference, setLegacyReference] = useState('');
@@ -64,9 +66,9 @@ export default function PerformanceWorkflow({ review, onUpdated }) {
   return <section style={{ borderTop: '2px solid #FF353F', paddingTop: 16 }}>
     <h3>Review workflow</h3>
     <p>Self-assessment: {review.self_due_on || 'Awaiting HR'} · Manager: {review.manager_due_on || 'Awaiting HR'} · HR: {review.review_due_on || 'Awaiting HR'}</p>
-    {!review.scores_released && <p>Final scores remain private until HR releases this review.</p>}
+    {!review.scores_released && <p>{probation ? 'Review outcome remains private until HR releases it.' : 'Final scores remain private until HR releases this review.'}</p>}
     {error && <p role="alert">{error}</p>}
-    <h4>Agreed goals / KPIs / OKRs</h4>
+    {!probation && <><h4>Agreed goals / KPIs / OKRs</h4>
     {goals.length === 0 && <p>No goals assigned. Your manager must agree measurable targets with you.</p>}
     {goals.map(item => <article key={item.id} style={{ border: '1px solid #ddd', padding: 12, marginBottom: 12 }}>
       <strong>{item.objective}</strong><p>{item.metric}: {item.target}</p><p>Due {item.due_on} · {item.progress}% · {item.status}</p>
@@ -83,18 +85,26 @@ export default function PerformanceWorkflow({ review, onUpdated }) {
     </form>}
     {review.goals_acknowledged_at && <p>Goals acknowledged: {review.goals_acknowledged_at.slice(0, 10)}</p>}
     {review.can_self_assess && !review.goals_acknowledged_at && goals.length >= 3 && <button style={button} disabled={busy} onClick={() => perform(() => api.updateReviewGoals(review.id, { action: 'acknowledge' }))}>Acknowledge agreed goals</button>}
+    </>}
     {review.self_assessment && <div><h4>Employee self-assessment</h4><p>{review.self_assessment.summary}</p><p>{review.self_assessment.achievements}</p><p>{review.self_assessment.support_needed}</p></div>}
     {review.can_self_assess && <form onSubmit={e => { e.preventDefault(); perform(() => api.submitReviewAssessment(review.id, 'self', { ...self, submit: true })); }}>
       <h4>My self-assessment</h4>{[['summary','Summary'],['achievements','Achievements'],['support_needed','Support needed']].map(([key, label]) => <label key={key} style={field}>{label}<textarea required maxLength={4000} value={self[key]} onChange={e => setSelf(previous => ({ ...previous, [key]: e.target.value }))} /></label>)}
       <button style={button} type="button" disabled={busy} onClick={() => perform(() => api.submitReviewAssessment(review.id, 'self', { ...self, submit: false }))}>Save self-assessment draft</button>
-      <button style={button} disabled={busy || goals.length < 3 || !review.goals_acknowledged_at}>Submit self-assessment</button>
+      <button style={button} disabled={busy || (!probation && (goals.length < 3 || !review.goals_acknowledged_at))}>Submit self-assessment</button>
     </form>}
-    {review.can_manage && review.status === 'Self_Submitted' && <form onSubmit={e => { e.preventDefault(); perform(() => api.submitReviewAssessment(review.id, 'manager', { summary: managerSummary, kpi_scores: goals.map(item => ({ goal_id: item.id, score: Number(scores[item.id]?.score), evidence: scores[item.id]?.evidence })) })); }}>
+    {!probation && review.can_manage && review.status === 'Self_Submitted' && <form onSubmit={e => { e.preventDefault(); perform(() => api.submitReviewAssessment(review.id, 'manager', { summary: managerSummary, kpi_scores: goals.map(item => ({ goal_id: item.id, score: Number(scores[item.id]?.score), evidence: scores[item.id]?.evidence })) })); }}>
       <h4>Manager assessment</h4><label style={field}>Assessment summary<textarea required value={managerSummary} onChange={e => setManagerSummary(e.target.value)} /></label>
       {goals.map(item => <div key={item.id}><strong>{item.objective}</strong><label style={field}>Score (1–3)<input required type="number" min="1" max="3" step="0.1" value={scores[item.id]?.score || ''} onChange={e => setScores(previous => ({ ...previous, [item.id]: { ...previous[item.id], score: e.target.value } }))} /></label><label style={field}>Evidence<textarea required value={scores[item.id]?.evidence || ''} onChange={e => setScores(previous => ({ ...previous, [item.id]: { ...previous[item.id], evidence: e.target.value } }))} /></label></div>)}
       <button style={button} disabled={busy}>Approve and send to HR</button>
     </form>}
-    {review.manager_assessment && <div><h4>Manager assessment</h4><p>{review.manager_assessment.summary}</p></div>}
+    {probation && review.can_manage && review.status === 'Self_Submitted' && <form onSubmit={e=>{e.preventDefault();perform(()=>api.submitReviewAssessment(review.id,'manager',{summary:managerSummary,...probationValues}));}}>
+      <h4>Probation manager assessment - Month {review.review_month}</h4>
+      <label style={field}>Assessment summary<textarea required value={managerSummary} onChange={e=>setManagerSummary(e.target.value)} /></label>
+      {[['delivery_rating','Delivery against role expectations',['Exceeds','Meets','Approaching','Below']],['values_rating','Values alignment',['Strong','Adequate','Concerns']],['recommendation','Manager recommendation',review.review_month===3?['Confirm','Extend by 1 month','Fail']:['Continue probation']]].map(([key,title,options])=><label key={key} style={field}>{title}<select required aria-label={title} value={probationValues[key]} onChange={e=>setProbationValues(v=>({...v,[key]:e.target.value}))}><option value="">Select</option>{options.map(o=><option key={o}>{o}</option>)}</select></label>)}
+      {[['specific_examples','Specific examples'],['areas_for_improvement','Areas for improvement / support (enter None if none)']].map(([key,title])=><label style={field} key={key}>{title}<textarea required value={probationValues[key]} onChange={e=>setProbationValues(v=>({...v,[key]:e.target.value}))} /></label>)}
+      <button style={button} disabled={busy}>Approve and send to HR</button>
+    </form>}
+    {review.manager_assessment && <div><h4>Manager assessment</h4><p>{review.manager_assessment.summary}</p>{probation&&<><p>{review.manager_assessment.delivery_rating} / {review.manager_assessment.values_rating}</p><p>{review.manager_assessment.specific_examples}</p><p>{review.manager_assessment.areas_for_improvement}</p><p>Recommendation: {review.manager_assessment.recommendation}</p></>}</div>}
     {review.meeting_proposal && !review.review_meeting && <aside role="status"><h4>Awaiting HR confirmation</h4><p>Manager-proposed date: {new Date(review.meeting_proposal.scheduled_at).toLocaleString()}</p></aside>}
     {review.review_meeting && <aside><h4>Review meeting</h4><p>{new Date(review.review_meeting.scheduled_at).toLocaleString()} · {review.review_meeting.location}</p></aside>}
     {((review.can_hr_review && ['Manager_Submitted', 'HR_Reviewed'].includes(review.status)) || (review.can_manage && review.status === 'Manager_Submitted' && !review.review_meeting)) && <form onSubmit={e => { e.preventDefault(); perform(async () => { const payload = { scheduled_at: new Date(meeting.scheduled_at).toISOString() }; const response = review.can_hr_review ? await api.scheduleReviewMeeting(review.id, { ...payload, location: meeting.location }) : await api.proposeReviewMeeting(review.id, payload); if (!response?.data?.id) throw new Error('The meeting could not be saved.'); }); }}>
@@ -109,13 +119,14 @@ export default function PerformanceWorkflow({ review, onUpdated }) {
       <button style={button} disabled={busy}>{review.can_hr_review ? 'Meeting set' : 'Propose review meeting'}</button>
     </form>}
     {review.can_hr_review && review.status === 'Self_Submitted' && ['failed', 'skipped'].includes(review.manager_email_status) && <p role="note">The review is submitted, but the manager email was not sent. Check Email Delivery configuration/logs; the manager’s in-app notification remains available.</p>}
-    {review.can_hr_review && review.status === 'Manager_Submitted' && <form onSubmit={e => { e.preventDefault(); perform(() => api.submitReviewAssessment(review.id, 'hr', { ...hr, section_b_score: Number(hr.section_b_score), section_c_score: Number(hr.section_c_score) })); }}>
+    {!probation && review.can_hr_review && review.status === 'Manager_Submitted' && <form onSubmit={e => { e.preventDefault(); perform(() => api.submitReviewAssessment(review.id, 'hr', { ...hr, section_b_score: Number(hr.section_b_score), section_c_score: Number(hr.section_c_score) })); }}>
       <h4>HR review</h4><p>Approved policy: {review.scoring_policy?.weights?.join(' / ')} · Section C: {review.scoring_policy?.section_c}. Use verified normalized evidence; do not infer missing feedback.</p>
       {[['section_b_score','Section B score'],['section_c_score','Section C score']].map(([key, label]) => <label key={key} style={field}>{label}<input required type="number" min="1" max="3" step="0.1" value={hr[key]} onChange={e => setHr(previous => ({ ...previous, [key]: e.target.value }))} /></label>)}
       {[['evidence_reference','Verified score-source reference'],['summary','Employee-facing HR summary']].map(([key, label]) => <label key={key} style={field}>{label}<textarea required value={hr[key]} onChange={e => setHr(previous => ({ ...previous, [key]: e.target.value }))} /></label>)}
       <button style={button} disabled={busy}>Approve HR review</button>
     </form>}
-    {review.can_hr_review && review.status === 'HR_Reviewed' && <button style={button} disabled={busy} onClick={() => perform(() => api.submitReviewAssessment(review.id, 'release', {}))}>Release scores to employee</button>}
+    {probation && review.can_hr_review && review.status==='Manager_Submitted' && <form onSubmit={e=>{e.preventDefault();perform(()=>api.submitReviewAssessment(review.id,'hr',{summary:hr.summary}));}}><h4>HR probation review</h4><p>Review the manager recommendation. Employment status remains unchanged.</p><label style={field}>HR summary<textarea required value={hr.summary} onChange={e=>setHr(v=>({...v,summary:e.target.value}))} /></label><button style={button} disabled={busy}>Approve HR review</button></form>}
+    {review.can_hr_review && review.status === 'HR_Reviewed' && <button style={button} disabled={busy} onClick={() => perform(() => api.submitReviewAssessment(review.id, 'release', {}))}>{probation?'Release probation outcome to employee':'Release scores to employee'}</button>}
     {review.hr_summary && <p>{review.hr_summary}</p>}
   </section>;
 }

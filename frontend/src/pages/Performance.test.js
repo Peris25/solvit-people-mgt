@@ -135,37 +135,27 @@ test('HR receives proposed local time ready for manual confirmation', async () =
 });
 
 
-test('Create Review opens cycle setup when no cycle exists instead of a failing form', async () => {
-  useAuth.mockReturnValue({ user:{ role:'hr_admin', employee_id:'hr' } });
+test('Create Review always opens employee popup even with no configured cycles', async () => {
+  useAuth.mockReturnValue({ user:{ role:'hr_admin',employee_id:'hr' } });
   await render(<Performance />);
-  await act(async () => container.querySelector('[data-testid="create-review-btn"]').click());
-  expect(container.querySelector('details').open).toBe(true);
-  expect(container.textContent).not.toContain('Create Performance Review');
-  expect(api.createReview).not.toHaveBeenCalled();
+  await act(async()=>container.querySelector('[data-testid="create-review-btn"]').click());
+  expect(container.querySelector('[role="dialog"]')).toBeTruthy();
+  expect(container.querySelector('[aria-label="Review employee"]')).toBeTruthy();
+  for(const name of ['Review start','Employee submission deadline','Manager submission deadline','HR completion deadline']) expect(container.querySelector(`[aria-label="${name}"]`)).toBeTruthy();
+  expect(api.configureReviewCycle).not.toHaveBeenCalled();
 });
 
-test('HR creates review by selecting an employee and configured cycle only', async () => {
-  useAuth.mockReturnValue({ user:{ role:'hr_admin', employee_id:'hr' } });
-  api.getReviewCycles.mockResolvedValue({ data:[{ id:'approved', cycle_type:'Year_End', cycle_year:2026, self_due_on:'2026-11-15' }] });
-  api.getEmployees.mockResolvedValue({ data:[{ id:'staff', full_name:'Synthetic Employee', lifecycle_state:'Active' }] });
-  api.createReview.mockResolvedValue({ data:{ id:'new-review' } });
-  await render(<Performance />);
-  await act(async () => container.querySelector('[data-testid="create-review-btn"]').click());
-  expect(container.querySelector('[aria-label="Configured review cycle"]')).toBeTruthy();
-  await change(container.querySelector('[aria-label="Review employee"]'), 'staff');
-  await submit(container.querySelectorAll('form')[1]);
-  expect(api.createReview).toHaveBeenCalledWith({ employee_id:'staff', cycle_type:'Year_End', cycle_year:2026 });
+
+test('probation employee can submit without annual KPI scoring prerequisites',async()=>{
+ await render(<PerformanceWorkflow review={review({cycle_type:'Probation',review_month:1,can_self_assess:true})} onUpdated={jest.fn()}/>);
+ expect([...container.querySelectorAll('button')].find(b=>b.textContent==='Submit self-assessment').disabled).toBe(false);
+ expect(container.textContent).not.toContain('Agreed goals / KPIs / OKRs');
 });
 
-test('existing review is opened instead of allowing duplicate creation', async () => {
-  useAuth.mockReturnValue({ user:{ role:'hr_admin', employee_id:'hr' } });
-  api.getReviewCycles.mockResolvedValue({ data:[{ id:'approved', cycle_type:'Year_End', cycle_year:2026 }] });
-  api.getEmployees.mockResolvedValue({ data:[{ id:'staff', full_name:'Synthetic Employee', lifecycle_state:'Active' }] });
-  api.getReviews.mockResolvedValue({ data:[review({ employee_id:'staff',cycle_type:'Year_End',cycle_year:2026 })] });
-  await render(<Performance />);
-  await act(async () => container.querySelector('[data-testid="create-review-btn"]').click());
-  await change(container.querySelector('[aria-label="Review employee"]'), 'staff');
-  expect(container.textContent).toContain('already has a review');
-  expect([...container.querySelectorAll('button')].find(b=>b.textContent==='Create Review').disabled).toBe(true);
-  expect(api.createReview).not.toHaveBeenCalled();
+test('probation manager sees qualitative fields and HR has no numeric scoring controls',async()=>{
+ await render(<PerformanceWorkflow review={review({cycle_type:'Probation',review_month:3,can_manage:true,status:'Self_Submitted'})} onUpdated={jest.fn()}/>);
+ expect(container.querySelector('[aria-label="Delivery against role expectations"]')).toBeTruthy();
+ expect(container.querySelector('input[type="number"]')).toBeNull();
+ await render(<PerformanceWorkflow review={review({cycle_type:'Probation',review_month:3,can_hr_review:true,status:'Manager_Submitted'})} onUpdated={jest.fn()}/>);
+ expect(container.textContent).toContain('HR probation review');expect(container.querySelector('input[type="number"]')).toBeNull();
 });
