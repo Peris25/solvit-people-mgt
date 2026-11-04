@@ -55,7 +55,7 @@ export default function EmployeeDocuments({ employeeId, user }) {
       const target = employeeId || user?.employee_id;
       if (!target) throw new Error('Select an employee before uploading');
       const response = await api.uploadEmployeeDocument(target, fd);
-      if (!response.data?.id) throw new Error('Upload was not confirmed');
+      if (!response?.data?.id) throw new Error(typeof response?.error === 'string' ? response.error : 'Upload was not confirmed');
       if (active.current !== identity) return;
       setShowUpload(false);
       setFile(null); setCategoryLabel('');

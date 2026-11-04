@@ -105,3 +105,16 @@ test('an authorized download creates a temporary browser download and revokes it
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:synthetic-document');
   } finally { anchorClick.mockRestore(); URL.createObjectURL = originalCreate; URL.revokeObjectURL = originalRevoke; }
 });
+
+
+test('resolved server-error response preserves scanner configuration message and selected file', async () => {
+  useAuth.mockReturnValue({user:{...user,role:'hr_admin'}});await render();
+  await act(async()=>container.querySelector('[data-testid="upload-doc-btn"]').click());
+  const upload=new File(['synthetic'],'synthetic-id.png',{type:'image/png'});
+  await act(async()=>{const input=container.querySelector('[data-testid="upload-file-input"]');Object.defineProperty(input,'files',{value:[upload]});input.dispatchEvent(new Event('change',{bubbles:true}));});
+  api.uploadEmployeeDocument.mockResolvedValue({data:null,status:503,_serverError:true,error:'Document scanning is not configured; upload was not saved'});
+  await act(async()=>container.querySelector('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+  expect(container.textContent).toContain('Document scanning is not configured; upload was not saved');
+  expect(container.querySelector('[data-testid="upload-file-input"]').files[0]).toBe(upload);
+  expect(container.querySelector('form')).toBeTruthy();
+});
