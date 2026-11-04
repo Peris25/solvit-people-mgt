@@ -133,3 +133,39 @@ test('HR receives proposed local time ready for manual confirmation', async () =
   expect(container.querySelector('[aria-label="Review meeting date"]').value).toBe('2099-11-05');
   expect(container.textContent).toContain('Meeting set');
 });
+
+
+test('Create Review opens cycle setup when no cycle exists instead of a failing form', async () => {
+  useAuth.mockReturnValue({ user:{ role:'hr_admin', employee_id:'hr' } });
+  await render(<Performance />);
+  await act(async () => container.querySelector('[data-testid="create-review-btn"]').click());
+  expect(container.querySelector('details').open).toBe(true);
+  expect(container.textContent).not.toContain('Create Performance Review');
+  expect(api.createReview).not.toHaveBeenCalled();
+});
+
+test('HR creates review by selecting an employee and configured cycle only', async () => {
+  useAuth.mockReturnValue({ user:{ role:'hr_admin', employee_id:'hr' } });
+  api.getReviewCycles.mockResolvedValue({ data:[{ id:'approved', cycle_type:'Year_End', cycle_year:2026, self_due_on:'2026-11-15' }] });
+  api.getEmployees.mockResolvedValue({ data:[{ id:'staff', full_name:'Synthetic Employee', lifecycle_state:'Active' }] });
+  api.createReview.mockResolvedValue({ data:{ id:'new-review' } });
+  await render(<Performance />);
+  await act(async () => container.querySelector('[data-testid="create-review-btn"]').click());
+  expect(container.querySelector('[aria-label="Configured review cycle"]')).toBeTruthy();
+  await change(container.querySelector('[aria-label="Review employee"]'), 'staff');
+  await submit(container.querySelectorAll('form')[1]);
+  expect(api.createReview).toHaveBeenCalledWith({ employee_id:'staff', cycle_type:'Year_End', cycle_year:2026 });
+});
+
+test('existing review is opened instead of allowing duplicate creation', async () => {
+  useAuth.mockReturnValue({ user:{ role:'hr_admin', employee_id:'hr' } });
+  api.getReviewCycles.mockResolvedValue({ data:[{ id:'approved', cycle_type:'Year_End', cycle_year:2026 }] });
+  api.getEmployees.mockResolvedValue({ data:[{ id:'staff', full_name:'Synthetic Employee', lifecycle_state:'Active' }] });
+  api.getReviews.mockResolvedValue({ data:[review({ employee_id:'staff',cycle_type:'Year_End',cycle_year:2026 })] });
+  await render(<Performance />);
+  await act(async () => container.querySelector('[data-testid="create-review-btn"]').click());
+  await change(container.querySelector('[aria-label="Review employee"]'), 'staff');
+  expect(container.textContent).toContain('already has a review');
+  expect([...container.querySelectorAll('button')].find(b=>b.textContent==='Create Review').disabled).toBe(true);
+  expect(api.createReview).not.toHaveBeenCalled();
+});

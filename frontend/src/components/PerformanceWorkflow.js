@@ -6,7 +6,7 @@ const localMeetingTime = value => { const date = new Date(value); return new Dat
 const field = { display: 'grid', gap: 5, marginBottom: 12 };
 const button = { minHeight: 44, padding: '8px 14px', cursor: 'pointer' };
 
-export function CycleConfiguration({ cycles, onUpdated }) {
+export function CycleConfiguration({ cycles, onUpdated, expanded = false }) {
   const [values, setValues] = useState({ cycle_type: 'Year_End', cycle_year: new Date().getFullYear(), starts_on: '', self_due_on: '', manager_due_on: '', policy: 'handbook_frd', approval_reference: '' });
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -14,7 +14,8 @@ export function CycleConfiguration({ cycles, onUpdated }) {
   const [launchId, setLaunchId] = useState('');
   const [distribution, setDistribution] = useState(null);
   const change = (key, value) => setValues(previous => ({ ...previous, [key]: value }));
-  return <details style={{ background: '#fff', padding: 20, marginBottom: 20 }}><summary>Configure review cycle (HR)</summary>
+  return <details open={expanded} style={{ background: '#fff', padding: 20, marginBottom: 20 }}><summary>Configure review cycle (HR)</summary>
+    <p>Set up the cycle once, then create a review by selecting an employee and that cycle. Use Send reviews to employees to distribute to the team.</p>
     <p role="note">Policy conflict: Handbook/FRD specify 50/30/20 with Client Feedback; the Developer Brief specifies 60/25/15 with Alignment. Record HR approval before using either for a new cycle. Historical scores stay unchanged.</p>
     {error && <p role="alert">{error}</p>}
     <form onSubmit={async e => { e.preventDefault(); setBusy(true); setError(''); try { const response = await api.configureReviewCycle(values); if (!response?.data?.id) throw new Error(); await onUpdated(); } catch (err) { setError(typeof err.response?.data?.detail === 'string' ? err.response.data.detail : 'Unable to configure the cycle.'); } finally { setBusy(false); } }}>
