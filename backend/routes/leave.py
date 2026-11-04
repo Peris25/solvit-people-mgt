@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -316,6 +316,13 @@ async def download_leave_evidence(document_id: str, request: Request):
     return Response(content, media_type=document_uploads.MIME[extension],
                     headers={"Content-Disposition": f'attachment; filename="leave-evidence{extension}"',
                              "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+
+@router.get("/employee-balances")
+async def employee_balance_overview(request: Request, search: str = Query("", max_length=120), department: str = Query("", max_length=120), offset: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=50)):
+    from utils.hr_leave_balances import overview
+    user = await get_current_user(request)
+    return await overview(get_db(), user, search, department, offset, limit)
 
 
 @router.get("/balances/{employee_id}")

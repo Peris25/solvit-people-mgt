@@ -35,6 +35,8 @@ test('shows saved fractional balances, real zero availability and own history wi
   expect(container.textContent).toContain('Synthetic Ada');
   expect(container.textContent).not.toContain('HR final approval');
   expect(api.getLeaveBalances).toHaveBeenCalledWith('staff');
+  expect(container.textContent).not.toContain('Employee Balances');
+  expect(api.getEmployeeLeaveBalances).not.toHaveBeenCalled();
 });
 
 test('unknown availability is an HR review state, never invented zero credit', async () => {

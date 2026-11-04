@@ -1,4 +1,5 @@
 import EmployeeLeaveGroups from '../components/EmployeeLeaveGroups';
+import EmployeeLeaveBalances from '../components/EmployeeLeaveBalances';
 import LeaveActionButton from '../components/LeaveActionButton';
 import { leaveStatus } from '../utils/leaveDisplay';
 import LeaveHistory, { HistoricalLeaveDecision } from '../components/LeaveHistory';
@@ -281,9 +282,10 @@ export default function Leave() {
         {!loading && selectedRequests.length === 0 ? 'The requested leave record is unavailable or not authorized.' : 'Viewing a linked leave request.'}
         <button onClick={() => setSearchParams({})} style={{ marginLeft: '12px', minHeight: '44px' }}>Show all requests</button>
       </div>}
-      <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid rgba(25,25,25,0.1)', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0', borderBottom: '2px solid rgba(25,25,25,0.1)', marginBottom: '20px' }}>
         <TabButton id="my" label="My Applications" Icon={ClipboardList} />
         {hasTeam && <TabButton id="team" label="Team Leave" Icon={UsersIcon} />}
+        {isHR && <TabButton id="balances" label="Employee Balances" Icon={UsersIcon} />}
         {isHR && <TabButton id="history" label="Imported leave history" Icon={ClipboardList} />}
         <TabButton id="calendar" label="Calendar" Icon={CalendarIcon} />
         <TabButton id="rollover" label="Rollover" Icon={RotateCcw} />
@@ -303,6 +305,7 @@ export default function Leave() {
             <p>{visibleTeamRequests.length} matching applications</p>
             <RequestsTable flat rows={visibleTeamRequests} historicalReview={isHR ? setHistoricalReview : undefined} withdraw={withdraw} review={openReview} saving={saving} testId="team-leave" />
           </>}
+          {tab === 'balances' && isHR && <EmployeeLeaveBalances key={accountKey} />}
           {tab === 'history' && isHR && <LeaveHistory key={accountKey} rows={requests.filter(row => row.historical_import)} onSaved={load} />}
           {tab === 'calendar' && <LeaveCalendar calendar={calendar} year={calYear} month={calMonth} setYear={setCalYear} setMonth={setCalMonth} />}
           {tab === 'rollover' && <RolloverPanel rollover={rollover} />}

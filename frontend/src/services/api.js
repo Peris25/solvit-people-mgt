@@ -244,6 +244,7 @@ export const uploadLeaveEvidence = data => api.post('/leave/evidence', data);
 export const leaveEvidenceUrl = id => `${api.defaults.baseURL}/leave/evidence/${encodeURIComponent(id)}`;
 export const downloadLeaveEvidence = id => api.get(`/leave/evidence/${encodeURIComponent(id)}`, { responseType: 'blob' });
 export const getLeaveBalances = (empId) => api.get(`/leave/balances/${empId}`);
+export const getEmployeeLeaveBalances = (params) => api.get('/leave/employee-balances', { params });
 export const getLeaveTypes = () => api.get('/leave/types');
 export const getLeaveRollover = (empId) => api.get(`/leave/rollover/${empId}`);
 export const getLeaveCalendar = (year, month) => api.get('/leave/calendar', { params: { year, month } });
