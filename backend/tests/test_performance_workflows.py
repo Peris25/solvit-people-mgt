@@ -217,7 +217,8 @@ def test_hr_meeting_requires_manager_approval_and_preserves_scores():
     for actor in ('staff', 'manager', 'other', 'finance'):
         with pytest.raises(HTTPException): run(service.schedule_meeting(db, users[actor], review['id'], body))
     result = run(service.schedule_meeting(db, users['hr'], review['id'], body))
-    assert result['review_meeting'] == body
+    assert {key: result['review_meeting'][key] for key in body} == body
+    assert result['review_meeting']['participant_employee_ids'] == ['staff', 'manager']
     assert stored['status'] == before['status'] == 'Manager_Submitted'
     assert stored['section_a_score'] == before['section_a_score']
     count = len(db.notifications.docs)
@@ -235,6 +236,47 @@ def test_meeting_rejects_past_ambiguous_time_and_forged_scores(body):
     db, users, reference = assessed()
     with pytest.raises(HTTPException): run(service.schedule_meeting(db, users['hr'], reference, body))
     assert 'review_meeting' not in db.performance_reviews.docs[0]
+
+
+def test_self_submission_emails_only_the_saved_manager_once_without_review_answers():
+    db, users = fixture(); review = create(db, users); assign(db, users, review['id'])
+    with patch('utils.email_service.send_email', new=AsyncMock(return_value={'status': 'sent'})) as send:
+        run(service.assess(db, users['staff'], review['id'], 'self', {**self_body(), 'submit': False}))
+        send.assert_not_awaited()
+        run(service.assess(db, users['staff'], review['id'], 'self', self_body()))
+        with pytest.raises(HTTPException): run(service.assess(db, users['staff'], review['id'], 'self', self_body()))
+    assert send.await_count == 1
+    payload = send.await_args.kwargs
+    assert payload['to'] == db.employees.docs[4]['work_email']
+    assert payload['template_key'] == 'performance.self_review_submitted'
+    assert '/performance?review=' in payload['context']['platform_link']
+    assert 'Actual self-assessment' not in str(payload) and 'kpi_scores' not in str(payload)
+    assert db.performance_reviews.docs[0]['manager_email_status'] == 'sent'
+
+
+def test_email_disabled_policy_is_preserved_and_submission_is_not_lost():
+    db, users = fixture(); review = create(db, users); assign(db, users, review['id'])
+    with patch.dict('os.environ', {'OUTBOUND_EMAIL_ENABLED': 'false'}), patch('utils.email_service._attempt_send', new=AsyncMock()) as transport:
+        run(service.assess(db, users['staff'], review['id'], 'self', self_body()))
+    transport.assert_not_awaited()
+    assert db.performance_reviews.docs[0]['status'] == 'Self_Submitted'
+    assert db.performance_reviews.docs[0]['manager_email_status'] == 'skipped'
+
+
+def test_calendar_options_exclude_holidays_and_participant_leave_without_booking():
+    from datetime import datetime, timedelta, timezone
+    db, users, reference = assessed()
+    tomorrow = (datetime.now(timezone(timedelta(hours=3))).date() + timedelta(days=1)).isoformat()
+    run(db.public_holidays.insert_one({'tenant_id': 'solvit', 'date': tomorrow, 'name': 'Synthetic holiday'}))
+    leave_date = (datetime.now(timezone(timedelta(hours=3))).date() + timedelta(days=2)).isoformat()
+    run(db.leave_requests.insert_one({'tenant_id': 'solvit', 'employee_id': 'manager', 'status': 'Approved', 'start_date': leave_date, 'end_date': leave_date, 'medical_notes': 'PRIVATE'}))
+    result = run(service.meeting_date_options(db, users['hr'], reference))
+    assert tomorrow not in result['dates'] and leave_date not in result['dates']
+    assert result['dates'] and len(result['dates']) <= 10
+    assert 'manually' in result['notice'] and 'PRIVATE' not in str(result)
+    assert 'review_meeting' not in db.performance_reviews.docs[0]
+    for actor in ('staff', 'manager', 'finance', 'other'):
+        with pytest.raises(HTTPException): run(service.meeting_date_options(db, users[actor], reference))
 
 
 def test_notification_centre_links_only_authorized_review_and_contains_no_scores():

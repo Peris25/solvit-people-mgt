@@ -138,6 +138,11 @@ export default function EmployeeDashboard() {
               {item.created_at && <small>{new Date(item.created_at).toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })} EAT</small>}
             </article>)}
           </div>
+          {reviews.filter(r => r.workflow_version === 1 && ['Draft', 'Self_Draft'].includes(r.status)).map(r => <section key={r.id} data-testid="staff-review-trigger" style={{ background: '#fff', borderLeft: '4px solid #FF353F', borderRadius: 12, padding: 20, marginBottom: 20 }}>
+            <h2 style={{ marginTop: 0 }}>Your performance review is ready</h2>
+            <p>{r.cycle_type?.replaceAll('_', ' ')} {r.cycle_year} · Submit by <strong>{r.self_due_on || 'Deadline awaiting HR confirmation'}</strong></p>
+            <button onClick={() => navigate('/performance?review=' + encodeURIComponent(r.id))} style={{ minHeight: 44, padding: '10px 18px', background: '#d92336', color: '#fff', border: 0, borderRadius: 8 }}>Open performance review</button>
+          </section>)}
           {/* Zone 1 — My Tasks */}
           <div data-testid="my-tasks-zone" style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', marginBottom: '20px' }}>
             <div style={{ padding: '14px 20px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -160,8 +165,8 @@ export default function EmployeeDashboard() {
                           {t.form_id || t.module || ''} {t.due_date && `· Due ${new Date(t.due_date).toLocaleDateString('en-GB')}`}
                         </div>
                       </div>
-                      {t.kind === 'form' && <button
-                        onClick={() => navigate('/my-tasks')}
+                      {(t.kind === 'form' || t.path) && <button
+                        onClick={() => navigate(t.kind === 'form' ? '/my-tasks' : t.path)}
                         style={{ padding: '6px 14px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}
                       >
                         Open
@@ -256,6 +261,8 @@ export default function EmployeeDashboard() {
               <div>
                 <div style={{ fontWeight: 700, fontSize: '13px' }}>{r.cycle_type?.replace('_', ' ')} {r.cycle_year}</div>
                 <div style={{ fontSize: '11px', color: '#525252' }}>{r.status}</div>
+                {r.self_due_on && <div>Self-assessment deadline: {r.self_due_on}</div>}
+                <button onClick={() => navigate('/performance?review=' + encodeURIComponent(r.id))}>Open review</button>
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontWeight: 900, fontSize: '20px' }}>{scoreLabel(r.overall_score)}</div>

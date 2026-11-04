@@ -45,3 +45,36 @@ assessment, score or meeting was created during implementation.
 HR must provide actual cycle dates, approved scoring policy, agreed employee KPIs
 and meeting details. Live acceptance should use employee, reporting manager and
 HR accounts to exercise the end-to-end handoff after backend deployment.
+
+## Confirmed dashboard, email and manual-calendar clarification
+
+Staff Home displays a prominent assigned-review card with the employee's deadline
+and a direct Open performance review action. The existing task and My Reviews
+views also link to the authorized review.
+
+Final employee submission calls the existing email delivery service once, using
+the canonical saved manager's work email and the existing
+`performance.self_review_submitted` template. A safe built-in message is used if
+that template has not yet been saved; no template database seed is required.
+Email contains an authenticated review link and deadline, never answers or
+scores. Draft saves do not send email. A repeated submission cannot resend it.
+Existing deployment email-disable controls, delivery logs and retry handling
+remain authoritative. HR can see sent/failed/skipped status; delivery failures do
+not undo a submitted assessment or remove its in-app notification.
+
+After manager approval, HR can load up to ten suggested dates in the next thirty
+days. Suggestions use the participants' configured working days, saved public
+holidays, approved leave and existing portal review meetings. They are proposals,
+not guaranteed availability or Outlook free/busy. HR must choose the final date,
+time and location manually. Date suggestions perform no writes or bookings.
+Meeting participants are resolved on the server as the employee and their saved
+reporting manager, not client-supplied identities. A manually saved meeting is
+projected into the existing Calendar with time in EAT and a link to the review;
+no duplicate calendar document or external calendar invitation is created.
+Calendar visibility remains limited by employee/M05 scope, and date suggestions
+also require the HR user's leave visibility for both participants.
+
+Validation for this clarification: 1,396 backend tests passed with 321 existing
+environment-dependent skips; 302 frontend tests passed in 41 suites. Strict and
+normal builds, compilation and whitespace checks are required before release.
+Actual mail-service delivery and live three-role acceptance still need verification.

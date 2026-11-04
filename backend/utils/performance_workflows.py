@@ -5,6 +5,9 @@ import math
 import hashlib
 import json
 import uuid
+import os
+from html import escape
+from urllib.parse import quote
 from fastapi import HTTPException
 from utils.employee_access import authorize_employee, find_linked_record, personal_grant, reference_ids
 from utils.employee_integrity import employee_key, find_employee, is_direct_report, tenant_of, tenant_query
@@ -90,6 +93,8 @@ def projection(row, user, employee=None):
     result["can_update_goal_progress"] = writable and own and row.get("workflow_version") == 1 and row.get("status") in {"Draft", "Self_Draft", "Self_Submitted"}
     result["can_manage"] = writable and bool(employee and not own and is_direct_report(employee, user))
     result["can_hr_review"] = writable and user.get("role") in HR and not own
+    if user.get("role") in HR:
+        result["manager_email_status"] = row.get("manager_email_status")
     return result
 
 
@@ -160,11 +165,85 @@ async def schedule_meeting(db, user, reference, body):
             raise ValueError()
     except (AttributeError, TypeError, ValueError):
         fail("Choose a future meeting time with a timezone")
-    meeting = {"scheduled_at": scheduled.isoformat(), "location": text(body.get("location"), "meeting location", 500)}
+    manager = await find_employee(db, employee.get("line_manager_id"), tenant_of(user))
+    if not manager or manager["_id"] == employee["_id"]:
+        fail("HR must confirm the reporting manager before scheduling", 409)
+    meeting = {"scheduled_at": scheduled.isoformat(), "location": text(body.get("location"), "meeting location", 500),
+               "participant_employee_ids": [employee_key(employee), employee_key(manager)]}
     if row.get("review_meeting") == meeting:
         return projection(row, user, employee)
     await save(db, user, row, {"review_meeting": meeting}, "performance.meeting.scheduled")
     return projection(row, user, employee)
+
+
+async def meeting_date_options(db, user, reference):
+    """Portal-based date suggestions, never a claim of external free/busy."""
+    require_hr(user)
+    row, employee = await record(db, user, reference)
+    if employee_key(employee) == user.get("employee_id"):
+        fail("Another HR user must arrange your meeting", 403)
+    if row.get("status") not in {"Manager_Submitted", "HR_Reviewed"}:
+        fail("Manager approval is required first", 409)
+    manager = await find_employee(db, employee.get("line_manager_id"), tenant_of(user))
+    if not manager: fail("HR must confirm the reporting manager", 409)
+    for participant in (employee, manager):
+        await authorize_employee(db, user, employee_key(participant), "M18")
+    from utils.leave_policy import contract_policy, working_units
+    policies = [await contract_policy(db, p) for p in (employee, manager)]
+    refs = set(reference_ids(employee) + reference_ids(manager) + [employee["_id"], manager["_id"]])
+    leaves = await db.leave_requests.find({"$and": [tenant_query(tenant_of(user)), {"employee_id": {"$in": list(refs)}, "status": "Approved"}]}).to_list(None)
+    holidays = {h.get("date") for h in await db.public_holidays.find(tenant_query(tenant_of(user))).to_list(None)}
+    meeting_days = set()
+    for review in await db.performance_reviews.find(tenant_query(tenant_of(user))).to_list(None):
+        meeting = review.get("review_meeting") or {}
+        if not isinstance(meeting, dict) or not meeting or review.get("id") == row.get("id"):
+            continue
+        subject = await find_employee(db, review.get("employee_id"), tenant_of(user))
+        if not subject: continue
+        saved_participants = meeting.get("participant_employee_ids")
+        if isinstance(saved_participants, list) and all(isinstance(p, str) for p in saved_participants):
+            participants = set(saved_participants)
+        else:
+            manager_ref = subject.get("line_manager_id")
+            participants = set(reference_ids(subject) + ([manager_ref] if isinstance(manager_ref, str) else []))
+        if participants.intersection(refs):
+            try:
+                instant = datetime.fromisoformat(meeting["scheduled_at"].replace("Z", "+00:00"))
+                meeting_days.add(instant.astimezone(timezone(timedelta(hours=3))).date().isoformat())
+            except (KeyError, AttributeError, TypeError, ValueError):
+                continue
+    today = datetime.now(timezone(timedelta(hours=3))).date()
+    dates = []
+    for offset in range(1, 31):
+        candidate = (today + timedelta(days=offset)).isoformat()
+        if candidate in meeting_days or any(str(l.get("start_date", ""))[:10] <= candidate <= str(l.get("end_date", ""))[:10] for l in leaves):
+            continue
+        if all(working_units(candidate, candidate, holidays, policy["saturday_weight"], policy.get("workday_weights")) > 0 for policy in policies):
+            dates.append(candidate)
+        if len(dates) == 10: break
+    return {"dates": dates, "notice": "Suggested dates use recorded working days, public holidays, approved leave and portal review meetings only. Confirm employee and manager availability manually; Outlook calendars are not connected."}
+
+
+async def email_submitted_review(db, row, employee, manager):
+    """One submission event; reuse email delivery policy, logs and retries."""
+    status = "skipped"
+    try:
+        if tenant_of(employee) == "solvit" and manager and manager.get("work_email"):
+            from utils.email_service import send_email
+            context = {
+                "employee_name": escape(employee.get("full_name") or "Employee"),
+                "review_period": f"{row['cycle_type'].replace('_', ' ')} {row['cycle_year']}",
+                "manager_review_due_date": row.get("manager_due_on") or "See portal",
+                "platform_link": os.environ.get("FRONTEND_URL", "https://people.solvit.co.ke").rstrip('/') + '/performance?review=' + quote(row['id'], safe='')}
+            templates = getattr(db, 'email_templates', None)
+            template = await templates.find_one({'tenant_id': 'solvit', 'key': 'performance.self_review_submitted'}) if templates is not None else None
+            fallback = {} if template else {'subject': 'Employee performance review submitted', 'html': f"<p>{context['employee_name']} has submitted a self-assessment. Manager review is due {escape(str(context['manager_review_due_date']))}.</p><p><a href=\"{escape(context['platform_link'], quote=True)}\">Open the review securely</a></p>"}
+            result = await send_email(db, to=manager["work_email"], template_key="performance.self_review_submitted", context=context, **fallback)
+            status = result.get("status", "failed")
+            if status not in {"sent", "failed", "skipped"}: status = "failed"
+    except Exception:
+        status = "failed"
+    await db.performance_reviews.update_one({"_id": row["_id"]}, {"$set": {"manager_email_status": status, "manager_email_attempted_at": now()}})
 
 
 async def create_cycle(db, user, body):
@@ -313,6 +392,10 @@ async def assess(db, user, reference, stage, body):
             fail("Agree three to five measurable KPIs before submitting the assessment", 409)
         if body.get("submit") and not row.get("goals_acknowledged_at"):
             fail("Employee acknowledgement of agreed goals is required", 409)
+        if body.get("submit"):
+            manager = await find_employee(db, employee.get("line_manager_id"), tenant_of(user))
+            if not manager or manager["_id"] == employee["_id"]:
+                fail("HR must confirm your reporting manager before submission", 409)
         assessment = {"summary": text(body.get("summary"), "self-assessment"),
                       "achievements": text(body.get("achievements"), "achievements"),
                       "support_needed": text(body.get("support_needed"), "support needs"), "actor_id": user["id"], "saved_at": now()}
@@ -361,6 +444,8 @@ async def assess(db, user, reference, stage, body):
         update = {"status": "Completed", "released_at": now(), "released_by": user["id"]}
     else: fail("Unknown assessment stage")
     await save(db, user, row, update, "performance.assessment." + stage)
+    if stage == "self" and body.get("submit") is True:
+        await email_submitted_review(db, row, employee, manager)
     if stage == "release":
         try:
             from utils.email_triggers import fire_and_forget

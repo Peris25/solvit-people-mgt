@@ -414,6 +414,7 @@ export const getReviewCycles = () => api.get("/performance/cycles");
 export const configureReviewCycle = data => api.post("/performance/cycles", data);
 export const launchReviewCycle = id => api.post(`/performance/cycles/${id}/launch`, {});
 export const scheduleReviewMeeting = (id, data) => api.post(`/performance/${id}/meeting`, data);
+export const getReviewMeetingOptions = id => api.get(`/performance/${id}/meeting-options`);
 export const updateReviewGoals = (id, data) => api.put(`/performance/${id}/goals`, data);
 export const submitReviewAssessment = (id, stage, data) => api.post(`/performance/${id}/assessments/${stage}`, data);
 

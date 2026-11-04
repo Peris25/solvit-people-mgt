@@ -75,7 +75,8 @@ test('HR distributes configured reviews only after explicit confirmation', async
 test('HR can schedule a meeting after manager approval using a timezone-aware time', async () => {
   api.scheduleReviewMeeting.mockResolvedValue({ data: { id: 'review' } });
   await render(<PerformanceWorkflow review={review({ can_hr_review: true, status: 'Manager_Submitted' })} onUpdated={jest.fn()} />);
-  await change(container.querySelector('[aria-label="Review meeting time"]'), '2099-11-05T10:00');
+  await change(container.querySelector('[aria-label="Review meeting date"]'), '2099-11-05');
+  await change(container.querySelector('[aria-label="Review meeting time"]'), '10:00');
   await change(container.querySelector('[aria-label="Review meeting location"]'), 'Office meeting room');
   await submit(container.querySelector('form'));
   expect(api.scheduleReviewMeeting).toHaveBeenCalledWith('review', { scheduled_at: new Date('2099-11-05T10:00').toISOString(), location: 'Office meeting room' });
@@ -84,6 +85,17 @@ test('HR can schedule a meeting after manager approval using a timezone-aware ti
 test('employee cannot see HR meeting scheduling controls', async () => {
   await render(<PerformanceWorkflow review={review({ status: 'Manager_Submitted' })} onUpdated={jest.fn()} />);
   expect(container.querySelector('[aria-label="Review meeting time"]')).toBeNull();
+});
+
+test('suggested calendar dates never book a meeting without HR choosing a time and saving', async () => {
+  api.getReviewMeetingOptions.mockResolvedValue({ data: { dates: ['2099-11-06'], notice: 'Confirm availability manually.' } });
+  await render(<PerformanceWorkflow review={review({ can_hr_review: true, status: 'Manager_Submitted' })} onUpdated={jest.fn()} />);
+  await click('Show suggested meeting dates');
+  await click('2099-11-06');
+  expect(container.querySelector('[aria-label="Review meeting date"]').value).toBe('2099-11-06');
+  expect(container.querySelector('[aria-label="Review meeting time"]').value).toBe('');
+  expect(api.scheduleReviewMeeting).not.toHaveBeenCalled();
+  expect(container.textContent).toContain('manually');
 });
 test('historical publication has a separate approval reference and never sends new scores', async () => {
   api.submitReviewAssessment.mockResolvedValue({});

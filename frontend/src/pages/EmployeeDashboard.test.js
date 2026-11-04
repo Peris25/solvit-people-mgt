@@ -45,6 +45,15 @@ test('personalized employee welcome, real zero balance and authorized quick link
   expect(api.getRecognitions).not.toHaveBeenCalled();
 });
 
+test('assigned performance review and deadline are prominent and open the exact review', async () => {
+  const data = home();
+  data.reviews = [{ id: 'review-one', workflow_version: 1, status: 'Draft', cycle_type: 'Year_End', cycle_year: 2026, self_due_on: '2026-11-20' }];
+  api.getStaffHome.mockResolvedValue({ data }); await render();
+  expect(container.querySelector('[data-testid="staff-review-trigger"]').textContent).toContain('2026-11-20');
+  await click('Open performance review');
+  expect(mockNavigate).toHaveBeenCalledWith('/performance?review=review-one');
+});
+
 test('pending requests, due actions and existing notifications render without private payloads', async () => {
   const data = home();
   data.pending_leave = [{ id: 'leave', leave_type: 'Annual', start_date: '2026-10-20', end_date: '2026-10-22', status: 'Pending_HR', medical_notes: 'restricted' }];

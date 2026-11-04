@@ -39,7 +39,7 @@ def sut(monkeypatch):
         u["id"]=str(u["_id"])
         users[role]=u
     db=Database([staff,manager,outsider],list(users.values()))
-    for name in ("recognitions", "solver_awards", "solvers", "calendar_events", "public_holidays", "leave_requests", "survey_windows", "survey_responses", "policies", "policy_acknowledgements", "disciplinary_cases", "case_documents", "statutory_compliance", "gp_records", "budget_allocations", "stay_interviews", "projects", "form_submissions", "notifications", "tasks"):
+    for name in ("recognitions", "solver_awards", "solvers", "calendar_events", "public_holidays", "leave_requests", "survey_windows", "survey_responses", "policies", "policy_acknowledgements", "disciplinary_cases", "case_documents", "statutory_compliance", "gp_records", "budget_allocations", "stay_interviews", "projects", "form_submissions", "notifications", "tasks", "performance_reviews"):
         setattr(db,name,Counted())
     with ExitStack() as stack:
         stack.enter_context(patch("database.get_db", return_value=db))
@@ -129,6 +129,17 @@ def test_calendar_keeps_unpublished_legacy_events_hr_only(sut):
         assert result.status_code==200 and "SECRET" not in result.text
     result=as_role("hr_admin").get("/api/calendar")
     assert "SECRET HR hearing" in result.text and "salary" not in result.text
+
+
+def test_review_meetings_are_projected_into_calendar_with_employee_isolation(sut):
+    db, _, as_role, _ = sut
+    day = (datetime.now(timezone(timedelta(hours=3))).date() + timedelta(days=1)).isoformat()
+    add(db.performance_reviews, id='own-review', employee_id='staff', status='Manager_Submitted', review_meeting={'scheduled_at': day + 'T10:00:00+03:00', 'location': 'Staff review room'}, overall_score=1.2)
+    add(db.performance_reviews, id='private-review', employee_id='other', status='Manager_Submitted', review_meeting={'scheduled_at': day + 'T11:00:00+03:00', 'location': 'PRIVATE other meeting'}, overall_score=1.1)
+    response = as_role('employee').get('/api/calendar')
+    assert response.status_code == 200 and 'Staff review room' in response.text
+    assert 'PRIVATE other meeting' not in response.text and 'overall_score' not in response.text
+    assert db.calendar_events.writes == 0
 
 
 def test_notice_requires_real_authorized_case_and_rejects_forgery(sut):

@@ -66,6 +66,8 @@ export default function Calendar() {
                     </div>
                     <div>
                       <div style={{ fontSize: '13px', fontWeight: 700, color: '#191919' }}>{e.title}</div>
+                      {e.scheduled_at && <div>{new Date(e.scheduled_at).toLocaleTimeString('en-KE', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit' })} EAT</div>}
+                      {e.review_id && <a href={'/performance?review=' + encodeURIComponent(e.review_id)}>Open review</a>}
                       <div style={{ fontSize: '11px', color: '#525252', marginTop: '2px' }}>{e.module || ''} {e.description ? `· ${e.description}` : ''}</div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

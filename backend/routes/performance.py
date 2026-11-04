@@ -144,6 +144,12 @@ async def arrange_review_meeting(review_id: str, request: Request):
         return await workflow.schedule_meeting(db, user, review_id, body)
 
 
+@router.get("/{review_id}/meeting-options")
+async def review_meeting_options(review_id: str, request: Request):
+    user = await get_current_user(request)
+    return await workflow.meeting_date_options(get_db(), user, review_id)
+
+
 @router.post("/{review_id}/assessments/{stage}")
 async def submit_assessment(review_id: str, stage: str, request: Request):
     user = await get_current_user(request)

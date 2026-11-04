@@ -154,6 +154,35 @@ async def get_calendar_events(request: Request, days_ahead: int = 90):
             "module": "Surveys"
         })
 
+    # Project manually scheduled review meetings without copying stored events.
+    if get_module_access("M05", user.get("role")):
+        from utils.performance_workflows import record as performance_record
+        try:
+            review_query = await scoped_employee_query(db, user, "M05")
+        except HTTPException as error:
+            if error.status_code != 403: raise
+            review_query = None  # Aggregate-only access must not expose individual meetings.
+        for review in (await db.performance_reviews.find(review_query).to_list(None) if review_query is not None else []):
+            meeting = review.get("review_meeting")
+            if not isinstance(meeting, dict) or not meeting.get("scheduled_at"):
+                continue
+            try:
+                _, employee = await performance_record(db, user, str(review.get("id") or review["_id"]))
+                instant = datetime.fromisoformat(meeting["scheduled_at"].replace("Z", "+00:00"))
+                day = instant.astimezone(timezone(timedelta(hours=3))).date().isoformat()
+            except HTTPException as error:
+                if error.status_code in (403, 404, 409): continue
+                raise
+            except (AttributeError, TypeError, ValueError):
+                continue
+            if start_date <= day <= end_date:
+                all_events.append({"id": "performance-meeting:" + str(review.get("id") or review["_id"]),
+                    "title": "Performance review: " + (employee.get("full_name") or "Employee"), "event_type": "review", "start_date": day,
+                    "end_date": day, "all_day": False, "scheduled_at": meeting["scheduled_at"],
+                    "description": meeting.get("location") or "See review meeting details", "module": "Performance",
+                    "color": EVENT_COLORS["review"], "employee_id": str(employee.get("id") or employee["_id"]),
+                    "review_id": str(review.get("id") or review["_id"])})
+
     # Get manual events
     manual = await db.calendar_events.find({
         "tenant_id": tenant_of(user),
