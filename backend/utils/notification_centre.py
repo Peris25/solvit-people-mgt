@@ -266,6 +266,13 @@ async def list_inbox(db, user, *, category=None, kind=None, read_status="all", o
     receipts = await db.notification_receipts.find({"$and": [tenant_query(tenant_of(user)), {"user_id": user["id"]}]}).to_list(None)
     reads = {row.get("notification_id") for row in receipts if row.get("read_at")}
     async def project_notification(row):
+        data = row.get("data") or {}
+        if user.get("role") in {"hr_admin", "hr_manager", "general_manager"} and isinstance(data, dict) and data.get("lifecycle_employee_id"):
+            # Routine checklist edits are audit activity, not HR inbox actions.
+            # Retain the explicit offboarding-blocked escalation only.
+            blocked = data.get("lifecycle_event") == "offboarding:blocked" or ":offboarding:blocked:" in storage_key(row)
+            if not blocked:
+                return None
         if personal_only:
             data = row.get("data") or {}
             subjects = [ref for ref in (row.get("employee_id"), data.get("employee_id") if isinstance(data, dict) else None) if ref]
@@ -293,7 +300,10 @@ async def list_inbox(db, user, *, category=None, kind=None, read_status="all", o
             if data.get("solver_workflow"):
                 title, message = "Solver workflow update", "A Solver workflow has been updated. Open the record to review it."
             elif data.get("lifecycle_employee_id"):
-                title, message = "Employee checklist update", "An employee checklist has been updated. Open it to review the tasks."
+                if data.get("lifecycle_event") == "offboarding:blocked" or ":offboarding:blocked:" in storage_key(row):
+                    title, message = "Offboarding needs review", "Offboarding could not complete. Open the clearance tasks to review outstanding requirements."
+                else:
+                    title, message = "Employee checklist update", "An employee checklist has been updated. Open it to review the tasks."
             elif user.get("role") in {"hr_admin", "hr_manager", "general_manager"}:
                 return None
         kind_value = "Approvals" if action else "Action required" if category_value in ("Onboarding", "Training", "Policies") else "Updates"

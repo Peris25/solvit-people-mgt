@@ -71,6 +71,26 @@ def test_hr_inbox_preserves_authorized_leave_review_and_safe_preview():
     assert "PRIVATE" not in str(result)
 
 
+@pytest.mark.parametrize("role", ["hr_admin", "hr_manager", "general_manager"])
+def test_hr_checklist_noise_is_hidden_even_when_it_has_a_valid_link(role):
+    db, actors = fixture(); user = {**actors["staff"], "role": role}
+    db.notifications.docs = [notice(recipient_role=role, category="System", data={"lifecycle_employee_id": "staff"}) for _ in range(40)]
+    with patch("utils.notification_centre.related_link", new=AsyncMock(return_value=("/onboarding", None))) as link:
+        result = run(list_inbox(db, user))
+    assert result["items"] == [] and result["unread_count"] == result["total"] == 0
+    link.assert_not_awaited()
+    assert len(db.notifications.docs) == 40 and db.notifications.writes == 0
+
+
+def test_hr_offboarding_blocked_escalation_remains_meaningful():
+    db, actors = fixture(); user = {**actors["staff"], "role": "hr_admin"}
+    db.notifications.docs = [notice(recipient_role="hr_admin", category="System", data={"lifecycle_employee_id": "staff", "lifecycle_event": "offboarding:blocked"})]
+    with patch("utils.notification_centre.related_link", new=AsyncMock(return_value=("/onboarding", None))):
+        result = run(list_inbox(db, user))
+    assert result["unread_count"] == 1
+    assert result["items"][0]["title"] == "Offboarding needs review"
+
+
 @pytest.mark.parametrize("recipient", ["account", "employee", "storage", "native", "user_id", "role"])
 def test_supported_recipient_formats_are_readable_without_private_previews(recipient):
     db, actors = fixture(); user = actors["staff"]

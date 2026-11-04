@@ -68,6 +68,8 @@ async def audit(db, user, event, employee, **metadata):
 
 async def notify(db, employee, kind):
     recipients = [("employee", employee_key(employee)), ("role", "hr_admin"), ("role", "hr_manager")]
+    if kind.startswith("checklist:"):
+        recipients = [recipient for recipient in recipients if recipient[0] != "role"]
     manager = await find_employee(db, employee.get("line_manager_id"), tenant_of(employee))
     if manager:
         recipients.append(("employee", employee_key(manager)))
@@ -78,7 +80,7 @@ async def notify(db, employee, kind):
             "id": key, "tenant_id": tenant_of(employee), "category": "System",
             **({"recipient_role": recipient} if recipient_type == "role" else
                {"recipient_type": "employee", "recipient_id": recipient}),
-            "data": {"lifecycle_employee_id": employee_key(employee)},
+            "data": {"lifecycle_employee_id": employee_key(employee), "lifecycle_event": kind},
             "created_at": now(), "is_read": False}}, upsert=True)
 
 

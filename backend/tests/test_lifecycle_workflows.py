@@ -2,7 +2,7 @@
 import asyncio
 from copy import deepcopy
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 import pytest
 from fastapi import HTTPException
 from routes import lifecycle, onboarding
@@ -53,6 +53,16 @@ def test_get_never_creates_tasks():
     with patch.object(onboarding, 'get_db', return_value=db), patch.object(onboarding, 'get_current_user', return_value=users['staff']):
         assert run(onboarding.get_employee_onboarding('staff', SimpleNamespace())) == []
     assert not db.onboarding_tasks.docs
+
+
+def test_routine_checklist_edits_do_not_broadcast_to_hr():
+    db, _ = fixture()
+    with patch.object(db.notifications, 'update_one', new=AsyncMock()) as writer:
+        run(service.notify(db, db.employees.docs[0], 'checklist:synthetic:Completed'))
+    rows = [call.args[1]['$setOnInsert'] for call in writer.await_args_list]
+    assert rows
+    assert not any(row.get('recipient_role') in {'hr_admin', 'hr_manager'} for row in rows)
+    assert all(row['data']['lifecycle_event'] == 'checklist:synthetic:Completed' for row in rows)
 
 
 @pytest.mark.parametrize('role,actor,allowed', [('employee','staff',True), ('employee','other',False), ('line_manager','staff',False), ('line_manager','manager',True), ('finance','staff',False), ('finance','finance',True), ('it_admin','manager',False)])
