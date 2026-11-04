@@ -125,7 +125,7 @@ async def staff_home_data(db, user, balance_loader):
     if can_personal(user, "M04"):
         link("Onboarding & Offboarding", "/onboarding")
         checklists = getattr(db, "onboarding_tasks", None)
-        if checklists is not None:
+        if checklists is not None and employee.get("onboarding_recorded_status") != "Completed":
             from utils.lifecycle_workflows import task_access as checklist_access
             rows = await checklists.find({"$and": [tenant, {"entity_type": "employee",
                 "entity_id": {"$in": refs}, "assigned_role": "employee",

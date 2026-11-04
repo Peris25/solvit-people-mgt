@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import EmployeePicker from '../components/EmployeePicker';
+import OnboardingRegister from '../components/OnboardingRegister';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../services/api';
 
@@ -17,6 +18,7 @@ export default function Onboarding() {
   const [reference, setReference] = useState('');
   const [confirm, setConfirm] = useState('');
   const [documents, setDocuments] = useState({});
+  const [onboardingEmployees, setOnboardingEmployees] = useState([]);
   const [documentIds, setDocumentIds] = useState({});
   const load = useCallback(async () => {
     setLoading(true);
@@ -39,13 +41,15 @@ export default function Onboarding() {
       <Link to="/my-profile">My Profile</Link><Link to="/documents">Documents</Link><Link to="/notifications">Notifications</Link>
       <Link to="/policies">Policy Library</Link>
     </nav>
+    {hr && <OnboardingRegister key={user?.id || user?.role} onRecorded={load} onLoaded={setOnboardingEmployees} />}
     {error && <div role="alert">{error} <button onClick={load}>Retry</button></div>}
     {hr && <form onSubmit={e => { e.preventDefault(); perform(() => api.initiateLifecycle({ employee_id: employee, kind,
       ...(kind === 'offboarding' ? { last_working_day: lastDay, authorization_reference: reference } : {}) })); }}
       style={{ background: '#fff', padding: 20, marginBottom: 20, display: 'grid', gap: 12 }}>
       <h2>Initiate a workflow</h2>
-      <EmployeePicker value={employee} onChange={value => setEmployee(value.id)} disabled={busy} />
-      <label>Workflow <select value={kind} onChange={e => setKind(e.target.value)}><option value="onboarding">Onboarding</option><option value="offboarding">Offboarding</option></select></label>
+      <EmployeePicker value={employee} onChange={value => setEmployee(value.id)} disabled={busy} includeIds={kind === 'onboarding' ? onboardingEmployees.filter(row => row.onboarding_status === 'In_Progress').map(row => row.id) : undefined} />
+      <label>Workflow <select value={kind} onChange={e => { setKind(e.target.value); setEmployee(''); }}><option value="onboarding">Onboarding</option><option value="offboarding">Offboarding</option></select></label>
+      {kind === 'onboarding' && <p>Only employees recorded as onboarding in progress appear here. Already onboarded employees are listed in the register above.</p>}
       {kind === 'offboarding' && <><label>Confirmed last working day <input type="date" required value={lastDay} onChange={e => setLastDay(e.target.value)} /></label>
         <label>HR authorization reference <input required maxLength={200} value={reference} onChange={e => setReference(e.target.value)} /></label>
         <p>Confirm contract notice, handover and exit authorization before initiating. This does not deactivate the account.</p></>}
@@ -54,7 +58,7 @@ export default function Onboarding() {
     </form>}
     {loading ? <p role="status">Loading checklists...</p> : groups.length === 0 ? <p>No onboarding or offboarding responsibilities available.</p> :
       groups.map(group => <section key={group.kind + group.employee_id} style={{ background: '#fff', padding: 20, marginBottom: 20 }}>
-        <h2>{group.name} / {group.kind}</h2><p>{group.progress_pct}% complete {group.completed_at && '/ Archived'}</p>
+        <h2>{group.name} / {group.kind}</h2><p>{group.recorded_status === 'Completed' ? 'Onboarded — HR confirmed. Original checklist history retained below.' : `${group.progress_pct}% complete`} {group.completed_at && '/ Archived'}</p>
         {group.last_working_day && <p>Last working day: {group.last_working_day}</p>}
         <progress value={group.progress_pct} max="100" aria-label="Checklist progress" />
         <div style={{ display: 'grid', gap: 12, marginTop: 16 }}>{group.tasks.map(task => <div key={task.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'space-between', borderBottom: '1px solid #eee', paddingBottom: 12 }}>

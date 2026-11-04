@@ -6,6 +6,18 @@ import * as api from '../services/api';
 jest.mock('../services/api');
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
+test('onboarding selector can restrict choices without affecting other picker uses', async () => {
+  const container = document.createElement('div'); document.body.appendChild(container);
+  const root = createRoot(container);
+  api.getEmployeeDirectory.mockResolvedValue({ data: [{ id: 'new', full_name: 'New employee' }, { id: 'completed', full_name: 'Already onboarded' }] });
+  try {
+    await act(async () => root.render(<EmployeePicker includeIds={['new']} onChange={jest.fn()} />));
+    await act(async () => container.querySelector('button').click());
+    expect(container.textContent).toContain('New employee');
+    expect(container.textContent).not.toContain('Already onboarded');
+  } finally { await act(async () => root.unmount()); container.remove(); jest.clearAllMocks(); }
+});
+
 test('ambiguous directory identities cannot be selected and labels preserve saved departments', async () => {
   const container = document.createElement('div'); document.body.appendChild(container);
   const root = createRoot(container); const onChange = jest.fn();

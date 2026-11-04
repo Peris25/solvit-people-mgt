@@ -30,6 +30,8 @@ async def task_access(db, user, task, write=False):
     employee = await find_employee(db, task.get("entity_id"), tenant_of(user))
     if not employee:
         raise HTTPException(409, "Checklist employee needs an integrity review")
+    if write and task.get("task_type") != "exit_workflow" and employee.get("onboarding_recorded_status") == "Completed":
+        raise HTTPException(409, "HR has confirmed completed onboarding; checklist history is preserved")
     from utils.staff_views import restricted
     owner = employee_key(employee) == user.get("employee_id")
     if restricted(employee.get("board_only")) and not owner and user.get("role") not in {"board", "it_admin"}:

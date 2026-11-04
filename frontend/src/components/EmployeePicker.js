@@ -14,7 +14,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as api from '../services/api';
 
-export default function EmployeePicker({ value, onChange, excludeId, placeholder = 'Select an employee...', testId = 'employee-picker', required, disabled }) {
+export default function EmployeePicker({ value, onChange, excludeId, includeIds, placeholder = 'Select an employee...', testId = 'employee-picker', required, disabled }) {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -42,6 +42,7 @@ export default function EmployeePicker({ value, onChange, excludeId, placeholder
 
   const selected = employees.find(e => e.id === value);
   const filtered = employees
+    .filter(e => !includeIds || includeIds.includes(e.id))
     .filter(e => !excludeId || e.id !== excludeId)
     .filter(e => {
       if (!search) return true;

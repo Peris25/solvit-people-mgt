@@ -65,6 +65,56 @@ def test_routine_checklist_edits_do_not_broadcast_to_hr():
     assert all(row['data']['lifecycle_event'] == 'checklist:synthetic:Completed' for row in rows)
 
 
+def record_status(db, user, ids=None, status='Completed'):
+    with patch.object(lifecycle, 'get_db', return_value=db), patch.object(lifecycle, 'get_current_user', return_value=user):
+        return run(lifecycle.record_onboarding(lifecycle.OnboardingRecord(employee_ids=ids or ['staff'], status=status, reason='HR confirmed existing onboarding'), SimpleNamespace()))
+
+
+def test_hr_can_record_existing_onboarding_without_fabricating_tasks_or_dates():
+    db, users = fixture(); before = deepcopy(db.employees.docs[0])
+    result = record_status(db, users['hr'])
+    current = db.employees.docs[0]
+    assert result == {'recorded': 1, 'status': 'Completed'}
+    assert current['onboarding_recorded_status'] == 'Completed'
+    assert current['start_date'] == before['start_date']
+    assert current['lifecycle_state'] == before['lifecycle_state']
+    assert not db.onboarding_tasks.docs and not db.notifications.docs
+    assert any(row['event'] == 'onboarding.hr_confirmation' for row in db.audit_logs.docs)
+    record_status(db, users['hr'])  # retry-safe
+    assert sum(row['event'] == 'onboarding.hr_confirmation' for row in db.audit_logs.docs) == 1
+    record_status(db, users['hr'], status='In_Progress')  # explicit HR correction
+    assert current['onboarding_recorded_status'] == 'In_Progress'
+
+
+@pytest.mark.parametrize('actor', ['staff', 'manager', 'finance', 'other'])
+def test_only_hr_can_record_onboarding_status(actor):
+    db, users = fixture()
+    with pytest.raises(HTTPException) as error:
+        record_status(db, users[actor])
+    assert error.value.status_code == 403
+    assert db.employees.writes == 0
+
+
+def test_batch_checks_all_employee_references_before_writing():
+    db, users = fixture()
+    with pytest.raises(HTTPException):
+        record_status(db, users['hr'], ids=['staff', 'nonexistent'])
+    assert db.employees.writes == 0
+    assert not db.audit_logs.docs
+
+
+def test_hr_register_is_minimal_and_completed_employees_cannot_be_reinitiated():
+    db, users = fixture(); record_status(db, users['hr'])
+    with patch.object(lifecycle, 'get_db', return_value=db), patch.object(lifecycle, 'get_current_user', return_value=users['hr']):
+        rows = run(lifecycle.onboarding_register(SimpleNamespace()))
+    target = next(row for row in rows if row['id'] == 'staff')
+    assert target['onboarding_status'] == 'Completed'
+    assert not any(field in str(rows) for field in ('salary', 'bank_account', 'password_hash'))
+    with pytest.raises(HTTPException) as error:
+        initiate(db, users['hr'], kind='onboarding')
+    assert error.value.status_code == 409
+
+
 @pytest.mark.parametrize('role,actor,allowed', [('employee','staff',True), ('employee','other',False), ('line_manager','staff',False), ('line_manager','manager',True), ('finance','staff',False), ('finance','finance',True), ('it_admin','manager',False)])
 def test_responsibility_checks(role, actor, allowed):
     db, users = fixture(); task = {'entity_id':'staff','assigned_role':role}

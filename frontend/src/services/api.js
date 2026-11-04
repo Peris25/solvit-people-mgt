@@ -395,6 +395,8 @@ export const getEmployeeLoginReview = () => api.get('/access/employee-login-revi
 
 // Existing employee lifecycle checklists
 export const getLifecycleChecklists = () => api.get("/lifecycle/checklists");
+export const getOnboardingRegister = () => api.get('/lifecycle/onboarding-register');
+export const recordOnboardingStatus = data => api.post('/lifecycle/onboarding-register', data);
 export const initiateLifecycle = data => api.post("/lifecycle/initiate", data);
 export const updateLifecycleTask = (kind, id, data) => api.put(`/lifecycle/${kind}/tasks/${id}`, data);
 export const completeOffboarding = id => api.post(`/lifecycle/offboarding/${id}/complete`);

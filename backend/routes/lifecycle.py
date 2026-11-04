@@ -2,7 +2,7 @@
 from datetime import date
 from typing import Literal, Optional
 from fastapi import APIRouter, Request, HTTPException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from database import get_db
 from utils.auth import get_current_user
 from utils.employee_access import find_linked_record, authorize_employee
@@ -26,6 +26,63 @@ class ChecklistUpdate(BaseModel):
     document_id: Optional[str] = None
 
 
+class OnboardingRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    employee_ids: list[str] = Field(min_length=1, max_length=100)
+    status: Literal["Completed", "In_Progress"]
+    reason: str = Field(min_length=10, max_length=1000)
+
+
+@router.get("/onboarding-register")
+async def onboarding_register(request: Request):
+    from utils.staff_views import token
+    user = await get_current_user(request)
+    service.require_hr(user)
+    db = get_db()
+    result = []
+    for employee in await db.employees.find(tenant_query(tenant_of(user))).to_list(None):
+        if token(employee.get("employment_type")) not in {"", "fte", "fulltime"}:
+            continue
+        try:
+            await service.task_access(db, user, {"entity_id": employee_key(employee)})
+        except HTTPException as error:
+            if error.status_code in (403, 404, 409):
+                continue
+            raise
+        result.append({"id": employee_key(employee), "name": employee.get("full_name"),
+                       "department": employee.get("department"), "employment_status": employee.get("lifecycle_state"),
+                       "onboarding_status": employee.get("onboarding_recorded_status") or "Not recorded",
+                       "recorded_at": employee.get("onboarding_recorded_at")})
+    return sorted(result, key=lambda row: str(row["name"] or "").casefold())
+
+
+@router.post("/onboarding-register")
+async def record_onboarding(body: OnboardingRecord, request: Request):
+    user = await get_current_user(request)
+    service.require_hr(user)
+    if not body.reason.strip() or len(body.reason.strip()) < 10:
+        raise HTTPException(422, "Record the HR confirmation reason")
+    db = get_db()
+    async with integrity_write(db):
+        employees = []
+        for reference in dict.fromkeys(body.employee_ids):
+            employee = await authorize_employee(db, user, reference, "M04", write=True)
+            await service.task_access(db, user, {"entity_id": employee_key(employee)})
+            if employee.get("lifecycle_state") not in {"Active", "Onboarding", "Probation"}:
+                raise HTTPException(409, "Employee is not eligible for this onboarding confirmation")
+            employees.append(employee)
+        for employee in employees:
+            if employee.get("onboarding_recorded_status") == body.status:
+                continue
+            await service.audit(db, user, "onboarding.hr_confirmation", employee,
+                                previous_status=employee.get("onboarding_recorded_status"),
+                                status=body.status, reason=body.reason.strip())
+            await db.employees.update_one({"_id": employee["_id"]}, {"$set": {
+                "onboarding_recorded_status": body.status,
+                "onboarding_recorded_at": service.now(), "onboarding_recorded_by": user["id"]}})
+    return {"recorded": len(employees), "status": body.status}
+
+
 @router.post("/initiate")
 async def initiate(body: Initiate, request: Request):
     user = await get_current_user(request)
@@ -38,7 +95,9 @@ async def initiate(body: Initiate, request: Request):
         if employee_key(employee) == user.get("employee_id"):
             raise HTTPException(403, "HR cannot initiate their own lifecycle approval")
         if body.kind == "onboarding":
-            if employee.get("lifecycle_state") not in {"Onboarding", "Probation"}:
+            if employee.get("onboarding_recorded_status") == "Completed":
+                raise HTTPException(409, "HR has already confirmed completed onboarding")
+            if employee.get("lifecycle_state") not in {"Onboarding", "Probation"} and not (employee.get("lifecycle_state") == "Active" and employee.get("onboarding_recorded_status") == "In_Progress"):
                 raise HTTPException(409, "Employee must already be eligible for onboarding")
             from routes.onboarding import _create_onboarding_tasks
             existing = await db.onboarding_tasks.find(service.query(employee, entity_type="employee")).to_list(None)
@@ -94,6 +153,10 @@ async def checklists(request: Request):
                 "name": employee.get("full_name"), "kind": kind, "tasks": [],
                 "last_working_day": employee.get("last_working_day"),
                 "completed_at": employee.get("offboarding_completed_at")})
+            if kind == "onboarding":
+                group["recorded_status"] = employee.get("onboarding_recorded_status")
+                if group["recorded_status"] == "Completed":
+                    writable = False
             group["tasks"].append(service.project(row, writable))
     for group in groups.values():
         tasks = group["tasks"]
