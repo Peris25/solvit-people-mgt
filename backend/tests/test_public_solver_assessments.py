@@ -110,3 +110,36 @@ def test_retired_existing_solver_assignment_cannot_create_attempts(state):
         with pytest.raises(HTTPException) as exc: asyncio.run(solver_assessments.assign(SimpleNamespace()))
     assert exc.value.status_code==410
     database.assert_not_called()
+
+
+@pytest.mark.parametrize('title',['Operations Coordinator','Operations Coordinator / Head of Solvers','Technical Services & Growth Manager'])
+def test_hiring_leads_view_new_applicants_without_hr_review_or_wider_grants(state,title):
+    from .integrity_fakes import employee,account
+    from utils.access_matrix import RUNTIME_OVERRIDES,get_module_access
+    db,clock=state
+    person=employee('hiring-lead',email='lead@example.com',role_title=title,employment_type='Full_Time')
+    owner=account('lead@example.com',employee_id='hiring-lead',role='line_manager',is_active=True)
+    db.employees.docs.append(person);db.users.docs.append(owner)
+    actor={**owner,'id':str(owner['_id'])}
+    row=asyncio.run(service.submit(db,payload(clock),'synthetic-ip'))
+    assert asyncio.run(service.review_capabilities(db,actor))=={'can_view':True,'can_review':False}
+    assert len(asyncio.run(service.applications(db,actor)))==1
+    assert asyncio.run(service.application(db,actor,row['reference']))['answers']
+    with pytest.raises(HTTPException): asyncio.run(service.review(db,actor,row['reference'],{'notes':'Unauthorized HR decision'}))
+    stored=next(r for r in db.public_solver_assessments.docs if r.get('kind')==service.PUBLIC_KIND)
+    stored['review_notes']='Restricted internal HR note'
+    assert asyncio.run(service.application(db,actor,row['reference']))['review_notes']==''
+    assert get_module_access('M10','line_manager') is None
+    RUNTIME_OVERRIDES[('M03','line_manager')]=None
+    try: assert asyncio.run(service.review_capabilities(db,actor))['can_view'] is False
+    finally: del RUNTIME_OVERRIDES[('M03','line_manager')]
+
+
+@pytest.mark.parametrize('title',['Principal Valuer','IT Lead','Sales Manager'])
+def test_unrelated_managers_cannot_view_candidate_answers(state,title):
+    from .integrity_fakes import employee,account
+    db,_=state
+    person=employee('other',email='other@example.com',role_title=title,employment_type='Full_Time')
+    owner=account('other@example.com',employee_id='other',role='line_manager',is_active=True)
+    db.employees.docs.append(person);db.users.docs.append(owner)
+    assert asyncio.run(service.review_capabilities(db,{**owner,'id':str(owner['_id'])}))=={'can_view':False,'can_review':False}

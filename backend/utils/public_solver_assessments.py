@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 from utils.auth import get_jwt_secret
-from utils.solver_assessments import hr
+from utils.solver_assessments import hr, assessor, HR_ROLES
 from utils.employee_integrity import tenant_of
 
 BANK = json.loads((Path(__file__).resolve().parents[1] / 'data/public_solver_questionnaire.json').read_text(encoding='utf-8'))
@@ -117,23 +117,45 @@ def summary(row):
     return {key:row.get(key) for key in ('id','full_name','version','status','submitted_at','reviewed_at','pending_questions')}
 
 
+async def reviewer(db,user):
+    """HR or the saved Operations/Technical hiring leads; no wider HR grant."""
+    if tenant_of(user) != 'solvit': raise HTTPException(403,'No access to these applications')
+    if user.get('role') in HR_ROLES:
+        hr(user)
+        return
+    employee = await assessor(db,user)
+    from utils.staff_directory import normalized, employment_type
+    if user.get('role') != 'line_manager' or employment_type(employee.get('employment_type')) != 'Full_Time' or normalized(employee.get('role_title')) not in {
+        'operationscoordinator', 'operationscoordinatorheadofsolvers', 'technicalservicesgrowthmanager'}:
+        raise HTTPException(403,'Only HR and the Operations/Technical hiring leads may view applicant assessments')
+
+
+async def review_capabilities(db,user):
+    try: await reviewer(db,user)
+    except HTTPException as error:
+        if error.status_code == 403: return {'can_view':False,'can_review':False}
+        raise
+    return {'can_view':True,'can_review':user.get('role') in HR_ROLES}
+
+
 async def applications(db,user):
-    hr(user)
+    await reviewer(db,user)
     if tenant_of(user)!='solvit': raise HTTPException(403,'No access to these applications')
     rows=await db.public_solver_assessments.find({'tenant_id':'solvit','kind':PUBLIC_KIND,'publication_state':'Ready'}).sort('submitted_at',-1).to_list(500)
     return [summary(row) for row in rows]
 
 
 async def application(db,user,reference):
-    hr(user)
+    await reviewer(db,user)
     if tenant_of(user)!='solvit': raise HTTPException(403,'No access to this application')
     row=await db.public_solver_assessments.find_one({'tenant_id':'solvit','kind':PUBLIC_KIND,'id':reference,'publication_state':'Ready'})
     if not row: raise HTTPException(404,'Assessment not found')
     await db.audit_logs.insert_one({'tenant_id':'solvit','actor_id':user['id'],'event':'solver.public_assessment.viewed','entity_id':row['id'],'timestamp':now()})
-    return {**summary(row),'answers':row['answers'],'sections':row['questions'],'source_url':row['source_url'],'review_notes':row.get('review_notes','')}
+    return {**summary(row),'answers':row['answers'],'sections':row['questions'],'source_url':row['source_url'],'review_notes':row.get('review_notes','') if user.get('role') in HR_ROLES else ''}
 
 
 async def review(db,user,reference,body):
+    hr(user)  # Hiring leads have read access; formal HR review remains with HR.
     row=await application(db,user,reference)
     if not isinstance(body,dict) or set(body)!={'notes'} or not isinstance(body['notes'],str) or not 3<=len(body['notes'].strip())<=4000:
         raise HTTPException(422,'Provide review notes within 4,000 characters')

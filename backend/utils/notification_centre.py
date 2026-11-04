@@ -157,8 +157,8 @@ async def related_link(db, user, row, category):
         return None, None
     try:
         if data.get('public_solver_assessment_id'):
-            from utils.public_solver_assessments import hr, PUBLIC_KIND
-            hr(user)
+            from utils.public_solver_assessments import reviewer, PUBLIC_KIND
+            await reviewer(db,user)
             if tenant_of(user) != 'solvit': return None, None
             record = await db.public_solver_assessments.find_one({'id': data['public_solver_assessment_id'], 'tenant_id': 'solvit', 'kind': PUBLIC_KIND, 'publication_state': 'Ready'})
             return ('/solver-assessment-applications?application=' + quote(record['id'], safe=''), None) if record else (None, None)

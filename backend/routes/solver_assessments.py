@@ -142,6 +142,13 @@ async def public_applications(request:Request):
     return JSONResponse(await applications(get_db(),user),headers=PRIVATE)
 
 
+@router.get('/applications/capabilities')
+async def public_application_capabilities(request:Request):
+    from utils.public_solver_assessments import review_capabilities
+    user=await get_current_user(request)
+    return JSONResponse(await review_capabilities(get_db(),user),headers=PRIVATE)
+
+
 @router.get('/applications/{reference}')
 async def public_application(reference:str,request:Request):
     from utils.public_solver_assessments import application

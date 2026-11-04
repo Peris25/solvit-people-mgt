@@ -476,3 +476,5 @@ export const submitPublicSolverAssessment = data => publicAssessmentApi.post('/s
 export const getPublicSolverApplications = () => api.get('/solver-assessments/applications');
 export const getPublicSolverApplication = id => api.get(`/solver-assessments/applications/${encodeURIComponent(id)}`);
 export const reviewPublicSolverApplication = (id, notes) => api.post(`/solver-assessments/applications/${encodeURIComponent(id)}/review`, { notes });
+
+export const getPublicSolverReviewCapabilities = () => api.get('/solver-assessments/applications/capabilities');

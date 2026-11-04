@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme, themeTokens } from '../context/ThemeContext';
@@ -13,6 +13,7 @@ import {
   UploadCloud, Sun, Moon, KeyRound, FileCheck, FileX
 } from 'lucide-react';
 import { useNotifications } from '../context/NotificationContext';
+import * as api from '../services/api';
 
 const ICON_SIZE = 17;
 
@@ -33,7 +34,7 @@ const MENU_ITEMS = [
       ]
     },
     { path: '/recruitment', label: 'Recruitment',  Icon: Target,          roles: ['hr_admin','hr_manager', 'general_manager','line_manager','executive'] },
-    { path: '/solver-assessment-applications', label: 'Solver Applications', Icon: FileCheck, roles: ['hr_admin','hr_manager', 'general_manager'] },
+    { path: '/solver-assessment-applications', label: 'Solver Applications', Icon: FileCheck, roles: ['hr_admin','hr_manager', 'general_manager', 'line_manager'] },
     { path: '/onboarding',  label: 'Onboarding / Exit',   Icon: Rocket,          roles: ['hr_admin','hr_manager', 'general_manager','line_manager','employee','solver','finance','it_admin'] },
   ]},
   // Line Manager team views — visible to anyone with the manager layer
@@ -96,6 +97,15 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
   const { theme, toggle: toggleTheme } = useTheme();
   const tk = themeTokens(theme);
   const { items: notifications, unreadCount: unread, loading: notificationsLoading, error: notificationError, refresh: refreshNotifications, markRead: saveRead, markAllRead } = useNotifications();
+  const accountKey = `${user?.id}:${user?.role}`;
+  const [applicantAccess, setApplicantAccess] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (user?.role === 'line_manager') (async () => {
+      try { const result = await api.getPublicSolverReviewCapabilities(); if (!cancelled) setApplicantAccess({ key: accountKey, allowed: !!result?.data?.can_view }); } catch { if (!cancelled) setApplicantAccess({ key: accountKey, allowed: false }); }
+    })();
+    return () => { cancelled = true; };
+  }, [accountKey, user?.role]);
   const [readError, setReadError] = useState('');
   const [showNotif, setShowNotif] = useState(false);
   const panelNotifications = notifications.filter(item => !['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) || item.link || item.category === 'Announcements')
@@ -145,7 +155,7 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
     return MENU_ITEMS.map(section => ({
       ...section,
       items: section.items
-        .filter(item => !item.roles || item.roles.includes(user?.role))
+        .filter(item => (!item.roles || item.roles.includes(user?.role)) && (item.path !== '/solver-assessment-applications' || user?.role !== 'line_manager' || (applicantAccess?.key === accountKey && applicantAccess.allowed)))
         .map(item => item.children
           ? { ...item, children: item.children.filter(c => !c.roles || c.roles.includes(user?.role)) }
           : item

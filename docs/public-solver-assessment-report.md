@@ -45,3 +45,13 @@ HR's new private route is `/solver-assessment-applications`, reached through **S
 This is a fresh applicant workflow: old assigned-assessment answers and Google Forms responses are not imported, listed or reused here. No database purge was performed or claimed; removing unknown stored historical rows is a separate destructive operation, outside this UI/workflow correction.
 
 Regression validation: full backend 1,348 passed / 321 existing integration skips; full frontend 277 passed across 38 suites. Strict and normal production builds, Python compilation and whitespace checks passed. Added checks prove the standalone route never mounts portal authentication and the old assignment endpoint cannot create attempts. The photo-source gap above remains unchanged.
+
+
+## Answer-view controls and hiring-lead access
+
+- Each applicant row now toggles **View answers / Close view**, with Eye/Close icons, distinct open-state styling, keyboard focus treatment and `aria-expanded` / `aria-controls`. Closing hides the details and clears the note draft without issuing another read. The detail footer also offers Close view. Search, refresh, public-link and table controls use matching responsive styling.
+- HR retains applicant access and formal review. The Operations Coordinator / Head of Solvers and Technical Services & Growth Manager positions (the approved Brian/Timothy responsibilities) also receive read-only applicant access, provided the account is an active, canonically linked full-time employee with the Line Manager role and an eligible M03 grant. Authorization resolves the saved employee identity and job title; no personal names/emails are hardcoded into permission checks.
+- Other line managers, employees, Solvers, IT and unrelated tenants remain denied. Runtime M03 revocations are honored. No employee salary, bank, medical or other HR-wide permissions are granted by this change.
+- A protected capabilities endpoint controls inbox rendering and shows the sidebar entry only for an eligible manager. HR's internal review notes are redacted for hiring leads, and the review-write endpoint still requires HR. Public form access is unchanged.
+- Full backend: 1,354 passed / 321 existing integration skips. Full frontend: 279 passed across 38 suites. Strict CI and normal production builds, Python compilation and whitespace checks passed.
+- Live Brian/Timothy acceptance remains dependent on their saved employee links, job titles and Line Manager account roles; no account passwords or production employee records were changed. The source photo question still needs its two original images.

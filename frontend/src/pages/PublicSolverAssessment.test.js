@@ -67,12 +67,38 @@ test('HR can inspect applicant answers without activating a Solver', async () =>
   expect(container.textContent).toContain('source photo question is pending');
   expect(container.querySelector('[aria-label="Applicant answers"]')).not.toBeNull();
   expect(api.activateSolver).not.toHaveBeenCalled();
+  const toggle = container.querySelector('tbody button');
+  expect(toggle.textContent).toBe('Close view');
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  await act(async () => toggle.click());
+  expect(container.querySelector('[aria-label="Applicant answers"]')).toBeNull();
+  expect(toggle.textContent).toBe('View answers');
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(api.getPublicSolverApplication).toHaveBeenCalledTimes(1);
 });
 
 
 test('private inbox denies non-HR users before loading applicant records', async () => {
   useAuth.mockReturnValue({ user: { id: 'employee', role: 'employee' } });
   await render(<SolverApplicantInbox />);
-  expect(container.textContent).toContain('HR access is required');
+  expect(container.textContent).toContain('HR or an authorized hiring lead is required');
   expect(api.getPublicSolverApplications).not.toHaveBeenCalled();
+});
+
+
+test('authorized hiring lead can open applicant inbox without HR review controls', async () => {
+  useAuth.mockReturnValue({ user: { id: 'lead', role: 'line_manager' } });
+  api.getPublicSolverReviewCapabilities.mockResolvedValue({data:{can_view:true,can_review:false}});
+  api.getPublicSolverApplications.mockResolvedValue({data:[]});
+  await render(<SolverApplicantInbox />);
+  expect(container.textContent).toContain('New Solver applications');
+  expect(api.getPublicSolverApplications).toHaveBeenCalledTimes(1);
+});
+
+test('unauthorized manager does not load private applications', async () => {
+  useAuth.mockReturnValue({ user: { id: 'other', role: 'line_manager' } });
+  api.getPublicSolverReviewCapabilities.mockResolvedValue({data:{can_view:false,can_review:false}});
+  await render(<SolverApplicantInbox />);
+  expect(api.getPublicSolverApplications).not.toHaveBeenCalled();
+  expect(container.querySelector('[role="alert"]')).not.toBeNull();
 });
