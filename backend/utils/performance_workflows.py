@@ -61,7 +61,7 @@ def released(row):
 
 def projection(row, user, employee=None):
     result = {key: deepcopy(row[key]) for key in ("employee_id", "cycle_id", "cycle_type", "cycle_label", "cycle_year", "review_date", "status",
-        "created_at", "updated_at", "self_due_on", "manager_due_on", "review_due_on", "workflow_version", "released_at", "review_meeting") if key in row}
+        "created_at", "updated_at", "self_due_on", "manager_due_on", "review_due_on", "workflow_version", "released_at", "review_meeting", "meeting_proposal") if key in row}
     result["goals_acknowledged_at"] = row.get("goals_acknowledged_at")
     result["id"] = str(row.get("id") or row.get("_id"))
     if employee:
@@ -104,11 +104,11 @@ async def notify(db, row, event):
     manager = await find_employee(db, employee.get("line_manager_id"), tenant_of(row))
     base_event = event.split(":", 1)[0]
     recipients = []
-    if base_event in {"created", "performance.goal.assign", "performance.assessment.release", "performance.historical.released", "performance.meeting.scheduled"}:
+    if base_event in {"created", "performance.goal.assign", "performance.assessment.release", "performance.historical.released", "performance.meeting.scheduled", "performance.meeting.proposed"}:
         recipients.append(("employee", employee_key(employee)))
     if manager and (base_event in {"performance.goals.acknowledged", "performance.meeting.scheduled"} or (base_event == "performance.assessment.self" and row.get("status") == "Self_Submitted")):
         recipients.append(("employee", employee_key(manager)))
-    if base_event == "performance.assessment.manager":
+    if base_event in {"performance.assessment.manager", "performance.meeting.proposed"}:
         recipients.extend(("role", role) for role in ("hr_admin", "hr_manager", "general_manager"))
     for kind, recipient in recipients:
         key = f"performance:{tenant_of(row)}:{row['id']}:{event}:{kind}:{recipient}"
@@ -150,6 +150,31 @@ async def launch_cycle(db, user, reference):
     return result
 
 
+async def propose_meeting(db, user, reference, body):
+    row, employee = await record(db, user, reference)
+    personal_grant(user, "M05", write=True)
+    if employee_key(employee) == user.get("employee_id") or not is_direct_report(employee, user):
+        fail("Only the reporting manager may propose this meeting", 403)
+    if row.get("workflow_version") != 1 or row.get("status") != "Manager_Submitted" or row.get("review_meeting"):
+        fail("Submit the manager assessment before proposing an unconfirmed meeting", 409)
+    if not isinstance(body, dict) or set(body) != {"scheduled_at"}:
+        fail("Provide only the proposed meeting date and time")
+    scheduled = meeting_time(body.get("scheduled_at"))
+    proposal = {"scheduled_at": scheduled.isoformat(), "proposed_by": user["id"], "manager_employee_id": user.get("employee_id")}
+    if row.get("meeting_proposal") != proposal:
+        await save(db, user, row, {"meeting_proposal": proposal}, "performance.meeting.proposed")
+    return projection(row, user, employee)
+
+
+def meeting_time(value):
+    try:
+        scheduled = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if scheduled.tzinfo is None or scheduled <= datetime.now(timezone.utc): raise ValueError()
+        return scheduled
+    except (AttributeError, TypeError, ValueError):
+        fail("Choose a future meeting time with a timezone")
+
+
 async def schedule_meeting(db, user, reference, body):
     require_hr(user)
     row, employee = await record(db, user, reference)
@@ -159,12 +184,7 @@ async def schedule_meeting(db, user, reference, body):
         fail("Manager approval is required before arranging the review meeting", 409)
     if set(body) != {"scheduled_at", "location"}:
         fail("Provide the meeting date/time and location or meeting link")
-    try:
-        scheduled = datetime.fromisoformat(body["scheduled_at"].replace("Z", "+00:00"))
-        if scheduled.tzinfo is None or scheduled <= datetime.now(timezone.utc):
-            raise ValueError()
-    except (AttributeError, TypeError, ValueError):
-        fail("Choose a future meeting time with a timezone")
+    scheduled = meeting_time(body.get("scheduled_at"))
     manager = await find_employee(db, employee.get("line_manager_id"), tenant_of(user))
     if not manager or manager["_id"] == employee["_id"]:
         fail("HR must confirm the reporting manager before scheduling", 409)
@@ -178,16 +198,17 @@ async def schedule_meeting(db, user, reference, body):
 
 async def meeting_date_options(db, user, reference):
     """Portal-based date suggestions, never a claim of external free/busy."""
-    require_hr(user)
     row, employee = await record(db, user, reference)
-    if employee_key(employee) == user.get("employee_id"):
-        fail("Another HR user must arrange your meeting", 403)
+    personal_grant(user, "M05", write=True)
+    if employee_key(employee) == user.get("employee_id") or (user.get("role") not in HR and not is_direct_report(employee, user)):
+        fail("HR or the reporting manager must arrange this meeting", 403)
     if row.get("status") not in {"Manager_Submitted", "HR_Reviewed"}:
         fail("Manager approval is required first", 409)
     manager = await find_employee(db, employee.get("line_manager_id"), tenant_of(user))
     if not manager: fail("HR must confirm the reporting manager", 409)
-    for participant in (employee, manager):
-        await authorize_employee(db, user, employee_key(participant), "M18")
+    if user.get("role") in HR:
+        for participant in (employee, manager):
+            await authorize_employee(db, user, employee_key(participant), "M18")
     from utils.leave_policy import contract_policy, working_units
     policies = [await contract_policy(db, p) for p in (employee, manager)]
     refs = set(reference_ids(employee) + reference_ids(manager) + [employee["_id"], manager["_id"]])
@@ -221,7 +242,7 @@ async def meeting_date_options(db, user, reference):
         if all(working_units(candidate, candidate, holidays, policy["saturday_weight"], policy.get("workday_weights")) > 0 for policy in policies):
             dates.append(candidate)
         if len(dates) == 10: break
-    return {"dates": dates, "notice": "Suggested dates use recorded working days, public holidays, approved leave and portal review meetings only. Confirm employee and manager availability manually; Outlook calendars are not connected."}
+    return {"dates": dates, "notice": "Suggested dates use recorded working days, public holidays, approved leave and portal review meetings only. Confirm employee and manager availability manually before HR sets the meeting."}
 
 
 async def email_submitted_review(db, row, employee, manager):

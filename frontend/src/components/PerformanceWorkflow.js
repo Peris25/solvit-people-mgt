@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import * as api from '../services/api';
 
+const localMeetingTime = value => { const date = new Date(value); return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
+
 const field = { display: 'grid', gap: 5, marginBottom: 12 };
 const button = { minHeight: 44, padding: '8px 14px', cursor: 'pointer' };
 
@@ -48,7 +50,7 @@ export default function PerformanceWorkflow({ review, onUpdated }) {
   const [legacyReference, setLegacyReference] = useState('');
   const [progress, setProgress] = useState({});
   const [evidence, setEvidence] = useState({});
-  const [meeting, setMeeting] = useState({ scheduled_at: '', location: '' });
+  const [meeting, setMeeting] = useState({ scheduled_at: review.review_meeting?.scheduled_at ? localMeetingTime(review.review_meeting.scheduled_at) : review.meeting_proposal?.scheduled_at ? localMeetingTime(review.meeting_proposal.scheduled_at) : '', location: review.review_meeting?.location || '' });
   const [dateOptions, setDateOptions] = useState(null);
   const goals = review.section_a_kpis || [];
   const perform = async action => { setBusy(true); setError(''); try { await action(); await onUpdated(); } catch (err) { setError(typeof err.response?.data?.detail === 'string' ? err.response.data.detail : 'The assessment could not be saved.'); } finally { setBusy(false); } };
@@ -92,17 +94,18 @@ export default function PerformanceWorkflow({ review, onUpdated }) {
       <button style={button} disabled={busy}>Approve and send to HR</button>
     </form>}
     {review.manager_assessment && <div><h4>Manager assessment</h4><p>{review.manager_assessment.summary}</p></div>}
+    {review.meeting_proposal && !review.review_meeting && <aside role="status"><h4>Awaiting HR confirmation</h4><p>Manager-proposed date: {new Date(review.meeting_proposal.scheduled_at).toLocaleString()}</p></aside>}
     {review.review_meeting && <aside><h4>Review meeting</h4><p>{new Date(review.review_meeting.scheduled_at).toLocaleString()} · {review.review_meeting.location}</p></aside>}
-    {review.can_hr_review && ['Manager_Submitted', 'HR_Reviewed'].includes(review.status) && <form onSubmit={e => { e.preventDefault(); perform(async () => { const response = await api.scheduleReviewMeeting(review.id, { ...meeting, scheduled_at: new Date(meeting.scheduled_at).toISOString() }); if (!response?.data?.id) throw new Error('The meeting could not be saved.'); }); }}>
-      <h4>{review.review_meeting ? 'Reschedule review meeting' : 'Arrange review meeting'}</h4>
-      <p>The manager has approved the assessment. Arrange the employee’s review meeting; the employee and reporting manager will receive an in-app notification.</p>
-      <button type="button" style={button} disabled={busy} onClick={async () => { setBusy(true); setError(''); try { const response = await api.getReviewMeetingOptions(review.id); if (!Array.isArray(response?.data?.dates)) throw new Error('Date options are unavailable.'); setDateOptions(response.data); } catch { setError('Suggested dates could not be loaded. HR can still confirm and enter a date manually.'); } finally { setBusy(false); } }}>Show suggested meeting dates</button>
+    {((review.can_hr_review && ['Manager_Submitted', 'HR_Reviewed'].includes(review.status)) || (review.can_manage && review.status === 'Manager_Submitted' && !review.review_meeting)) && <form onSubmit={e => { e.preventDefault(); perform(async () => { const payload = { scheduled_at: new Date(meeting.scheduled_at).toISOString() }; const response = review.can_hr_review ? await api.scheduleReviewMeeting(review.id, { ...payload, location: meeting.location }) : await api.proposeReviewMeeting(review.id, payload); if (!response?.data?.id) throw new Error('The meeting could not be saved.'); }); }}>
+      <h4>{review.can_hr_review ? (review.review_meeting ? 'Reschedule review meeting' : 'Confirm review meeting') : 'Propose review meeting'}</h4>
+      <p>{review.can_hr_review ? 'Arrange the meeting manually, then click Meeting set to notify the employee and line manager.' : 'Choose a proposed date and time. HR and the employee will be notified; HR confirms the final meeting.'}</p>
+      <button type="button" style={button} disabled={busy} onClick={async () => { setBusy(true); setError(''); try { const response = await api.getReviewMeetingOptions(review.id); if (!Array.isArray(response?.data?.dates)) throw new Error('Date options are unavailable.'); setDateOptions(response.data); } catch { setError('Suggested dates could not be loaded. Enter a date manually.'); } finally { setBusy(false); } }}>Show suggested meeting dates</button>
       {dateOptions && <div><p>{dateOptions.notice}</p><div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>{dateOptions.dates.map(day => <button type="button" style={button} key={day} onClick={() => setMeeting(v => ({ ...v, scheduled_at: day + 'T' + (v.scheduled_at.split('T')[1] || '') }))}>{day}</button>)}</div>{dateOptions.dates.length === 0 && <p>No suggested dates found. Confirm availability manually.</p>}</div>}
-      <p>Choose and confirm the final date and time manually. Saving records the meeting in the portal calendar; it does not send an Outlook invitation.</p>
+      <p>Proposed dates await HR confirmation. Confirmed meetings appear in the portal calendar.</p>
       <label style={field}>Meeting date<input required type="date" aria-label="Review meeting date" value={meeting.scheduled_at.split('T')[0]} onChange={e => setMeeting(v => ({ ...v, scheduled_at: e.target.value + 'T' + (v.scheduled_at.split('T')[1] || '') }))} /></label>
       <label style={field}>Meeting time (your local time)<input required type="time" aria-label="Review meeting time" value={meeting.scheduled_at.split('T')[1] || ''} onChange={e => setMeeting(v => ({ ...v, scheduled_at: (v.scheduled_at.split('T')[0] || '') + 'T' + e.target.value }))} /></label>
-      <label style={field}>Location or meeting link<input required maxLength={500} aria-label="Review meeting location" value={meeting.location} onChange={e => setMeeting(v => ({ ...v, location: e.target.value }))} /></label>
-      <button style={button} disabled={busy}>Save review meeting</button>
+      {review.can_hr_review && <label style={field}>Location or meeting link<input required maxLength={500} aria-label="Review meeting location" value={meeting.location} onChange={e => setMeeting(v => ({ ...v, location: e.target.value }))} /></label>}
+      <button style={button} disabled={busy}>{review.can_hr_review ? 'Meeting set' : 'Propose review meeting'}</button>
     </form>}
     {review.can_hr_review && review.status === 'Self_Submitted' && ['failed', 'skipped'].includes(review.manager_email_status) && <p role="note">The review is submitted, but the manager email was not sent. Check Email Delivery configuration/logs; the manager’s in-app notification remains available.</p>}
     {review.can_hr_review && review.status === 'Manager_Submitted' && <form onSubmit={e => { e.preventDefault(); perform(() => api.submitReviewAssessment(review.id, 'hr', { ...hr, section_b_score: Number(hr.section_b_score), section_c_score: Number(hr.section_c_score) })); }}>

@@ -295,7 +295,7 @@ async def list_inbox(db, user, *, category=None, kind=None, read_status="all", o
             title, message = await leave_preview(db, user, row, action)
         if category_value == "Performance" and link:
             event = (row.get("data") or {}).get("performance_event")
-            if event in {"performance.assessment.manager", "performance.assessment.self", "created"}:
+            if event in {"performance.assessment.manager", "performance.assessment.self", "created", "performance.meeting.proposed"}:
                 from utils.performance_workflows import record as performance_record
                 reference = (row.get("data") or {}).get("performance_review_id")
                 if not reference:
@@ -307,6 +307,8 @@ async def list_inbox(db, user, *, category=None, kind=None, read_status="all", o
                         return None
                     raise
                 if event == "performance.assessment.manager" and (current_review.get("status") != "Manager_Submitted" or current_review.get("review_meeting")):
+                    return None
+                if event == "performance.meeting.proposed" and (current_review.get("review_meeting") or current_review.get("status") not in {"Manager_Submitted", "HR_Reviewed"}):
                     return None
                 if event == "performance.assessment.self" and current_review.get("status") != "Self_Submitted":
                     return None
@@ -320,6 +322,8 @@ async def list_inbox(db, user, *, category=None, kind=None, read_status="all", o
                 title, message = "Performance assessment awaiting manager review", "An employee has submitted their self-assessment. Open the review to assess and approve."
             elif event == "created":
                 title, message = "Your performance review is available", "Open your review to agree goals and complete your self-assessment."
+            elif event == "performance.meeting.proposed":
+                title, message = "Review meeting date proposed", "The line manager proposed a review date. Open the review for details; HR confirmation is pending."
             elif event == "performance.meeting.scheduled":
                 title, message = "Performance review meeting scheduled", "HR has arranged the review meeting. Open the review for its date, time and location."
         if link and isinstance(row.get("data"), dict) and row["data"].get("public_solver_assessment_id"):

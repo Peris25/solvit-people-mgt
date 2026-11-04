@@ -275,7 +275,7 @@ def test_calendar_options_exclude_holidays_and_participant_leave_without_booking
     assert result['dates'] and len(result['dates']) <= 10
     assert 'manually' in result['notice'] and 'PRIVATE' not in str(result)
     assert 'review_meeting' not in db.performance_reviews.docs[0]
-    for actor in ('staff', 'manager', 'finance', 'other'):
+    for actor in ('staff', 'finance', 'other'):
         with pytest.raises(HTTPException): run(service.meeting_date_options(db, users[actor], reference))
 
 
@@ -417,3 +417,68 @@ def test_hr_own_unpublished_placement_is_not_leaked_by_matrix():
         assert all(not items for items in run(performance.get_nine_box_matrix(None,2026)).values())
         db.performance_reviews.docs[0].update(released_at=service.now(),released_by='another-authorized-hr')
         assert run(performance.get_nine_box_matrix(None,2026))['Stars'][0]['score'] == 1.2
+
+
+def test_manager_proposal_notifies_hr_and_employee_then_hr_confirms_both_participants():
+    db, users, reference = assessed()
+    body = {'scheduled_at':'2099-11-05T10:00:00+03:00'}
+    before = len(db.notifications.docs)
+    result = run(service.propose_meeting(db, users['manager'], reference, body))
+    assert result['meeting_proposal']['scheduled_at'] == body['scheduled_at']
+    assert 'review_meeting' not in result
+    messages = db.notifications.docs[before:]
+    assert any(n.get('recipient_id') == 'staff' for n in messages)
+    assert any(n.get('recipient_role') == 'hr_admin' for n in messages)
+    count = len(db.notifications.docs)
+    run(service.propose_meeting(db, users['manager'], reference, body))
+    assert len(db.notifications.docs) == count
+    run(service.schedule_meeting(db, users['hr'], reference, {**body,'location':'Review room'}))
+    confirmed = [n for n in db.notifications.docs if n.get('data',{}).get('performance_event') == 'performance.meeting.scheduled']
+    assert {n['recipient_id'] for n in confirmed} == {'staff','manager'}
+    with pytest.raises(HTTPException): run(service.propose_meeting(db, users['manager'], reference, body))
+
+
+@pytest.mark.parametrize('actor',['staff','other','finance','hr'])
+def test_only_direct_manager_can_propose_review_date(actor):
+    db, users, reference = assessed()
+    with pytest.raises(HTTPException):
+        run(service.propose_meeting(db, users[actor], reference, {'scheduled_at':'2099-11-05T10:00:00Z'}))
+    assert not db.performance_reviews.docs[0].get('meeting_proposal')
+
+
+@pytest.mark.parametrize('body',[{'scheduled_at':'2020-01-01T10:00:00Z'}, {'scheduled_at':'2099-01-01T10:00:00'}, {'scheduled_at':'bad'}, {'scheduled_at':'2099-01-01T10:00:00Z','employee_id':'other'}])
+def test_proposal_rejects_past_naive_invalid_and_forged_fields(body):
+    db, users, reference = assessed()
+    with pytest.raises(HTTPException): run(service.propose_meeting(db, users['manager'], reference, body))
+    assert not db.performance_reviews.docs[0].get('meeting_proposal')
+
+
+def test_manager_gets_portal_date_options_without_hr_schedule_permission():
+    db, users, reference = assessed()
+    assert 'dates' in run(service.meeting_date_options(db, users['manager'], reference))
+    with pytest.raises(HTTPException):
+        run(service.schedule_meeting(db, users['manager'], reference, {'scheduled_at':'2099-01-01T10:00:00Z','location':'Room'}))
+
+
+def test_proposal_requires_manager_assessment_and_never_changes_scores():
+    db, users = fixture(); row = create(db, users)
+    with pytest.raises(HTTPException):
+        run(service.propose_meeting(db, users['manager'], row['id'], {'scheduled_at':'2099-01-01T10:00:00Z'}))
+    assert not db.performance_reviews.docs[0].get('meeting_proposal')
+
+
+def test_proposed_and_confirmed_notification_previews_link_to_review():
+    from utils.notification_centre import list_inbox
+    db, users, reference = assessed()
+    body = {'scheduled_at':'2099-11-05T10:00:00Z'}
+    run(service.propose_meeting(db, users['manager'], reference, body))
+    for actor in ('staff','hr'):
+        items = run(list_inbox(db, users[actor]))['items']
+        proposal = [n for n in items if n['title'] == 'Review meeting date proposed']
+        assert proposal and reference in proposal[0]['link']
+        assert 'HR confirmation is pending' in proposal[0]['message']
+    run(service.schedule_meeting(db, users['hr'], reference, {**body,'location':'Meeting room'}))
+    for actor in ('staff','manager'):
+        items = run(list_inbox(db, users[actor]))['items']
+        assert any(n['title'] == 'Performance review meeting scheduled' and reference in n['link'] for n in items)
+        assert not any(n['title'] == 'Review meeting date proposed' for n in items)

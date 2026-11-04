@@ -144,6 +144,16 @@ async def arrange_review_meeting(review_id: str, request: Request):
         return await workflow.schedule_meeting(db, user, review_id, body)
 
 
+@router.post("/{review_id}/meeting-proposal")
+async def propose_review_meeting(review_id: str, request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    if not isinstance(body, dict): raise HTTPException(422, "An object body is required")
+    db = get_db()
+    async with integrity_write(db):
+        return await workflow.propose_meeting(db, user, review_id, body)
+
+
 @router.get("/{review_id}/meeting-options")
 async def review_meeting_options(review_id: str, request: Request):
     user = await get_current_user(request)

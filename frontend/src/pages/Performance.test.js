@@ -114,3 +114,22 @@ test('employee explicitly acknowledges agreed goals through the owner-scoped end
   await render(<PerformanceWorkflow review={review({ can_self_assess:true, section_a_kpis:[1,2,3].map(id => ({ id, objective:'Agreed goal' })) })} onUpdated={jest.fn()} />);
   await click('Acknowledge agreed goals'); expect(api.updateReviewGoals).toHaveBeenCalledWith('review',{ action:'acknowledge' });
 });
+
+
+test('manager proposes date without confirming meeting or sending HR-only fields', async () => {
+  api.proposeReviewMeeting.mockResolvedValue({ data: { id: 'review' } });
+  await render(<PerformanceWorkflow review={review({ can_manage:true, status:'Manager_Submitted' })} onUpdated={jest.fn()} />);
+  await change(container.querySelector('[aria-label="Review meeting date"]'), '2099-11-05');
+  await change(container.querySelector('[aria-label="Review meeting time"]'), '10:00');
+  expect(container.querySelector('[aria-label="Review meeting location"]')).toBeNull();
+  await submit(container.querySelector('form'));
+  expect(api.proposeReviewMeeting).toHaveBeenCalledWith('review', { scheduled_at:new Date('2099-11-05T10:00').toISOString() });
+  expect(api.scheduleReviewMeeting).not.toHaveBeenCalled();
+});
+
+test('HR receives proposed local time ready for manual confirmation', async () => {
+  await render(<PerformanceWorkflow review={review({ can_hr_review:true, status:'Manager_Submitted', meeting_proposal:{ scheduled_at:'2099-11-05T10:00:00Z' } })} onUpdated={jest.fn()} />);
+  expect(container.textContent).toContain('Awaiting HR confirmation');
+  expect(container.querySelector('[aria-label="Review meeting date"]').value).toBe('2099-11-05');
+  expect(container.textContent).toContain('Meeting set');
+});
