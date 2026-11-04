@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import StatusBadge from '../components/StatusBadge';
+import DeleteReviewDialog from '../components/DeleteReviewDialog';
+import { useNotifications } from '../context/NotificationContext';
 import CreateReviewDialog from '../components/CreateReviewDialog';
 import PerformanceWorkflow, { CycleConfiguration } from '../components/PerformanceWorkflow';
 import * as api from '../services/api';
@@ -9,6 +11,10 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
 
 export default function Performance() {
   const { user } = useAuth();
+  const notifications=useNotifications();
+  const [deleting,setDeleting]=useState([]);
+  const [selected,setSelected]=useState([]);
+  const isHR=["hr_admin","hr_manager","general_manager"].includes(user?.role);
   const [reviews, setReviews] = useState([]);
   const [cycles, setCycles] = useState([]);
   const [error, setError] = useState('');
@@ -32,6 +38,7 @@ export default function Performance() {
       setCycles(cyclesRes.data);
       setViewReview(previous => revRes.data.find(row => row.id === (previous?.id || new URLSearchParams(window.location.search).get('review'))) || null);
       setReviews(revRes.data);
+      setSelected([]);
       setCycle(cycleRes.data);
       if (['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role)) {
         const empRes = await api.getEmployees();
@@ -229,6 +236,11 @@ export default function Performance() {
         </div>
       )}
 
+      {isHR && <div style={{display:'flex',gap:12,alignItems:'center',marginBottom:16,flexWrap:'wrap'}}>
+        <button type="button" onClick={()=>setSelected(reviews.filter(r=>r.can_delete).slice(0,100).map(r=>r.id))}>Select unsubmitted drafts</button>
+        <button type="button" disabled={!selected.length} onClick={()=>setDeleting(reviews.filter(r=>selected.includes(r.id)&&r.can_delete))}>Delete selected ({selected.length})</button>
+        {!!selected.length&&<button type="button" onClick={()=>setSelected([])}>Clear selection</button>}
+      </div>}
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid rgba(25,25,25,0.1)', marginBottom: '20px' }}>
         {(['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) ? ['reviews', '9-box'] : ['reviews']).map(t => (
@@ -262,7 +274,9 @@ export default function Performance() {
                   <td style={{ padding: '10px 14px' }}>{r.rating ? <StatusBadge status={r.rating} small /> : '—'}</td>
                   <td style={{ padding: '10px 14px' }}><StatusBadge status={r.status} small /></td>
                   <td style={{ padding: '10px 14px' }}>
+                    {isHR&&r.can_delete&&<input type="checkbox" aria-label={`Select review for ${r.employee_name||r.employee_id}`} checked={selected.includes(r.id)} onChange={e=>setSelected(ids=>e.target.checked?[...ids,r.id].slice(0,100):ids.filter(id=>id!==r.id))} style={{marginRight:10}}/>}
                     <button data-testid={`view-review-${r.id}`} onClick={() => openView(r)} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontFamily: 'Barlow', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>View</button>
+                    {isHR&&r.can_delete&&<button type="button" aria-label={`Delete draft review for ${r.employee_name||r.employee_id}`} onClick={()=>setDeleting([r])} style={{marginLeft:8,padding:'8px 12px',border:'1px solid #fecaca',borderRadius:8,background:'#fff1f2',color:'#b91c1c',cursor:'pointer'}}>Delete draft</button>}
                   </td>
                 </tr>
               ))}
@@ -368,6 +382,7 @@ export default function Performance() {
         </div>
       )}
 
+      {deleting.length>0&&<DeleteReviewDialog reviews={deleting} onClose={()=>setDeleting([])} onDeleted={async()=>{setDeleting([]);await load();await notifications?.refresh?.();}}/>}
       {showCreate && <CreateReviewDialog employees={employees} onClose={() => setShowCreate(false)} onCreated={async () => { setShowCreate(false); await load(); }} />}
 
     </div>

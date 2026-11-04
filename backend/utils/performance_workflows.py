@@ -93,6 +93,9 @@ def projection(row, user, employee=None):
     result["can_update_goal_progress"] = writable and own and row.get("workflow_version") == 1 and row.get("status") in {"Draft", "Self_Draft", "Self_Submitted"}
     result["can_manage"] = writable and bool(employee and not own and is_direct_report(employee, user))
     result["can_hr_review"] = writable and user.get("role") in HR and not own
+    from utils.review_deletion import removable, version
+    result["can_delete"] = writable and user.get("role") in HR and removable(row)
+    if result["can_delete"]: result["delete_version"] = version(row)
     if user.get("role") in HR:
         result["manager_email_status"] = row.get("manager_email_status")
     return result

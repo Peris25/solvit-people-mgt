@@ -178,6 +178,16 @@ async def submit_assessment(review_id: str, stage: str, request: Request):
         return await workflow.assess(db, user, review_id, stage, body)
 
 
+@router.post("/delete-drafts")
+async def delete_draft_reviews(request: Request):
+    from utils.review_deletion import delete_drafts
+    user = await get_current_user(request)
+    body = await request.json()
+    db = get_db()
+    async with integrity_write(db):
+        return await delete_drafts(db, user, body)
+
+
 @router.get("")
 async def list_reviews(request: Request, employee_id: Optional[str] = None, cycle_year: Optional[int] = None, status: Optional[str] = None):
     user = await get_current_user(request)

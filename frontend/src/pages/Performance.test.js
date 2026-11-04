@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import Performance from './Performance';
 import PerformanceWorkflow, { CycleConfiguration } from '../components/PerformanceWorkflow';
 import * as api from '../services/api';
+import { deleteDraftReviews } from '../services/performanceDeletion';
+jest.mock('../services/performanceDeletion');
 import { useAuth } from '../context/AuthContext';
 jest.mock('../services/api');
 jest.mock('../context/AuthContext');
@@ -158,4 +160,35 @@ test('probation manager sees qualitative fields and HR has no numeric scoring co
  expect(container.querySelector('input[type="number"]')).toBeNull();
  await render(<PerformanceWorkflow review={review({cycle_type:'Probation',review_month:3,can_hr_review:true,status:'Manager_Submitted'})} onUpdated={jest.fn()}/>);
  expect(container.textContent).toContain('HR probation review');expect(container.querySelector('input[type="number"]')).toBeNull();
+});
+
+
+test('HR deletion names the draft and requires confirmation before removing it',async()=>{
+ useAuth.mockReturnValue({user:{role:'hr_admin',employee_id:'hr'}});
+ api.getReviews.mockResolvedValue({data:[review({employee_name:'Synthetic Employee',employee_id:'staff',can_delete:true,delete_version:'current',cycle_type:'Year_End',cycle_year:2026})]});
+ deleteDraftReviews.mockResolvedValue({data:{deleted:['review']}});
+ await render(<Performance/>);
+ await click('Delete draft');
+ expect(container.querySelector('[role="dialog"]').textContent).toContain('Synthetic Employee');
+ expect(deleteDraftReviews).not.toHaveBeenCalled();
+ expect([...container.querySelectorAll('button')].find(b=>b.textContent==='Delete reviews').disabled).toBe(true);
+ await change(container.querySelector('[aria-label="Review deletion reason"]'),'Created in error; HR verified');
+ await act(async()=>container.querySelector('[role="dialog"] input[type="checkbox"]').click());
+ api.getReviews.mockResolvedValue({data:[]});
+ await submit(container.querySelector('[role="dialog"] form'));
+ expect(deleteDraftReviews).toHaveBeenCalledWith([{id:'review',version:'current'}],'Created in error; HR verified');
+ expect(container.querySelector('[role="dialog"]')).toBeNull();
+});
+
+test('employees cannot see deletion controls even if stale response has a deletion flag',async()=>{
+ api.getReviews.mockResolvedValue({data:[review({employee_name:'Synthetic Employee',can_delete:true})]});
+ await render(<Performance/>);
+ expect(container.textContent).not.toContain('Delete draft');expect(container.textContent).not.toContain('Delete selected');
+});
+
+test('cancel deletion leaves review intact without calling API',async()=>{
+ useAuth.mockReturnValue({user:{role:'hr_admin',employee_id:'hr'}});
+ api.getReviews.mockResolvedValue({data:[review({employee_name:'Synthetic Employee',can_delete:true,delete_version:'current'})]});
+ await render(<Performance/>);await click('Delete draft');await click('Cancel');
+ expect(deleteDraftReviews).not.toHaveBeenCalled();expect(container.textContent).toContain('Synthetic Employee');
 });

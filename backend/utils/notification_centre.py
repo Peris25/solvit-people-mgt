@@ -290,6 +290,8 @@ async def list_inbox(db, user, *, category=None, kind=None, read_status="all", o
         # Legacy automation logs without a usable target are not notifications.
         if user.get("role") in {"hr_admin", "hr_manager", "general_manager"} and not link:
             return None
+        if category_value == "Performance" and (row.get("data") or {}).get("performance_review_id") and not link:
+            return None  # Removed/unavailable reviews must not become generic stale alerts.
         title, message = PREVIEWS[category_value]
         if category_value in {"Leave", "Approvals"} and link:
             title, message = await leave_preview(db, user, row, action)
