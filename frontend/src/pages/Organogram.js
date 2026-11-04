@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import OrgNode from '../components/OrgNode';
 import * as api from '../services/api';
-import roleChart from '../assets/solvit-role-organogram.png';
+import CompactRoleChart from '../components/CompactRoleChart';
 import { useAuth } from '../context/AuthContext';
 import { STAFF_DIRECTORY_ROLES } from '../utils/staffDirectory';
 
@@ -51,7 +51,7 @@ export default function Organogram() {
 
   if (!allowed) return <div role="alert" style={{ padding: 28 }}>Staff organogram access is not available for this account.</div>;
   return (
-    <div data-testid="organogram-page" style={{ padding: '32px 28px', backgroundColor: '#F9FAFB', minHeight: '100vh' }}>
+    <div data-testid="organogram-page" style={{ padding: '32px 28px', backgroundColor: '#F9FAFB', minHeight: 0 }}>
       <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'baseline', gap: '20px', flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: 900, letterSpacing: '-0.04em', color: '#191919', margin: 0 }}>Organogram</h1>
@@ -73,13 +73,10 @@ export default function Organogram() {
         </div>
       </div>
 
-      <details style={{ marginBottom: '20px' }}>
-        <summary style={{ cursor: 'pointer', fontSize: '13px' }}>Reference role-level organisational chart</summary>
-        <p style={{ fontSize: '12px', color: '#525252' }}>Source: Solvit Team Directory 2026. Role and team boxes are a reference, not employee records. Individual and acting assignments require HR confirmation.</p>
-        <img src={roleChart} alt="Solvit role-level chart: Board of Directors above Managing Director; Executive Director linked laterally; departmental managers and their teams below."
-          style={{ width: '100%', maxWidth: '800px', height: 'auto', display: 'block', backgroundColor: '#fff' }} />
-      </details>
-
+      <CompactRoleChart />
+      <details open={Boolean(filter.trim())} data-testid="employee-reporting-details" style={{marginTop:20,background:'#fff',border:'1px solid #e5e7eb',borderRadius:12,padding:16}}>
+        <summary style={{cursor:'pointer',fontWeight:700,minHeight:32}}>Employee reporting relationships ({total} people)</summary>
+        <p style={{fontSize:12,color:'#64748b'}}>Live employee reporting links use saved manager assignments. Search above to find a person, role or department.</p>
       {loading ? <div style={{ padding: '32px' }}>Loading organogram…</div> : null}
       {error ? (
         <div style={{ padding: '16px', backgroundColor: '#FEE2E2', color: '#991B1B', fontSize: '13px' }}>
@@ -103,6 +100,7 @@ export default function Organogram() {
       ) : null}
       {!loading && !error && issues > 0 && <p role="status" style={{ color: '#92400E', fontSize: '12px' }}>Some identifiers or reporting links need review. Unresolved branches are shown separately; saved assignments have not been changed.</p>}
       {!loading && !error && total > 0 && filtered.length === 0 && <p role="status" style={{ color: '#525252', fontSize: '13px' }}>No people match your search.</p>}
+      </details>
     </div>
   );
 }

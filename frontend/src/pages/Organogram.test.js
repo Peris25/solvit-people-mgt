@@ -19,11 +19,14 @@ test('unsupported roles cannot load the organogram through a direct page visit',
   expect(container.textContent).toContain('not available');
 });
 
-test('role-level reference chart remains distinct from live reporting links', async () => {
+test('compact reference role chart is primary and live tree is collapsed initially', async () => {
   await render({ roots: [], total: 0 });
-  expect(container.querySelector('details summary').textContent).toContain('Reference role-level');
-  expect(container.querySelector('details img').alt).toContain('Executive Director linked laterally');
-  expect(container.textContent).toContain('Individual and acting assignments require HR confirmation');
+  const chart=container.querySelector('svg[role="img"]');
+  expect(chart.getAttribute('viewBox')).toBe('0 0 1024 720');
+  expect(chart.textContent).toContain('Executive Director linked laterally');
+  expect(chart.textContent).toContain('FINANCE &');
+  expect(chart.textContent).toContain('IT SUPPORT');
+  expect(container.querySelector('[data-testid="employee-reporting-details"]').open).toBe(false);
 });
 
 test('distinct render keys keep conflicting records visible with review notices', async () => {
@@ -47,6 +50,7 @@ test('search uses configured department labels and preserves ancestor context', 
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(search, 'HR & People');
     search.dispatchEvent(new Event('input', { bubbles: true }));
   });
+  expect(container.querySelector('[data-testid="employee-reporting-details"]').open).toBe(true);
   expect(container.textContent).toContain('Synthetic manager');
   expect(container.textContent).toContain('Synthetic staff');
   expect(container.textContent).toContain('HR & People');
