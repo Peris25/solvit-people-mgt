@@ -17,4 +17,21 @@ Official references: https://render.com/docs/private-services , https://render.c
 
 ## Delivered code fix
 
-Files: `frontend/src/components/EmployeeDocuments.js`, `frontend/src/pages/Documents.test.js`, and this report. All 323 frontend tests passed across 44 suites, including the actual resolved-503 response shape. Strict CI and normal production builds and whitespace checks passed. No backend, production configuration, storage or employee data was changed. The scanner remains an unresolved production infrastructure prerequisite.
+The initial frontend fix changed `frontend/src/components/EmployeeDocuments.js`, `frontend/src/pages/Documents.test.js`, and this report. All 323 frontend tests passed across 44 suites, including the actual resolved-503 response shape. Strict CI and normal production builds and whitespace checks passed. The infrastructure work below follows that initial release.
+
+## Hosting follow-up — 5 November 2026
+
+- User approved a private Oregon Render scanner at $25/month (1 CPU, 2 GB RAM), and a 5 GB backend disk at $1.25/month. Total additional approved cost is $26.25/month before taxes.
+- `solvit-document-scanner`, using the official `clamav/clamav:1.4` image, deployed successfully and updated its signatures. Initial memory chart was approximately 45% of 2 GB. A user-run check from the People backend returned `PONG` over private TCP port 3310. This verifies reachability, not an end-to-end malware verdict or sustained memory stability.
+- The scanner was configured with `CLAMD_CONF_ConcurrentDatabaseReload=no`, `FRESHCLAM_CONF_TestDatabases=no`, `CLAMD_CONF_MaxThreads=1`, and `CLAMD_CONF_MaxQueue=4`. Verify effective daemon configuration and stability through a signature reload: the 2 GB plan is below ClamAV's documented minimum/recommendation and remains a capacity risk. No file-type detection was deliberately disabled. Uploads remain fail-closed.
+- Before disk attachment, the user ran the supplied read-only count against configured document, CV and leave-evidence roots: all returned zero files. This does not prove that older database attachment references have corresponding files or reconcile other storage roots.
+- A 5 GB backend disk is attached at `/var/data`. The saved backend configuration uses `DOC_UPLOAD_ROOT=/var/data/employee_docs`, `CV_UPLOAD_ROOT=/var/data/solver_cvs`, `LEAVE_EVIDENCE_ROOT=/var/data/leave_evidence`, `DOC_SCANNER_HOST=solvit-document-scanner`, `DOC_SCANNER_PORT=3310`, and `MAX_BODY_BYTES=23068672`. Configuration deployment is being verified. Other environment values, employee records and database data were not changed.
+- A disk prevents horizontal scaling and zero-downtime backend deployments on Render. Render advertises daily disk snapshots with seven-day retention; separately verify restore and backup procedures.
+
+## Solver CV security follow-up
+
+The public job-application CV path previously wrote files without calling the existing scanner. `backend/routes/solver_intake.py` now bounds the read to the 5 MB limit plus one byte, checks extension/content agreement, validates PDF/OOXML structure, and requires a clean scanner verdict before storing the file or application. New CVs use exclusive private file creation and scan-status metadata with a metadata-only audit event. Existing CV records are not rewritten or retrospectively marked clean.
+
+`backend/tests/test_solver_cv_scanning.py` adds nine regression cases covering clean uploads, unavailable scanning, malware rejection, size/type validation, and absence of candidate/file writes after scan failure. Full backend validation: **1,482 passed, 321 skipped, five warnings**. Python compilation and whitespace checks passed. No new frontend changes in this follow-up.
+
+Outstanding live verification: effective scanner memory configuration, a synthetic clean INSTREAM verdict, authorized document upload/download and its audit trail, public CV submission, and survival of stored synthetic files across a subsequent backend restart. No real ID or applicant CV should be used for infrastructure tests. Keep the scanner private, monitor memory and signature freshness, and never bypass scanning to restore availability.

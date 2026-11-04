@@ -38,7 +38,7 @@ router = APIRouter(prefix="/solver-intake", tags=["solver-intake"])
 
 CV_UPLOAD_ROOT = Path(os.environ.get("CV_UPLOAD_ROOT",
                                        "/app/backend/uploads/solver_cvs"))
-CV_UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+CV_UPLOAD_ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
 CV_MAX_BYTES = 5 * 1024 * 1024
 CV_ALLOWED_EXT = {".pdf", ".doc", ".docx"}
 CV_ALLOWED_MIME = {
@@ -148,7 +148,19 @@ def _validate_cv(file: UploadFile, content: bytes) -> str:
                              detail="CV file content does not match its declared type.")
     # Allow .docx <-> PK signature (matched as .docx); a .doc file that magic-sniffs
     # as PK is actually a .docx — accept it but normalise extension.
-    return ext
+    if matched != ext and not (ext == '.doc' and matched == '.docx'):
+        raise HTTPException(400, 'CV file content does not match its declared type.')
+    return matched
+
+
+async def _read_clean_cv(cv):
+    from utils.document_uploads import validate_content, scan_content, MIME
+    content = await cv.read(CV_MAX_BYTES + 1)
+    ext = _validate_cv(cv, content)
+    if ext in {'.pdf', '.docx'}:
+        validate_content(content, ext, MIME[ext])
+    await scan_content(content)
+    return ext, content
 
 
 KENYA_COUNTIES = [
@@ -414,12 +426,10 @@ async def public_apply(
     cv_stored_path = None
     cv_content: Optional[bytes] = None
     if cv is not None and getattr(cv, "filename", ""):
-        cv_content = await cv.read()
-        if cv_content:  # only process if non-empty
-            ext = _validate_cv(cv, cv_content)
-            # Final stored name is constructed once we have the applicant id.
-            cv_filename = cv.filename
-            cv_stored_path = ext  # use as a sentinel; replaced below
+        ext, cv_content = await _read_clean_cv(cv)
+        # Final stored name is constructed once we have the applicant id.
+        cv_filename = cv.filename
+        cv_stored_path = ext
 
     # ───── Eligibility evaluation ─────
     failed = []
@@ -456,7 +466,11 @@ async def public_apply(
         ext = cv_stored_path
         safe_name = f"{applicant_id}{ext}"
         target_path = CV_UPLOAD_ROOT / safe_name
-        with open(target_path, "wb") as f:
+        await db.audit_logs.insert_one({"id": str(uuid.uuid4()), "tenant_id": "solvit",
+            "event": "solver.cv.uploaded", "entity_type": "solver_applicant", "entity_id": applicant_id,
+            "actor_type": "public_applicant", "timestamp": now,
+            "metadata": {"extension": ext, "size_bytes": len(cv_content), "scan_status": "Clean"}})
+        with os.fdopen(os.open(target_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as f:
             f.write(cv_content)
         cv_stored_path = str(target_path)
 
@@ -479,6 +493,7 @@ async def public_apply(
         "commission_acknowledged": commission_acknowledged,
         "submitted_at": now,
         "submitted_ip": ip,
+        "cv_scan_status": "Clean" if cv_stored_path else None,
         "cv_filename": cv_filename,
         "cv_path": cv_stored_path,
     }
@@ -530,6 +545,7 @@ async def public_apply(
         "has_smartphone": has_smartphone,
         "availability": availability,
         "commission_acknowledged": commission_acknowledged,
+        "cv_scan_status": "Clean" if cv_stored_path else None,
         "cv_filename": cv_filename,
         "cv_path": cv_stored_path,
         "submitted_ip": ip,
