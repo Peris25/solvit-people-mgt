@@ -46,6 +46,31 @@ def notice(**values):
 def run(coro): return asyncio.run(coro)
 
 
+@pytest.mark.parametrize("role", ["hr_admin", "hr_manager", "general_manager"])
+def test_hr_inbox_omits_generic_and_unresolvable_events_from_counts(role):
+    db, actors = fixture(); user = {**actors["staff"], "role": role}
+    db.notifications.docs = [notice(recipient_role=role, category="System"),
+                             notice(recipient_role=role, category="Leave", data={"leave_request_id": "deleted"})]
+    with patch("utils.notification_centre.related_link", new=AsyncMock(return_value=(None, None))):
+        result = run(list_inbox(db, user))
+    assert result["items"] == []
+    assert result["unread_count"] == result["total"] == result["filtered_total"] == 0
+    assert db.notifications.writes == db.notification_receipts.writes == 0
+
+
+def test_hr_inbox_preserves_authorized_leave_review_and_safe_preview():
+    db, actors = fixture(); user = {**actors["staff"], "role": "hr_admin"}
+    db.notifications.docs = [notice(recipient_role="hr_admin")]
+    action = {"kind": "leave_review", "record_id": "request", "stage": "hr"}
+    with patch("utils.notification_centre.related_link", new=AsyncMock(return_value=("/leave?request=request&view=team", action))), patch("utils.notification_centre.leave_preview", new=AsyncMock(return_value=("Leave awaiting HR review", "Open to review."))):
+        result = run(list_inbox(db, user))
+    assert result["unread_count"] == 1
+    assert result["items"][0]["action"] == action
+    assert result["items"][0]["title"] == "Leave awaiting HR review"
+    assert result["items"][0]["link"] == "/leave?request=request&view=team"
+    assert "PRIVATE" not in str(result)
+
+
 @pytest.mark.parametrize("recipient", ["account", "employee", "storage", "native", "user_id", "role"])
 def test_supported_recipient_formats_are_readable_without_private_previews(recipient):
     db, actors = fixture(); user = actors["staff"]

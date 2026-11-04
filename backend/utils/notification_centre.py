@@ -279,11 +279,23 @@ async def list_inbox(db, user, *, category=None, kind=None, read_status="all", o
             raise
         category_value = category_of(row)
         link, action = await related_link(db, user, row, category_value)
+        # HR's operational inbox must lead to an existing, authorized record.
+        # Legacy automation logs without a usable target are not notifications.
+        if user.get("role") in {"hr_admin", "hr_manager", "general_manager"} and not link:
+            return None
         title, message = PREVIEWS[category_value]
         if category_value in {"Leave", "Approvals"} and link:
             title, message = await leave_preview(db, user, row, action)
         if link and isinstance(row.get("data"), dict) and row["data"].get("public_solver_assessment_id"):
             title, message = "New Solver assessment received", "A new applicant assessment is ready for HR review. Open it to view the answers."
+        elif link and category_value == "System":
+            data = row.get("data") or {}
+            if data.get("solver_workflow"):
+                title, message = "Solver workflow update", "A Solver workflow has been updated. Open the record to review it."
+            elif data.get("lifecycle_employee_id"):
+                title, message = "Employee checklist update", "An employee checklist has been updated. Open it to review the tasks."
+            elif user.get("role") in {"hr_admin", "hr_manager", "general_manager"}:
+                return None
         kind_value = "Approvals" if action else "Action required" if category_value in ("Onboarding", "Training", "Policies") else "Updates"
         created = date_value(row.get("created_at"))
         return {"id": storage_key(row), "title": title, "message": message,

@@ -94,11 +94,11 @@ def test_tasks_notifications_reviews_and_recognition_are_own_and_redacted():
         {"id": "other-form", "tenant_id": "solvit", "status": "InProgress", "subject_employee_id": "other", "next_required_role": "hr_admin"},
     ])
     db.notifications = Collection([
-        {"id": "own-notice", "tenant_id": "solvit", "recipient_id": user["id"], "title": "Own update", "data": {"employee_id": "staff"}},
+        {"id": "own-notice", "tenant_id": "solvit", "recipient_id": user["id"], "category": "Recognition", "title": "Own update", "data": {"employee_id": "staff"}},
         {"id": "other-notice", "tenant_id": "solvit", "recipient_role": "hr_admin", "title": "Other private", "data": {"employee_id": "other"}},
         {"id": "foreign", "tenant_id": "foreign", "recipient_id": user["id"]},
         {"id": "forged", "tenant_id": "solvit", "recipient_role": "hr_admin", "recipient_id": "other-user"},
-        {"id": "read", "tenant_id": "solvit", "user_id": user["id"], "body": "Read update", "read_at": "2026-01-01"},
+        {"id": "read", "tenant_id": "solvit", "user_id": user["id"], "category": "Recognition", "data": {"employee_id": "staff"}, "body": "Read update", "read_at": "2026-01-01"},
     ])
     db.performance_reviews = Collection([{"id": "review", "tenant_id": "solvit", "employee_id": "staff", "overall_score": 1.8, "manager_notes": "private"}, {"id": "other", "tenant_id": "solvit", "employee_id": "other"}])
     db.recognitions = Collection([{"id": "recognition", "tenant_id": "solvit", "nominee_id": "staff", "recognition_type": "Values", "nominator_email": "private"}, {"id": "other", "tenant_id": "solvit", "nominee_id": "other"}])
