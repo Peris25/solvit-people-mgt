@@ -1,10 +1,30 @@
 """Benefit membership only: no payroll calculations, payments or insurer integration."""
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, UploadFile, File
+from fastapi.responses import FileResponse, JSONResponse
 from database import get_db
 from utils.auth import get_current_user
 from utils.employee_integrity import integrity_write, tenant_of, tenant_query, find_employee
 from utils import benefits as service
 router=APIRouter(prefix='/benefits',tags=['benefits'])
+
+@router.get('/payroll-files')
+async def list_payroll_files(request: Request):
+    from utils import payroll_documents
+    return JSONResponse(await payroll_documents.listing(get_db(), await get_current_user(request)), headers={'Cache-Control': 'no-store'})
+
+@router.post('/payroll-files')
+async def upload_payroll_file(request: Request, file: UploadFile = File(...)):
+    from utils import payroll_documents
+    from routes.documents import UPLOAD_ROOT
+    return await payroll_documents.upload(get_db(), await get_current_user(request), file, UPLOAD_ROOT)
+
+@router.get('/payroll-files/{reference}/download')
+async def download_payroll_file(reference: str, request: Request):
+    from utils import payroll_documents
+    from utils.document_uploads import MIME
+    from routes.documents import UPLOAD_ROOT
+    path, name = await payroll_documents.download(get_db(), await get_current_user(request), reference, UPLOAD_ROOT)
+    return FileResponse(path, filename=name, media_type=MIME['.xlsx'], headers={'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'})
 
 async def body(request):
     value=await request.json()

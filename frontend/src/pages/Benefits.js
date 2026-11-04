@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../services/api';
+import PayrollFiles from '../components/PayrollFiles';
 
 const hrRoles=['hr_admin','hr_manager', 'general_manager'];
 const message=e=>typeof e.response?.data?.detail==='string'?e.response.data.detail:'Benefits information is unavailable. Please retry.';
@@ -35,6 +36,7 @@ export default function Benefits(){
  if(loadedFor!==identity)return <div role="status">Loading benefits information...</div>;
  return <div data-testid="benefits-page" style={{fontFamily:'Arial, Helvetica, sans-serif',maxWidth:1200}}>
   <h1>Benefits & payroll information</h1>
+  {hr&&<PayrollFiles key={identity}/>}
   {error&&<p role="alert">{error} <button style={button} onClick={load}>Retry</button></p>}
   <p><Link to="/my-profile">My Profile and bank-change requests</Link> / <Link to="/documents">Private Document Centre</Link></p>
   <p>Bank changes retain HR review and separate Finance approval. No payment, payroll deduction or insurer submission is performed here.</p>
