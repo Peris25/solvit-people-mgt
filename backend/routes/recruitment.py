@@ -139,6 +139,8 @@ async def update_candidate(candidate_id: str, upd: CandidateUpdate, request: Req
     if upd.stage in STAGE_ALIASES:
         upd = upd.model_copy(update={"stage": STAGE_ALIASES[upd.stage]})
     current = await candidate_record(db, user, candidate_id, write=True)
+    if current.get('candidate_type') == 'Solver' and current.get('requisition_id'):
+        raise HTTPException(409, 'Edit Solver applicants through Eligible Solvers')
     if upd.stage and upd.stage not in PIPELINE_STAGES:
         raise HTTPException(422, "Unknown recruitment stage")
     if upd.outcome and upd.outcome not in {"Active", "Rejected", "Withdrawn"}:
@@ -207,6 +209,8 @@ async def convert_to_employee(candidate_id: str, request: Request):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     c = await candidate_record(db, user, candidate_id, write=True)
+    if c.get('candidate_type') == 'Solver':
+        raise HTTPException(409, 'Confirm Solver applicants through Eligible Solvers, not FTE conversion')
     body = await request.json()
     if not isinstance(body, dict) or set(body) - {"line_manager_id", "start_date", "salary"}:
         raise HTTPException(422, "Invalid conversion fields")

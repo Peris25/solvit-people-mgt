@@ -30,6 +30,7 @@ from typing import Optional, List
 from database import get_db
 from utils.employee_integrity import tenant_of
 from utils.auth import get_current_user
+from utils.solver_candidates import Edit as EligibleApplicantEdit
 
 router = APIRouter(prefix="/solver-intake", tags=["solver-intake"])
 
@@ -716,11 +717,14 @@ async def list_eligible(request: Request,
     if county: q["county"] = county
     if channel: q["source"] = channel
     if requisition_id: q["requisition_id"] = requisition_id
-    if current_stage: q["current_stage"] = {"$regex": current_stage, "$options": "i"}
     rows = []
+    from utils import solver_candidates as workflow
+    can_edit = await workflow.editable(db, user)
     async for r in db.candidates.find(q).sort("created_at", -1).limit(500):
-        rows.append(_serialise(r))
-    return {"rows": rows, "count": len(rows)}
+        projected = workflow.projection(r, can_edit, can_edit and user.get('role') in workflow.HR_ROLES)
+        if not current_stage or current_stage.casefold() in projected['recruitment_stage'].casefold():
+            rows.append(projected)
+    return {"rows": rows, "count": len(rows), "stages": workflow.STAGES}
 
 
 @router.get("/eligible/export.csv")
@@ -739,9 +743,11 @@ async def export_eligible(request: Request,
     if county: q["county"] = county
     if channel: q["source"] = channel
     if requisition_id: q["requisition_id"] = requisition_id
-    if current_stage: q["current_stage"] = {"$regex": current_stage, "$options": "i"}
     rows = await db.candidates.find(q).sort("created_at", -1).to_list(5001)
     if len(rows)>5000:raise HTTPException(413,"Applicant export exceeds 5000 rows; narrow the filters")
+    from utils.solver_candidates import stage
+    if current_stage:
+        rows = [r for r in rows if current_stage.casefold() in (stage(r) or str(r.get('current_stage') or '')).casefold()]
     import csv, io
     buf = io.StringIO()
     from utils.administrative_reporting import SafeCSVWriter
@@ -754,7 +760,7 @@ async def export_eligible(request: Request,
             r.get("created_at"), r.get("requisition_code"),
             r.get("full_name"), r.get("phone_number"), r.get("email"),
             r.get("county"), r.get("town_area"), r.get("source"),
-            r.get("current_stage"), r.get("current_stage_status"),
+            stage(r) or r.get("current_stage"), r.get("current_stage_status"),
             ";".join(r.get("qualifications") or []),
             r.get("previous_inspector_company") or "",
             r.get("availability") or "",
@@ -772,11 +778,20 @@ async def get_eligible_detail(cid: str, request: Request):
     if not await _hr_or_solvers(user):
         raise HTTPException(status_code=403, detail="HR / Solvers Manager only")
     db = get_db()
-    doc = await db.candidates.find_one({"id": cid, "tenant_id": tenant_of(user),
-                                          "candidate_type": "Solver"})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Candidate not found")
-    return _serialise(doc)
+    from utils import solver_candidates as workflow
+    doc = await workflow.record(db, user, cid)
+    can_edit = await workflow.editable(db, user)
+    return workflow.projection(doc, can_edit, can_edit and user.get('role') in workflow.HR_ROLES)
+
+
+@router.put('/eligible/{cid}')
+async def update_eligible_applicant(cid: str, data: EligibleApplicantEdit, request: Request):
+    from utils import solver_candidates as workflow
+    from utils.employee_integrity import integrity_write
+    user = await get_current_user(request)
+    db = get_db()
+    async with integrity_write(db):
+        return await workflow.update(db, user, cid, data)
 
 
 @router.get("/eligible/{cid}/cv")

@@ -15,7 +15,7 @@ const REASON_LABELS = {
   commission: 'Commission acknowledgement',
 };
 
-export default function ApplicantDetailModal({ open, onClose, data, mode, loading }) {
+export default function ApplicantDetailModal({ open, onClose, data, mode, loading, onEdit }) {
   if (!open) return null;
   const isEligible = mode === 'eligible';
 
@@ -42,7 +42,7 @@ export default function ApplicantDetailModal({ open, onClose, data, mode, loadin
         <header style={{ padding: '18px 22px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: isEligible ? '#16A34A' : '#991B1B' }}>
-              {isEligible ? 'Eligible · Stage 1 passed' : 'Ineligible · Stopped at Stage 1'}
+              {isEligible ? (data?.recruitment_stage || 'Eligible · Stage 1 passed') : 'Ineligible · Stopped at Stage 1'}
             </div>
             <h2 style={{ margin: '4px 0 0', fontSize: '20px', fontWeight: 900, letterSpacing: '-0.03em', color: '#191919' }}>
               {loading ? 'Loading…' : (data?.full_name || '—')}
@@ -74,7 +74,8 @@ export default function ApplicantDetailModal({ open, onClose, data, mode, loadin
 
             {isEligible && (
               <>
-                <Field label="Current Stage" span={2}>{data.current_stage || '—'}</Field>
+                <Field label="Current Stage" span={2}>{data.recruitment_stage || data.current_stage || '—'}</Field>
+                {data.can_edit && onEdit && <div style={{ gridColumn: '1 / -1' }}><button style={{ padding: '10px 16px', background: '#d92336', color: '#fff', border: 0, borderRadius: 8 }} onClick={() => onEdit(data)}>Edit applicant</button></div>}
                 <Field label="Stage Status">{data.current_stage_status || '—'}</Field>
                 <Field label="Position">{data.position_applied || '—'}</Field>
               </>
@@ -97,7 +98,7 @@ export default function ApplicantDetailModal({ open, onClose, data, mode, loadin
               <Field label="Previous Inspector Company" span={2}>{data.previous_inspector_company}</Field>
             )}
 
-            {data.cv_path && (
+            {(data.has_cv || data.cv_path) && (
               <Field label="CV / Résumé" span={2}>
                 <a
                   data-testid="cv-download"

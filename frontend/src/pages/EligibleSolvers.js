@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import * as api from '../services/api';
 import ApplicantDetailModal from '../components/ApplicantDetailModal';
+import SolverApplicantEditor from '../components/SolverApplicantEditor';
 
 const CHANNELS = ['Facebook', 'Instagram', 'WhatsApp', 'Referral from a Solver', 'Job board', 'Other'];
 
@@ -12,30 +13,40 @@ export default function EligibleSolvers() {
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [stages, setStages] = useState([]);
+  const [error, setError] = useState('');
+  const detailSequence = useRef(0);
 
-  const load = async (f = filters) => {
-    setLoading(true);
+  const load = useCallback(async (f = {}) => {
+    setLoading(true); setError('');
     try {
       const params = Object.fromEntries(Object.entries(f).filter(([, v]) => v));
       const r = await api.listEligibleSolvers(params);
-      setRows(r.data.rows || []);
-    } finally { setLoading(false); }
-  };
+      if (!Array.isArray(r?.data?.rows)) throw new Error('Eligible applicants could not be loaded.');
+      setRows(r.data.rows); setStages(r.data.stages || []);
+    } catch (e) { setError(e?.response?.data?.detail || 'Eligible applicants could not be loaded. Please retry.'); }
+    finally { setLoading(false); }
+  }, []);
 
   useEffect(() => {
     load();
     api.listSolverRequisitions().then(r => setReqs(r.data.requisitions || [])).catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    return () => { detailSequence.current += 1; };
+  }, [load]);
 
-  const openDetail = async (cid) => {
+  const openDetail = async (cid, edit = false) => {
+    const generation = ++detailSequence.current;
     setSelectedId(cid);
     setDetail(null);
     setDetailLoading(true);
     try {
       const r = await api.getEligibleSolver(cid);
+      if (generation !== detailSequence.current) return;
       setDetail(r.data);
-    } finally { setDetailLoading(false); }
+      if (edit && r.data?.can_edit) { setEditing(r.data); setSelectedId(null); }
+    } catch { setError('Applicant could not be loaded. Please retry.'); }
+    finally { if (generation === detailSequence.current) setDetailLoading(false); }
   };
 
   const apply = () => load(filters);
@@ -54,6 +65,8 @@ export default function EligibleSolvers() {
         </a>
       </div>
 
+      {error && <p role="alert">{typeof error === 'string' ? error : 'The applicant operation failed. Please retry.'}</p>}
+
       <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '14px 18px', marginBottom: '16px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <FilterField label="Requisition" value={filters.requisition_id} onChange={v => setFilters({ ...filters, requisition_id: v })}>
           <option value="">Any</option>
@@ -64,7 +77,7 @@ export default function EligibleSolvers() {
           <option value="">Any</option>
           {CHANNELS.map(c => <option key={c} value={c}>{c}</option>)}
         </FilterField>
-        <FilterField label="Stage contains" value={filters.current_stage} onChange={v => setFilters({ ...filters, current_stage: v })} isText />
+        <FilterField label="Recruitment stage" value={filters.current_stage} onChange={v => setFilters({ ...filters, current_stage: v })}><option value="">Any</option>{stages.map(stage => <option key={stage}>{stage}</option>)}</FilterField>
         <button data-testid="apply-filters" onClick={apply} style={{ padding: '8px 16px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>Apply</button>
         <span style={{ marginLeft: 'auto', fontSize: '12px', color: '#525252' }}>{rows.length} records</span>
       </div>
@@ -80,10 +93,11 @@ export default function EligibleSolvers() {
               <th style={{ padding: '10px 12px' }}>Location</th>
               <th style={{ padding: '10px 12px' }}>Channel</th>
               <th style={{ padding: '10px 12px' }}>Current Stage</th>
+              <th style={{ padding: '10px 12px' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={7} style={{ padding: '24px', textAlign: 'center', color: '#9CA3AF' }}>Loading…</td></tr>}
+            {loading && <tr><td colSpan={8} style={{ padding: '24px', textAlign: 'center', color: '#9CA3AF' }}>Loading…</td></tr>}
             {!loading && rows.map(r => (
               <tr
                 key={r.id}
@@ -99,10 +113,11 @@ export default function EligibleSolvers() {
                 <td style={{ padding: '10px 12px' }}><div>{r.email}</div><div style={{ fontSize: '11px', color: '#525252' }}>{r.phone_number}</div></td>
                 <td style={{ padding: '10px 12px' }}><div>{r.county}</div><div style={{ fontSize: '11px', color: '#525252' }}>{r.town_area}</div></td>
                 <td style={{ padding: '10px 12px' }}>{r.source}</td>
-                <td style={{ padding: '10px 12px', fontSize: '11px' }}>{r.current_stage}</td>
+                <td style={{ padding: '10px 12px', fontSize: '11px' }}>{r.recruitment_stage || r.current_stage}</td>
+                <td style={{ padding: '10px 12px' }}>{r.can_edit && <button style={{ padding: '8px 14px', border: '1px solid #cbd5e1', borderRadius: 8, cursor: 'pointer' }} onClick={event => { event.stopPropagation(); openDetail(r.id, true); }}>Edit</button>}{r.solver_id && <a href="/solvers" onClick={event => event.stopPropagation()}>Open Solvers</a>}</td>
               </tr>
             ))}
-            {!loading && rows.length === 0 && <tr><td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#9CA3AF' }}>No eligible solvers match these filters.</td></tr>}
+            {!loading && rows.length === 0 && <tr><td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: '#9CA3AF' }}>No eligible solvers match these filters.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -112,8 +127,10 @@ export default function EligibleSolvers() {
         loading={detailLoading}
         data={detail}
         mode="eligible"
-        onClose={() => { setSelectedId(null); setDetail(null); }}
+        onClose={() => { detailSequence.current += 1; setSelectedId(null); setDetail(null); }}
+        onEdit={record => { setEditing(record); setSelectedId(null); }}
       />
+      {editing && <SolverApplicantEditor key={editing.id + editing.edit_version} applicant={editing} stages={stages} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); setDetail(null); await load(filters); }} />}
     </div>
   );
 }

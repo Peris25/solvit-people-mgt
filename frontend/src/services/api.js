@@ -97,6 +97,7 @@ export const exportEligibleCsv = (params) => {
   return `${api.defaults.baseURL}/solver-intake/eligible/export.csv${qs}`;
 };
 export const getEligibleSolver = (cid) => api.get(`/solver-intake/eligible/${cid}`);
+export const updateEligibleSolver = (cid, data) => api.put(`/solver-intake/eligible/${cid}`, data);
 export const eligibleCvUrl = (cid) => `${api.defaults.baseURL}/solver-intake/eligible/${cid}/cv`;
 export const ineligibleCvUrl = (aid) => `${api.defaults.baseURL}/solver-intake/ineligible/${aid}/cv`;
 export const requisitionQrUrl = (rid) => `${api.defaults.baseURL}/solver-intake/requisitions/${rid}/qr`;
