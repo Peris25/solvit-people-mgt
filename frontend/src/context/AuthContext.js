@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { sessionRequest } from '../services/session';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 const AUTH_HINT = 'solvit_auth';
@@ -8,22 +9,30 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(undefined); // undefined = loading, null = not auth'd, obj = auth'd
+  const [sessionError, setSessionError] = useState('');
 
   const checkAuth = useCallback(async () => {
     try {
-      const res = await axios.get(`${API}/api/auth/me`, {
+      setSessionError('');
+      const res = await sessionRequest(() => axios.get(`${API}/api/auth/me`, {
         withCredentials: true,
         validateStatus: (s) => s < 500
-      });
+      }));
       if (res.status === 200) {
         setUser(res.data);
-      } else {
+      } else if ([401, 403].includes(res.status)) {
         localStorage.removeItem(AUTH_HINT);
         setUser(null);
+      } else {
+        setSessionError('Unable to check your session. Your sign-in has been kept. Please retry.');
       }
-    } catch {
-      localStorage.removeItem(AUTH_HINT);
-      setUser(null);
+    } catch (error) {
+      if ([401, 403].includes(error?.response?.status)) {
+        localStorage.removeItem(AUTH_HINT);
+        setUser(null);
+      } else {
+        setSessionError('Unable to check your session. Your sign-in has been kept. Please retry.');
+      }
     }
   }, []);
 
@@ -38,9 +47,11 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const requirePasswordChange = () => setUser(current => current ? { ...current, must_change_password: true } : current);
     const requireMfa = event => setUser(current => current ? { ...current, mfa_required: true, mfa_verified: false, mfa_action: event.detail?.action || 'verify' } : current);
+    const expired = () => { setSessionError(''); setUser(null); };
+    window.addEventListener('solvit:session-expired', expired);
     window.addEventListener('solvit:mfa-required', requireMfa);
     window.addEventListener('solvit:password-change-required', requirePasswordChange);
-    return () => { window.removeEventListener('solvit:password-change-required', requirePasswordChange); window.removeEventListener('solvit:mfa-required', requireMfa); };
+    return () => { window.removeEventListener('solvit:session-expired', expired); window.removeEventListener('solvit:password-change-required', requirePasswordChange); window.removeEventListener('solvit:mfa-required', requireMfa); };
   }, []);
 
   const login = async (email, password) => {
@@ -50,23 +61,28 @@ export function AuthProvider({ children }) {
       { withCredentials: true }
     );
     localStorage.setItem(AUTH_HINT, '1');
+    setSessionError('');
     setUser(res.data);
     return res.data;
   };
 
   const logout = async () => {
+    localStorage.removeItem(AUTH_HINT);
+    setSessionError('');
+    setUser(null);
     try {
       await axios.post(`${API}/api/auth/logout`, {}, { withCredentials: true });
     } catch { /* ignore */ }
     localStorage.removeItem(AUTH_HINT);
+    setSessionError('');
     setUser(null);
   };
 
   const changePassword = async (currentPassword, newPassword) => {
-    const res = await axios.post(`${API}/api/auth/password/change`, {
+    const res = await sessionRequest(() => axios.post(`${API}/api/auth/password/change`, {
       current_password: currentPassword,
       new_password: newPassword,
-    }, { withCredentials: true });
+    }, { withCredentials: true }));
     // The backend invalidates all pre-change sessions. Sign in again with the
     // new credential instead of treating this restricted session as upgraded.
     localStorage.removeItem(AUTH_HINT);
@@ -74,8 +90,8 @@ export function AuthProvider({ children }) {
     return res.data;
   };
 
-  const mfaCall = useCallback(async (path, body) => (await axios.post(`${API}/api/auth/mfa/${path}`, body, { withCredentials: true })).data, []);
-  const getMfaStatus = useCallback(async () => (await axios.get(`${API}/api/auth/mfa/status`, { withCredentials: true })).data, []);
+  const mfaCall = useCallback(async (path, body) => (await sessionRequest(() => axios.post(`${API}/api/auth/mfa/${path}`, body, { withCredentials: true }))).data, []);
+  const getMfaStatus = useCallback(async () => (await sessionRequest(() => axios.get(`${API}/api/auth/mfa/status`, { withCredentials: true }))).data, []);
   const startMfa = password => mfaCall('enroll', { password });
   // Keep the recovery-code screen mounted until the user saves its one-time output.
   const confirmMfa = code => mfaCall('confirm', { code });
@@ -89,7 +105,8 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{ user, login, logout, checkAuth, changePassword, getMfaStatus, startMfa, confirmMfa, verifyMfa, rotateRecoveryCodes, resetMfa }}>
-      {children}
+      {sessionError && <div role="alert" style={{ padding: 16, background: '#fff4e5', color: '#492b00' }}>{sessionError} <button onClick={checkAuth}>Retry session check</button></div>}
+      {user === undefined && sessionError ? null : children}
     </AuthContext.Provider>
   );
 }

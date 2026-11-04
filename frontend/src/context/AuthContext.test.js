@@ -53,6 +53,24 @@ test('a server requirement event gates a previously normal session', async () =>
   expect(axios.get).toHaveBeenCalledTimes(1);
 });
 
+test('expired access silently refreshes before restoring the user', async () => {
+  localStorage.setItem('solvit_auth', '1');
+  axios.get.mockResolvedValueOnce({ status: 401 }).mockResolvedValueOnce({ status: 200, data: { id: 'synthetic' } });
+  axios.post.mockResolvedValueOnce({ status: 200 });
+  await act(async () => root.render(<AuthProvider><Probe /></AuthProvider>));
+  expect(auth.user.id).toBe('synthetic');
+  expect(axios.post).toHaveBeenCalledWith(expect.stringContaining('/auth/refresh'), {}, { withCredentials: true });
+});
+
+test('temporary session check failure keeps the sign-in hint and offers retry', async () => {
+  localStorage.setItem('solvit_auth', '1');
+  axios.get.mockRejectedValueOnce(new Error('offline'));
+  await act(async () => root.render(<AuthProvider><Probe /></AuthProvider>));
+  expect(localStorage.getItem('solvit_auth')).toBe('1');
+  expect(container.textContent).toContain('Retry session check');
+  expect(auth).toBeDefined();
+});
+
 
 test('MFA verification upgrades identity but enrollment confirmation keeps one-time recovery display pending', async () => {
   await act(async () => root.render(<AuthProvider><Probe /></AuthProvider>));

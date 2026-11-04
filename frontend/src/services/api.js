@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { refreshSession, expireSession } from './session';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -11,7 +12,7 @@ const api = axios.create({
 // don't bubble to React's error overlay as "Uncaught runtime errors".
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     const status = error?.response?.status;
     const url = error?.config?.url || '';
     if (typeof window !== 'undefined' && status === 403 && error?.response?.data?.detail?.code === 'password_change_required') {
@@ -21,16 +22,21 @@ api.interceptors.response.use(
       window.dispatchEvent(new CustomEvent('solvit:mfa-required', { detail: error.response.data.detail }));
     }
     if (status === 401) {
-      // Session expired or not authenticated — clear hint, redirect to login.
-      try {
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('solvit_auth');
-          // Avoid redirect loop on the login page itself
-          if (!window.location.pathname.startsWith('/login')) {
-            window.location.replace('/login');
-          }
+      const authEntry = /\/auth\/(login|logout|refresh|password\/(forgot|reset))(?:\?|$)/.test(url);
+      const publicEntry = url.includes('/public/');
+      if (authEntry || publicEntry) return Promise.reject(error);
+      if (localStorage.getItem('solvit_auth') && error.config && !error.config._sessionRetry) {
+        error.config._sessionRetry = true;
+        try {
+          await refreshSession();
+          if (!localStorage.getItem('solvit_auth')) return Promise.resolve({ data: null, status: 401, _silentAuth: true });
+          return api.request(error.config);
+        } catch (failure) {
+          // A temporary outage must not erase a valid sign-in or form state.
+          if (![401, 403].includes(failure?.response?.status)) return Promise.reject(failure);
         }
-      } catch (_) { /* ignore */ }
+      }
+      expireSession();
       return Promise.resolve({ data: null, status: 401, _silentAuth: true });
     }
     if (status >= 500) {
