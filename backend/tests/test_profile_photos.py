@@ -65,3 +65,25 @@ def test_oversized_dimensions_rejected_before_scan(tmp_path):
     with patch.object(service, 'scan_content', new=AsyncMock()) as scan:
         with pytest.raises(HTTPException) as error: run(service.upload(db, users['staff'], photo(out.getvalue()), True, tmp_path))
     assert error.value.status_code == 400 and scan.await_count == 0
+
+
+def test_remove_own_photos_is_audited_and_cannot_reveal_older_photo(tmp_path):
+    db, users = fixture()
+    with patch.object(service, 'scan_content', new=AsyncMock()):
+        run(service.upload(db, users['staff'], photo(), True, tmp_path))
+        run(service.upload(db, users['staff'], photo(), True, tmp_path))
+        run(service.upload(db, users['other'], photo(), True, tmp_path))
+    assert run(service.remove(db, users['staff'])) == {'removed': True}
+    with pytest.raises(HTTPException) as error: run(service.current(db, users['staff'], tmp_path))
+    assert error.value.status_code == 404
+    assert run(service.current(db, users['other'], tmp_path)).is_file()
+    assert sum(row['action'] == 'profile_photo_removed' for row in db.document_audit.docs) == 2
+    assert run(service.remove(db, users['staff'])) == {'removed': True}
+
+
+def test_remove_audit_failure_does_not_hide_photo(tmp_path):
+    db, users = fixture()
+    with patch.object(service, 'scan_content', new=AsyncMock()): run(service.upload(db, users['staff'], photo(), True, tmp_path))
+    with patch.object(db.document_audit, 'insert_one', side_effect=RuntimeError('Synthetic audit outage')):
+        with pytest.raises(RuntimeError): run(service.remove(db, users['staff']))
+    assert run(service.current(db, users['staff'], tmp_path)).is_file()

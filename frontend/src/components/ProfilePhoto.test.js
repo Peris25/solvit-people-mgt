@@ -13,10 +13,10 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); jest.resetAllMocks(); });
 const render = async () => { await act(async () => root.render(<ProfilePhoto initials="MP" />)); };
 const choose = async file => { const input = container.querySelector('input[type="file"]'); Object.defineProperty(input, 'files', { configurable: true, value: [file] }); await act(async () => input.dispatchEvent(new Event('change', { bubbles: true }))); };
-test('requires consent and uploads own photo, then displays the protected image', async () => {
+test('camera uploads own photo directly, then shows edit and delete controls', async () => {
   await render(); expect(container.textContent).toContain('MP');
-  expect(container.querySelector('input[type="file"]').disabled).toBe(true);
-  await act(async () => container.querySelector('input[type="checkbox"]').click());
+  expect(container.querySelector('[aria-label="Upload profile photo"]')).not.toBeNull();
+  expect(container.querySelector('input[type="checkbox"]')).toBeNull();
   api.uploadMyProfilePhoto.mockResolvedValue({ data: { id: 'photo' } });
   api.getMyProfilePhoto.mockResolvedValue({ data: new Blob(['photo']) });
   const file = new File(['photo'], 'photo.png', { type: 'image/png' }); await choose(file);
@@ -25,12 +25,12 @@ test('requires consent and uploads own photo, then displays the protected image'
   expect(container.textContent).toContain('Profile photo updated.');
 });
 test('invalid files are rejected without upload', async () => {
-  await render(); await act(async () => container.querySelector('input[type="checkbox"]').click());
+  await render();
   await choose(new File(['pdf'], 'file.pdf', { type: 'application/pdf' }));
   expect(api.uploadMyProfilePhoto).not.toHaveBeenCalled(); expect(container.textContent).toContain('Choose a JPG or PNG');
 });
 test('scanner failure is shown without claiming success', async () => {
-  await render(); await act(async () => container.querySelector('input[type="checkbox"]').click());
+  await render();
   api.uploadMyProfilePhoto.mockRejectedValue({ response: { data: { detail: 'Document scanning is unavailable; upload was not saved' } } });
   await choose(new File(['photo'], 'photo.png', { type: 'image/png' }));
   expect(container.textContent).toContain('Document scanning is unavailable');
@@ -38,9 +38,29 @@ test('scanner failure is shown without claiming success', async () => {
 });
 
 test('soft server errors cannot be mistaken for an uploaded photo', async () => {
-  await render(); await act(async () => container.querySelector('input[type="checkbox"]').click());
+  await render();
   api.uploadMyProfilePhoto.mockResolvedValue({ data: null, status: 503, _serverError: true });
   await choose(new File(['photo'], 'photo.png', { type: 'image/png' }));
   expect(container.textContent).toContain('Photo upload failed');
   expect(container.textContent).not.toContain('Profile photo updated');
+});
+
+test('delete returns to initials without restoring an older photo', async () => {
+  api.getMyProfilePhoto.mockResolvedValue({ data: new Blob(['photo']) });
+  await render();
+  expect(container.querySelector('[aria-label="Change profile photo"]')).not.toBeNull();
+  api.deleteMyProfilePhoto.mockResolvedValue({ data: { removed: true } });
+  api.getMyProfilePhoto.mockRejectedValue({ response: { status: 404 } });
+  await act(async () => container.querySelector('[aria-label="Delete profile photo"]').click());
+  expect(api.deleteMyProfilePhoto).toHaveBeenCalledTimes(1);
+  expect(container.querySelector('img')).toBeNull();
+  expect(container.textContent).toContain('MP');
+  expect(container.querySelector('[aria-label="Upload profile photo"]')).not.toBeNull();
+});
+test('failed deletion preserves the displayed photo', async () => {
+  api.getMyProfilePhoto.mockResolvedValue({ data: new Blob(['photo']) }); await render();
+  api.deleteMyProfilePhoto.mockResolvedValue({ data: null, _serverError: true });
+  await act(async () => container.querySelector('[aria-label="Delete profile photo"]').click());
+  expect(container.querySelector('img')).not.toBeNull();
+  expect(container.textContent).toContain('Could not remove');
 });

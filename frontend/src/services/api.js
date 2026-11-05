@@ -505,3 +505,5 @@ export const uploadMyProfilePhoto = (file, consent) => {
   const body = new FormData(); body.append('file', file); body.append('consent', String(consent));
   return api.post('/documents/me/profile-photo', body);
 };
+
+export const deleteMyProfilePhoto = () => api.delete('/documents/me/profile-photo');

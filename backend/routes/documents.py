@@ -128,6 +128,13 @@ async def get_my_profile_photo(request: Request):
     return FileResponse(path, media_type='image/jpeg', headers={'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'})
 
 
+@router.delete('/me/profile-photo')
+async def delete_my_profile_photo(request: Request):
+    from utils import profile_photos
+    user = await get_current_user(request)
+    return await profile_photos.remove(get_db(), user)
+
+
 @router.get("/categories")
 async def list_categories(request: Request):
     await get_current_user(request)

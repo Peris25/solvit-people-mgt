@@ -74,3 +74,20 @@ async def current(db, user, root):
         'action': 'profile_photo_viewed', 'by_user_id': user['id'],
         'timestamp': datetime.now(timezone.utc).isoformat()})
     return path
+
+
+async def remove(db, user):
+    employee = await self_employee(db, user)
+    scope = {'tenant_id': tenant_of(user), 'employee_id': employee_key(employee),
+             'category': 'Profile photo', 'uploaded_by': user['id'], 'deleted_at': None}
+    async with integrity_write(db):
+        await self_employee(db, user)
+        rows = await db.employee_documents.find(scope).to_list(None)
+        now = datetime.now(timezone.utc).isoformat()
+        for row in rows:
+            await db.document_audit.insert_one({'id': str(uuid.uuid4()), 'tenant_id': tenant_of(user),
+                'document_id': row['id'], 'employee_id': employee_key(employee),
+                'action': 'profile_photo_removed', 'by_user_id': user['id'], 'timestamp': now})
+            await db.employee_documents.update_one({**scope, 'id': row['id']},
+                {'$set': {'deleted_at': now, 'deleted_by': user['id']}})
+    return {'removed': True}
