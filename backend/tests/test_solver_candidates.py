@@ -84,13 +84,12 @@ def test_audit_failure_does_not_publish_changes_or_create_solver():
         with pytest.raises(RuntimeError): edit(db, users['hr'], stage='Active', confirm_active=True)
     assert db.candidates.docs[0] == before and not db.solvers.docs
 
-def test_authorized_solvers_manager_can_edit_stages_but_cannot_confirm_active():
+def test_managers_cannot_edit_private_solver_applicants():
     db, users = fixture()
-    with patch.object(service, 'permissions', new=AsyncMock()):
-        assert edit(db, users['manager'], stage='Interviewing')['recruitment_stage'] == 'Interviewing'
-        edit(db, users['manager'], stage='Passed')
-        with pytest.raises(HTTPException) as error: edit(db, users['manager'], stage='Active', confirm_active=True)
+    with pytest.raises(HTTPException) as error:
+        edit(db, users['manager'], stage='Interviewing')
     assert error.value.status_code == 403 and not db.solvers.docs
+
 
 def test_applicant_linked_to_fte_cannot_be_converted_again_as_solver():
     db, users = fixture(); db.candidates.docs[0]['employee_id'] = 'staff'

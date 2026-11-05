@@ -32,6 +32,9 @@ def projection(row, fields):
 async def recruitment_scope(db, user, write=False):
     entry = module_access(user, "M03", write)
     query = tenant_query(tenant_of(user))
+    from utils.solver_intake_access import can_administer_intake
+    if not can_administer_intake(user):
+        query = {"$and": [query, {"candidate_type": {"$ne": "Solver"}}]}
     if user.get("role") in HR:
         return query
     if user.get("role") == "executive" and not write:

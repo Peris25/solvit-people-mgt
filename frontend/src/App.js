@@ -37,6 +37,7 @@ const DataImport = lazy(() => import('./pages/DataImport'));
 const RolesPermissions = lazy(() => import('./pages/RolesPermissions'));
 import ErrorToast from './components/ErrorToast';
 import AccessGate from './components/AccessGate';
+import SolverIntakeAccess from './components/SolverIntakeAccess';
 const SolverRequisitions = lazy(() => import('./pages/SolverRequisitions'));
 const IneligibleApplicants = lazy(() => import('./pages/IneligibleApplicants'));
 const EligibleSolvers = lazy(() => import('./pages/EligibleSolvers'));
@@ -80,9 +81,9 @@ function Portal() {
             <Route path="reporting" element={<Reporting />} />
             <Route path="solvers" element={<Solvers />} />
             <Route path="solver-assessment-applications" element={<SolverApplicantInbox />} />
-            <Route path="solver-requisitions" element={<SolverRequisitions />} />
-            <Route path="solver-eligible" element={<EligibleSolvers />} />
-            <Route path="solver-ineligible" element={<IneligibleApplicants />} />
+            <Route path="solver-requisitions" element={<SolverIntakeAccess><SolverRequisitions /></SolverIntakeAccess>} />
+            <Route path="solver-eligible" element={<SolverIntakeAccess><EligibleSolvers /></SolverIntakeAccess>} />
+            <Route path="solver-ineligible" element={<SolverIntakeAccess><IneligibleApplicants /></SolverIntakeAccess>} />
             <Route path="recruitment" element={<Recruitment />} />
             <Route path="onboarding" element={<Onboarding />} />
             <Route path="performance" element={<Performance />} />

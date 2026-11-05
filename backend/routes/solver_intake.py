@@ -214,10 +214,8 @@ def _next_req_code(seq: int) -> str:
 
 
 async def _hr_or_solvers(user):
-    from utils.solver_access import solver_access
-    from utils.access_matrix import get_module_access
-    entry = await solver_access(get_db(), user)
-    return entry.get('scope') in (None, 'solvers_manager') and bool(get_module_access('M03', user.get('role')))
+    from utils.solver_intake_access import can_administer_intake
+    return can_administer_intake(user)
 
 
 def _serialise(doc: dict) -> dict:
@@ -249,13 +247,13 @@ async def list_requisitions(request: Request):
     async for r in db.solver_requisitions.find({"tenant_id": tenant_of(user)}).sort("created_at", -1):
         items.append(_serialise(r))
     return {"requisitions": items, "count": len(items),
-            "can_edit": user.get("role") in ("hr_admin", "hr_manager", "general_manager")}
+            "can_edit": await _hr_or_solvers(user)}
 
 
 @router.post("/requisitions")
 async def create_requisition(body: RequisitionCreate, request: Request):
     user = await get_current_user(request)
-    if user.get("role") not in ("hr_admin", "hr_manager", "general_manager") or not await _hr_or_solvers(user):
+    if not await _hr_or_solvers(user):
         raise HTTPException(status_code=403, detail="HR Admin only")
     db = get_db()
     # Validate counties
@@ -289,7 +287,7 @@ async def create_requisition(body: RequisitionCreate, request: Request):
 @router.put("/requisitions/{rid}")
 async def update_requisition(rid: str, body: RequisitionUpdate, request: Request):
     user = await get_current_user(request)
-    if user.get("role") not in ("hr_admin", "hr_manager", "general_manager") or not await _hr_or_solvers(user):
+    if not await _hr_or_solvers(user):
         raise HTTPException(status_code=403, detail="HR Admin only")
     db = get_db()
     existing = await db.solver_requisitions.find_one({"id": rid, "tenant_id": tenant_of(user)})
@@ -558,16 +556,16 @@ async def public_apply(
     })
     await _bump_counters(db, rid, received=1, eligible=1)
 
-    # Notify Solvers Manager (best-effort)
+    # Notify authorized applicant administrators (best-effort)
     try:
         from utils.email_triggers import fire_and_forget
         await fire_and_forget(db, "recruitment.application_received",
                               extra={"candidate_name": full_name,
                                      "role_applied_for": req.get("title"),
                                      "requisition_code": req.get("code")})
-        # Internal alert to Solvers Manager / HR
+        # Internal alert to authorized HR / IT administrators
         sm = await db.users.find_one({"tenant_id": "solvit",
-                                       "role": {"$in": ["hr_admin", "solvers_manager"]}})
+                                       "role": {"$in": ["hr_admin", "it_admin"]}})
         if sm and sm.get("email"):
             await fire_and_forget(db, "recruitment.application_received",
                                   to_override=sm["email"],
@@ -634,7 +632,7 @@ async def list_ineligible(request: Request,
                           requisition_id: Optional[str] = None):
     user = await get_current_user(request)
     if not await _hr_or_solvers(user):
-        raise HTTPException(status_code=403, detail="HR / Solvers Manager only")
+        raise HTTPException(status_code=403, detail="HR Admin or IT Admin only")
     db = get_db()
     q = {"tenant_id": tenant_of(user)}
     if failed_criterion:
@@ -652,11 +650,8 @@ async def list_ineligible(request: Request,
 
 
 async def _authorize_applicant_export(db,user):
-    from utils.solver_access import solver_access
-    from utils.access_matrix import get_module_access
-    entry=await solver_access(db,user)
-    if entry.get('scope') not in (None,'solvers_manager') or not get_module_access('M03',user.get('role')):
-        raise HTTPException(403,'Applicant detail export requires authorized HR or Solvers Manager access')
+    from utils.solver_intake_access import require_intake_admin
+    require_intake_admin(user)
 
 
 @router.get("/ineligible/export.csv")
@@ -709,7 +704,7 @@ async def export_ineligible(request: Request,
 async def get_ineligible_detail(aid: str, request: Request):
     user = await get_current_user(request)
     if not await _hr_or_solvers(user):
-        raise HTTPException(status_code=403, detail="HR / Solvers Manager only")
+        raise HTTPException(status_code=403, detail="HR Admin or IT Admin only")
     db = get_db()
     doc = await db.ineligible_applicants.find_one({"id": aid, "tenant_id": tenant_of(user)})
     if not doc:
@@ -730,7 +725,7 @@ async def list_eligible(request: Request,
                         current_stage: Optional[str] = None):
     user = await get_current_user(request)
     if not await _hr_or_solvers(user):
-        raise HTTPException(status_code=403, detail="HR / Solvers Manager only")
+        raise HTTPException(status_code=403, detail="HR Admin or IT Admin only")
     db = get_db()
     q = {"tenant_id": tenant_of(user), "candidate_type": "Solver",
          "requisition_id": {"$exists": True, "$ne": None}}
@@ -796,7 +791,7 @@ async def export_eligible(request: Request,
 async def get_eligible_detail(cid: str, request: Request):
     user = await get_current_user(request)
     if not await _hr_or_solvers(user):
-        raise HTTPException(status_code=403, detail="HR / Solvers Manager only")
+        raise HTTPException(status_code=403, detail="HR Admin or IT Admin only")
     db = get_db()
     from utils import solver_candidates as workflow
     doc = await workflow.record(db, user, cid)
@@ -810,6 +805,7 @@ async def update_eligible_applicant(cid: str, data: EligibleApplicantEdit, reque
     from utils.employee_integrity import integrity_write
     user = await get_current_user(request)
     db = get_db()
+    await workflow.permissions(db, user, write=True)
     async with integrity_write(db):
         return await workflow.update(db, user, cid, data)
 
@@ -818,7 +814,7 @@ async def update_eligible_applicant(cid: str, data: EligibleApplicantEdit, reque
 async def download_eligible_cv(cid: str, request: Request):
     user = await get_current_user(request)
     if not await _hr_or_solvers(user):
-        raise HTTPException(status_code=403, detail="HR / Solvers Manager only")
+        raise HTTPException(status_code=403, detail="HR Admin or IT Admin only")
     db = get_db()
     doc = await db.candidates.find_one({"id": cid, "tenant_id": tenant_of(user),
                                           "candidate_type": "Solver"})
@@ -835,7 +831,7 @@ async def download_eligible_cv(cid: str, request: Request):
 async def download_ineligible_cv(aid: str, request: Request):
     user = await get_current_user(request)
     if not await _hr_or_solvers(user):
-        raise HTTPException(status_code=403, detail="HR / Solvers Manager only")
+        raise HTTPException(status_code=403, detail="HR Admin or IT Admin only")
     db = get_db()
     doc = await db.ineligible_applicants.find_one({"id": aid, "tenant_id": tenant_of(user)})
     if not doc or not doc.get("cv_path"):
@@ -855,7 +851,7 @@ async def requisition_qr(rid: str, request: Request, base_url: Optional[str] = N
     and share on Facebook / WhatsApp / posters / referral programs."""
     user = await get_current_user(request)
     if not await _hr_or_solvers(user):
-        raise HTTPException(status_code=403, detail="HR / Solvers Manager only")
+        raise HTTPException(status_code=403, detail="HR Admin or IT Admin only")
     db = get_db()
     req = await db.solver_requisitions.find_one({"id": rid, "tenant_id": tenant_of(user)})
     if not req:

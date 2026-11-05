@@ -239,14 +239,17 @@ def test_real_mongo_native_dates_foreign_keys_and_read_time_audit_federation():
     run(exercise())
 
 
-def test_existing_applicant_exports_deny_it_executive_and_other_tenant_rows():
+def test_applicant_exports_allow_only_explicit_admins_and_isolate_tenants():
     from routes import solver_intake
     db,users=fixture();db.ineligible_applicants=Collection()
     insert(db.ineligible_applicants,full_name='=HYPERLINK("unsafe")',submitted_at='2026-10-01')
     insert(db.ineligible_applicants,tenant_id='foreign',full_name='SECRET_FOREIGN')
     with patch.object(solver_intake,'get_db',return_value=db),patch.object(solver_intake,'get_current_user',return_value=users['hr']):response=run(solver_intake.export_ineligible(None))
     assert b'SECRET_FOREIGN' not in response.body and b"'=HYPERLINK" in response.body and response.headers['cache-control']=='no-store'
-    for role in ('it_admin','executive','staff'):
+    with patch.object(solver_intake,'get_db',return_value=db),patch.object(solver_intake,'get_current_user',return_value=users['it_admin']):
+        admin_response=run(solver_intake.export_ineligible(None))
+    assert b'SECRET_FOREIGN' not in admin_response.body
+    for role in ('executive','staff'):
         with patch.object(solver_intake,'get_db',return_value=db),patch.object(solver_intake,'get_current_user',return_value=users[role]):
             with pytest.raises(HTTPException):run(solver_intake.export_ineligible(None))
 

@@ -68,6 +68,9 @@ async def create_candidate(candidate: CandidateCreate, request: Request):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db = get_db()
     await recruitment_scope(db, user, write=True)
+    if candidate.candidate_type == "Solver":
+        from utils.solver_intake_access import require_intake_admin
+        require_intake_admin(user)
     candidate = candidate.model_copy(update={"email": normalize_email(candidate.email)})
     doc = {
         "id": str(uuid.uuid4()),

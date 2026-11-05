@@ -5,10 +5,9 @@ import uuid
 from datetime import datetime, timezone
 from pydantic import BaseModel, ConfigDict, Field, EmailStr
 from fastapi import HTTPException
-from utils.access_matrix import get_module_access
 from utils.employee_integrity import tenant_of, tenant_query, normalize_email, email_matches
 from utils.employee_access import find_linked_record
-from utils.solver_access import solver_access, solver_identity_write, normalize_phone, HR_ROLES
+from utils.solver_access import solver_identity_write, normalize_phone, HR_ROLES
 from utils.solver_cv import available_cv_path
 
 STAGES = ('Eligible', 'Interviewing', 'Awaiting assessment', 'Passed', 'Awaiting confirmation', 'Active', 'On hold', 'Not selected', 'Withdrawn')
@@ -46,10 +45,8 @@ def stage(row):
 
 
 async def permissions(db, user, write=False):
-    entry = await solver_access(db, user, write=write)
-    assessment = get_module_access('M03', user.get('role'))
-    if entry.get('scope') not in (None, 'solvers_manager') or not assessment or (write and assessment.get('level') not in {'Manage', 'Full'}):
-        raise HTTPException(403, 'HR / authorized Solvers Manager access required')
+    from utils.solver_intake_access import require_intake_admin
+    require_intake_admin(user)
 
 
 async def editable(db, user):
@@ -68,6 +65,7 @@ def projection(row, can_edit, can_confirm):
 
 
 async def record(db, user, reference):
+    await permissions(db, user)
     row = await find_linked_record(db.candidates, reference, user)
     if row.get('candidate_type') != 'Solver' or not row.get('requisition_id'):
         raise HTTPException(404, 'Eligible Solver applicant not found')

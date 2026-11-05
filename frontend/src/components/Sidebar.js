@@ -28,11 +28,14 @@ const MENU_ITEMS = [
     { path: '/organogram',  label: 'Organogram',   Icon: Network,         roles: ['hr_admin','hr_manager', 'general_manager','line_manager','finance','executive','employee','it_admin','board'] },
     { path: '/solvers',     label: 'Solvers',      Icon: Zap,             roles: ['hr_admin','hr_manager', 'general_manager','line_manager','solver','executive','solvers_manager'],
       children: [
-        { path: '/solver-requisitions', label: 'Solver Requisitions', Icon: Target,   roles: ['hr_admin','hr_manager', 'general_manager','executive','solvers_manager'] },
-        { path: '/solver-eligible',     label: 'Eligible Solvers',    Icon: FileCheck, roles: ['hr_admin','hr_manager', 'general_manager','executive','solvers_manager'] },
-        { path: '/solver-ineligible',   label: 'Ineligible Solvers',  Icon: FileX,    roles: ['hr_admin','hr_manager', 'general_manager','executive','solvers_manager'] },
+        { path: '/solver-requisitions', label: 'Solver Requisitions', Icon: Target,   roles: ['hr_admin','it_admin'] },
+        { path: '/solver-eligible',     label: 'Eligible Solvers',    Icon: FileCheck, roles: ['hr_admin','it_admin'] },
+        { path: '/solver-ineligible',   label: 'Ineligible Solvers',  Icon: FileX,    roles: ['hr_admin','it_admin'] },
       ]
     },
+    { path: '/solver-requisitions', label: 'Solver Requisitions', Icon: Target, roles: ['it_admin'] },
+    { path: '/solver-eligible', label: 'Eligible Solvers', Icon: FileCheck, roles: ['it_admin'] },
+    { path: '/solver-ineligible', label: 'Ineligible Solvers', Icon: FileX, roles: ['it_admin'] },
     { path: '/recruitment', label: 'Recruitment',  Icon: Target,          roles: ['hr_admin','hr_manager', 'general_manager','line_manager','executive'] },
     { path: '/solver-assessment-applications', label: 'Solver Applications', Icon: FileCheck, roles: ['hr_admin','hr_manager', 'general_manager', 'line_manager'] },
     { path: '/onboarding',  label: 'Onboarding / Exit',   Icon: Rocket,          roles: ['hr_admin','hr_manager', 'general_manager','line_manager','employee','solver','finance','it_admin'] },
