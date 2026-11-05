@@ -98,9 +98,9 @@ export default function ApplicantDetailModal({ open, onClose, data, mode, loadin
               <Field label="Previous Inspector Company" span={2}>{data.previous_inspector_company}</Field>
             )}
 
-            {(data.has_cv || data.cv_path) && (
+            {(
               <Field label="CV / Résumé" span={2}>
-                <a
+                {data.has_cv === true ? <a
                   data-testid="cv-download"
                   href={isEligible ? api.eligibleCvUrl(data.id) : api.ineligibleCvUrl(data.id)}
                   target="_blank"
@@ -108,7 +108,7 @@ export default function ApplicantDetailModal({ open, onClose, data, mode, loadin
                   style={{ display: 'inline-block', padding: '6px 12px', backgroundColor: '#191919', color: '#fff', textDecoration: 'none', fontSize: '12px', fontWeight: 700 }}
                 >
                   Download {data.cv_filename || 'CV'}
-                </a>
+                </a> : <span>No CV attached</span>}
               </Field>
             )}
 

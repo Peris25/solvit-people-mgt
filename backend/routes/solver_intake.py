@@ -223,7 +223,10 @@ async def _hr_or_solvers(user):
 def _serialise(doc: dict) -> dict:
     if not doc:
         return doc
+    from utils.solver_cv import available_cv_path
+    has_cv = available_cv_path(doc, CV_UPLOAD_ROOT) is not None
     doc = {key: value for key, value in doc.items() if key not in {"_id", "cv_path", "stored_path", "password_hash", "otp_code", "access_token"}}
+    doc['has_cv'] = has_cv
     return doc
 
 
@@ -821,8 +824,9 @@ async def download_eligible_cv(cid: str, request: Request):
                                           "candidate_type": "Solver"})
     if not doc or not doc.get("cv_path"):
         raise HTTPException(status_code=404, detail="No CV on file for this candidate.")
-    p = Path(doc["cv_path"]).resolve()
-    if not p.is_file() or not p.is_relative_to(CV_UPLOAD_ROOT.resolve()):
+    from utils.solver_cv import available_cv_path
+    p = available_cv_path(doc, CV_UPLOAD_ROOT)
+    if p is None:
         raise HTTPException(status_code=404, detail="CV file missing on disk.")
     return FileResponse(p, filename=Path(doc.get("cv_filename") or p.name).name, headers={"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"})
 
@@ -836,8 +840,9 @@ async def download_ineligible_cv(aid: str, request: Request):
     doc = await db.ineligible_applicants.find_one({"id": aid, "tenant_id": tenant_of(user)})
     if not doc or not doc.get("cv_path"):
         raise HTTPException(status_code=404, detail="No CV on file for this applicant.")
-    p = Path(doc["cv_path"]).resolve()
-    if not p.is_file() or not p.is_relative_to(CV_UPLOAD_ROOT.resolve()):
+    from utils.solver_cv import available_cv_path
+    p = available_cv_path(doc, CV_UPLOAD_ROOT)
+    if p is None:
         raise HTTPException(status_code=404, detail="CV file missing on disk.")
     return FileResponse(p, filename=Path(doc.get("cv_filename") or p.name).name, headers={"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"})
 

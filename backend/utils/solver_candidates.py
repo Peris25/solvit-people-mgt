@@ -9,6 +9,7 @@ from utils.access_matrix import get_module_access
 from utils.employee_integrity import tenant_of, tenant_query, normalize_email, email_matches
 from utils.employee_access import find_linked_record
 from utils.solver_access import solver_access, solver_identity_write, normalize_phone, HR_ROLES
+from utils.solver_cv import available_cv_path
 
 STAGES = ('Eligible', 'Interviewing', 'Awaiting assessment', 'Passed', 'Awaiting confirmation', 'Active', 'On hold', 'Not selected', 'Withdrawn')
 
@@ -62,7 +63,7 @@ def projection(row, can_edit, can_confirm):
     out = {key: value for key, value in row.items() if key not in {'_id', 'cv_path', 'stored_path', 'password_hash', 'otp_code', 'access_token', 'submitted_ip'}}
     out.update(recruitment_stage=stage(row) or row.get('current_stage') or 'Needs review',
                edit_version=version(row), can_edit=can_edit and not row.get('solver_id') and not row.get('employee_id'),
-               can_confirm=can_confirm, has_cv=bool(row.get('cv_path')))
+               can_confirm=can_confirm, has_cv=available_cv_path(row) is not None)
     return out
 
 
