@@ -373,8 +373,8 @@ async def public_apply(
     challenge_token: str = Form(...),
     challenge_answer: str = Form(...),
     website_url: Optional[str] = Form(""),  # honeypot — must remain empty
-    # Optional CV
-    cv: Optional[UploadFile] = File(None),
+    # Every new application must include a scanned CV.
+    cv: UploadFile = File(...),
 ):
     """Eligibility engine — evaluates ALL gates so the register captures every
     failed criterion, then either creates a pipeline candidate (eligible) or
@@ -425,11 +425,12 @@ async def public_apply(
     cv_filename = None
     cv_stored_path = None
     cv_content: Optional[bytes] = None
-    if cv is not None and getattr(cv, "filename", ""):
-        ext, cv_content = await _read_clean_cv(cv)
-        # Final stored name is constructed once we have the applicant id.
-        cv_filename = cv.filename
-        cv_stored_path = ext
+    if cv is None or not getattr(cv, "filename", "").strip():
+        raise HTTPException(400, 'Please attach your CV to submit an application.')
+    ext, cv_content = await _read_clean_cv(cv)
+    # Final stored name is constructed once we have the applicant id.
+    cv_filename = cv.filename
+    cv_stored_path = ext
 
     # ───── Eligibility evaluation ─────
     failed = []

@@ -60,6 +60,7 @@ export default function PublicSolverApply() {
 
   const onCvChange = (e) => {
     setCvError('');
+    setCvFile(null);
     const f = e.target.files?.[0];
     if (!f) { setCvFile(null); return; }
     if (!CV_ALLOWED.includes(f.type) && !/\.(pdf|docx?)$/i.test(f.name)) {
@@ -78,6 +79,10 @@ export default function PublicSolverApply() {
   const submit = async (e) => {
     e.preventDefault();
     setError('');
+    if (!cvFile) {
+      setCvError('Please attach your CV to submit an application.');
+      return;
+    }
     if (form.has_driving_licence === null || form.has_smartphone === null || !form.availability) {
       setError('Please answer all questions.');
       return;
@@ -264,12 +269,13 @@ export default function PublicSolverApply() {
             <RadioGroup name="availability" value={form.availability} options={[{label:'Yes',value:'Yes'},{label:'Partial',value:'Partial'},{label:'No',value:'No'}]} onChange={v => set('availability', v)} testidPrefix="f-availability" />
           </Field>
 
-          <Field label="CV / Résumé (optional)">
+          <Field label="CV / Résumé *">
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <input
                 data-testid="f-cv"
                 ref={fileRef}
                 type="file"
+                required
                 accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 onChange={onCvChange}
                 style={{ fontSize: '12px' }}

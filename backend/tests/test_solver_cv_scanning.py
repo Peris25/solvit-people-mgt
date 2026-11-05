@@ -67,3 +67,25 @@ def test_public_clean_cv_is_private_audited_and_linked_to_applicant(tmp_path):
  assert Path(db.candidates.docs[0]['cv_path']).read_bytes()==PDF
  assert db.audit_logs.docs[0]['event']=='solver.cv.uploaded'
  assert 'cv_path' not in result
+
+
+@pytest.mark.parametrize('cv',[None,upload(name='')],ids=['missing','blank-filename'])
+def test_application_requires_cv_without_writing_records(cv,tmp_path):
+ db=fixture()
+ with patch.object(route,'get_db',return_value=db),patch.object(route,'CV_UPLOAD_ROOT',tmp_path),patch.object(route,'_rate_limit_check',return_value=False),patch.object(route,'_verify_captcha',return_value=(True,'')):
+  with pytest.raises(HTTPException) as error:run(apply(cv))
+ assert error.value.status_code==400
+ assert not list(tmp_path.iterdir()) and not db.candidates.docs and not db.ineligible_applicants.docs
+
+
+def test_http_application_rejects_omitted_cv():
+ from fastapi import FastAPI
+ from fastapi.testclient import TestClient
+ app=FastAPI();app.include_router(route.router)
+ response=TestClient(app).post('/solver-intake/public/req/apply',data={
+  'full_name':'Synthetic Applicant','phone_number':'0700000001','email':'applicant@example.com',
+  'county':'Nairobi City','town_area':'Synthetic town','has_driving_licence':'true',
+  'has_smartphone':'true','availability':'Yes','commission_acknowledged':'true','channel':'Other',
+  'challenge_token':'synthetic-test-only','challenge_answer':'0'})
+ assert response.status_code==422
+ assert any(item['loc']==['body','cv'] for item in response.json()['detail'])
