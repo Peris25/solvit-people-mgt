@@ -34,4 +34,6 @@ The public job-application CV path previously wrote files without calling the ex
 
 `backend/tests/test_solver_cv_scanning.py` adds nine regression cases covering clean uploads, unavailable scanning, malware rejection, size/type validation, and absence of candidate/file writes after scan failure. Full backend validation: **1,482 passed, 321 skipped, five warnings**. Python compilation and whitespace checks passed. No new frontend changes in this follow-up.
 
+Render subsequently confirmed the environment-configuration deployment succeeded, followed by the automatic deployment of backend commit `99ad240` (Live, duration 1m 52s). The working tree was clean after that release. A read-only user-run check was supplied to exercise the actual application scanner client and verify the disk mount/configured roots; its result is pending.
+
 Outstanding live verification: effective scanner memory configuration, a synthetic clean INSTREAM verdict, authorized document upload/download and its audit trail, public CV submission, and survival of stored synthetic files across a subsequent backend restart. No real ID or applicant CV should be used for infrastructure tests. Keep the scanner private, monitor memory and signature freshness, and never bypass scanning to restore availability.
