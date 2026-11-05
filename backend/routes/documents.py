@@ -113,6 +113,21 @@ async def my_documents(request: Request):
     return await list_employee_documents(employee_key(employee), request)
 
 
+@router.post('/me/profile-photo')
+async def upload_my_profile_photo(request: Request, file: UploadFile = File(...), consent: bool = Form(False)):
+    from utils import profile_photos
+    user = await get_current_user(request)
+    return await profile_photos.upload(get_db(), user, file, consent, UPLOAD_ROOT)
+
+
+@router.get('/me/profile-photo')
+async def get_my_profile_photo(request: Request):
+    from utils import profile_photos
+    user = await get_current_user(request)
+    path = await profile_photos.current(get_db(), user, UPLOAD_ROOT)
+    return FileResponse(path, media_type='image/jpeg', headers={'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'})
+
+
 @router.get("/categories")
 async def list_categories(request: Request):
     await get_current_user(request)

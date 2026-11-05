@@ -14,6 +14,7 @@ const profile = () => ({ employee: { id: 'staff', full_name: 'Synthetic Ada', de
 beforeEach(() => {
   container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container);
   useAuth.mockReturnValue({ user, changePassword: jest.fn().mockResolvedValue({}), logout: jest.fn() });
+  api.getMyProfilePhoto.mockRejectedValue({ response: { status: 404 } });
   api.getMyProfile.mockResolvedValue({ data: profile() });
   api.getMyProfileChanges.mockResolvedValue({ data: [] });
   api.getProfileChangeInbox.mockResolvedValue({ data: [] });
@@ -25,7 +26,7 @@ const render = async () => { await act(async () => root.render(<EmployeeProfile 
 const click = async text => { const button = [...container.querySelectorAll('button')].find(b => b.textContent === text); expect(button).toBeTruthy(); await act(async () => button.click()); };
 const change = async (input, value) => { await act(async () => { Object.getOwnPropertyDescriptor(input.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype, 'value').set.call(input, value); input.dispatchEvent(new Event('change', { bubbles: true })); input.dispatchEvent(new Event('input', { bubbles: true })); }); };
 
-test('uses the own-profile endpoint, preserves manager/department and keeps photos as placeholders', async () => {
+test('uses the own-profile endpoint, preserves manager/department and ignores unapproved external photo URLs', async () => {
   await render(); expect(api.getMyProfile).toHaveBeenCalledWith(); expect(api.getEmployeeProfile).not.toHaveBeenCalled();
   expect(container.textContent).toContain('Synthetic Manager'); expect(container.textContent).toContain('HR & People');
   expect(container.textContent).toContain('personal@example.com'); expect(container.querySelector('img')).toBeNull();

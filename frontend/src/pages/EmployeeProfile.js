@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import ProfileChanges from '../components/ProfileChanges';
 import RequiredPasswordChange from '../components/RequiredPasswordChange';
 import EmployeeDocuments from '../components/EmployeeDocuments';
+import ProfilePhoto from '../components/ProfilePhoto';
 
 const fmtKES = (n) => n != null ? `KES ${Number(n).toLocaleString('en-KE')}` : '—';
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
@@ -64,9 +65,9 @@ export default function EmployeeProfile({ selfService = false }) {
       <div style={{ backgroundColor: '#191919', color: '#fff', padding: '28px', marginBottom: '20px' }}>
         <button data-testid="back-to-employees" onClick={() => navigate(selfService ? '/dashboard' : '/employees')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: '11px', fontFamily: 'Arial', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '14px', padding: 0 }}>{selfService ? '← Staff Home · My Profile' : '← Back to Employees'}</button>
         <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
-          <div style={{ width: '72px', height: '72px', borderRadius: '50%', backgroundColor: '#FF353F', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          {selfService ? <ProfilePhoto key={key} initials={initials} /> : <div style={{ width: '72px', height: '72px', borderRadius: '50%', backgroundColor: '#FF353F', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <span style={{ color: '#fff', fontWeight: 900, fontSize: '24px' }}>{initials}</span>
-          </div>
+          </div>}
           <div style={{ flex: 1 }}>
             <h1 style={{ fontSize: '28px', fontWeight: 900, letterSpacing: '-0.04em', margin: 0 }}>{e.full_name}</h1>
             <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', marginTop: '4px' }}>{e.role_title} · {e.department} · {e.role_level}</div>

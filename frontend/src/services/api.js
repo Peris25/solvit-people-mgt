@@ -499,3 +499,9 @@ export const reviewPublicSolverApplication = (id, notes) => api.post(`/solver-as
 export const getPublicSolverReviewCapabilities = () => api.get('/solver-assessments/applications/capabilities');
 
 export const proposeReviewMeeting = (id, data) => api.post(`/performance/${id}/meeting-proposal`, data);
+
+export const getMyProfilePhoto = () => api.get('/documents/me/profile-photo', { responseType: 'blob' });
+export const uploadMyProfilePhoto = (file, consent) => {
+  const body = new FormData(); body.append('file', file); body.append('consent', String(consent));
+  return api.post('/documents/me/profile-photo', body);
+};
