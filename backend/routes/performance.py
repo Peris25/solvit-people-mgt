@@ -103,6 +103,32 @@ def calculate_overall_score(a: float, b: float, c: float) -> float:
     return round(a * 0.5 + b * 0.3 + c * 0.2, 1)
 
 
+@router.get('/kpi-template')
+async def get_kpi_template(request: Request):
+    from utils import performance_kpi_templates as templates
+    return await templates.load(get_db(), await get_current_user(request))
+
+
+@router.put('/kpi-template')
+async def save_kpi_template(request: Request):
+    from utils import performance_kpi_templates as templates
+    user = await get_current_user(request)
+    body = await request.json()
+    db = get_db()
+    async with integrity_write(db):
+        return await templates.save(db, user, body)
+
+
+@router.post('/kpi-template/apply')
+async def apply_kpi_template(request: Request):
+    from utils import performance_kpi_templates as templates
+    user = await get_current_user(request)
+    body = await request.json()
+    db = get_db()
+    async with integrity_write(db):
+        return await templates.apply(db, user, body)
+
+
 @router.get("/cycles")
 async def list_cycles(request: Request):
     from utils.employee_access import personal_grant

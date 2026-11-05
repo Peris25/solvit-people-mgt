@@ -415,6 +415,9 @@ export const authorizeExitDeactivation = id => api.post(`/lifecycle/offboarding/
 
 // Performance workflow and approved cycles
 export const getReviewCycles = () => api.get("/performance/cycles");
+export const getKpiTemplate = () => api.get('/performance/kpi-template');
+export const saveKpiTemplate = data => api.put('/performance/kpi-template', data);
+export const applyKpiTemplate = data => api.post('/performance/kpi-template/apply', data);
 export const configureReviewCycle = data => api.post("/performance/cycles", data);
 export const launchReviewCycle = id => api.post(`/performance/cycles/${id}/launch`, {});
 export const scheduleReviewMeeting = (id, data) => api.post(`/performance/${id}/meeting`, data);
