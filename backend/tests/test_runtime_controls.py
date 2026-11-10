@@ -106,7 +106,7 @@ def test_disabled_background_jobs_preserve_real_event_form_outcomes_and_notifica
     assert db.audit_logs.docs[0]["action"]=="form.outcome.fired"
     assert db.notifications.docs[0]["recipient_id"]=="staff"
     assert db.automation_rules.docs[0]["last_execution_status"]=="success"
-    assert db.email_log.docs[0]["status"]=="skipped"
+    assert db.email_log.docs == []  # Routine form updates stay in the portal; no email attempt.
     smtp.assert_not_called()
 
 

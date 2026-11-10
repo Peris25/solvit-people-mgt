@@ -248,7 +248,8 @@ async def get_email_log(request: Request, limit: int = 100, status: Optional[str
     q = tenant_query(tenant_of(user))
     if status:
         q = {"$and":[q,{"status":status}]}
-    primary = await db.email_log.find(q).sort("sent_at", -1).to_list(n)
+    # Dispatch claims coordinate workers; provider attempt rows alone count as delivery logs.
+    primary = await db.email_log.find({"$and": [q, {"delivery_claim": {"$ne": True}}]}).sort("sent_at", -1).to_list(n)
     ai = await db.email_send_log.find(q).sort("sent_at", -1).to_list(n)
 
     HR_PREFIXES = ("onboarding.", "leave.", "performance.", "recognition.",

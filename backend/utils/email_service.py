@@ -328,20 +328,27 @@ async def process_retry_queue(db) -> int:
     for row in rows:
         if not outbound_email_enabled():
             break
-        await db.email_retry_queue.update_one(
-            {"_id": row["_id"]}, {"$set": {"status": "processing"}}
+        claimed = await db.email_retry_queue.update_one(
+            {"_id": row["_id"], "status": "pending"}, {"$set": {"status": "processing"}}
         )
-        result = await send_email(
-            db, to=row["to"],
-            subject=row["subject"], html=row["html"],
-            template_key=row.get("template_key"),
-            context=row.get("context") or {},
-            retry_count=row["retry_count"],
-        )
+        if claimed.modified_count != 1:
+            continue  # Another worker owns this attempt. Never steal an interrupted claim.
+        legacy_broadcast = not row.get('template_key') and 'Sent by Solvit People Platform automation' in str(row.get('html') or '')
+        if legacy_broadcast:
+            await _log_skip(db, row.get('to'), 'Legacy automation retry needs recipient review before delivery')
+            result = {'status': 'skipped', 'reason': 'recipient_review_required'}
+        else:
+            result = await send_email(
+                db, to=row["to"],
+                subject=row["subject"], html=row["html"],
+                template_key=row.get("template_key"),
+                context=row.get("context") or {},
+                retry_count=row["retry_count"],
+            )
         if result.get("reason") == "outbound_email_disabled":
             await db.email_retry_queue.update_one({"_id": row["_id"]}, {"$set": {"status": "pending"}})
             break
-        if result.get('reason') in {'invalid_email_content', 'missing_email_template'}:
+        if result.get('reason') in {'invalid_email_content', 'missing_email_template', 'recipient_review_required'}:
             final_status = 'blocked'
         else:
             final_status = "sent" if result.get("status") == "sent" else "exhausted" if row["retry_count"] >= len(RETRY_DELAYS_MIN) else "requeued"

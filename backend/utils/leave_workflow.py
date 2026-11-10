@@ -122,19 +122,26 @@ async def availability(db, employee, balance, exclude=None):
 
 
 async def email_existing(db, employee, record, event):
-    """Keep existing best-effort templates; no medical/rejection text in email."""
+    """Scoped leave messages with durable event deduplication and no private reasons."""
+    from utils.email_routing import action_email, employee_address, portal_link
+    tenant = tenant_of(record)
+    key = f"leave:{record['id']}:{event}:{len(record.get('approval_history') or [])}"
     try:
-        from utils.email_service import send_email
-        if employee.get("work_email"):
-            await send_email(db, to=employee["work_email"], template_key="leave.received" if event == "submitted" else "leave.approved" if record["status"] == "Approved" else "leave.rejected",
-                             context={"employee_name": employee.get("full_name", ""), "leave_type": record["leave_type"], "start_date": record["start_date"],
-                                      "end_date": record["end_date"], "days": record.get("working_days"), "reason": "Please review the authorized leave record for the decision."})
-        if event == "submitted":
-            manager = await find_employee(db, record.get("line_manager_id"), tenant_of(record))
-            if manager and manager.get("work_email"):
-                await send_email(db, to=manager["work_email"], template_key="leave.pending_lm", context={"employee_name": employee.get("full_name", ""), "start_date": record["start_date"], "end_date": record["end_date"], "leave_type": record["leave_type"], "days": record["working_days"]})
+        own_address = await employee_address(db, employee_key(employee), tenant)
+        status = record.get('status')
+        subject = 'Your leave request was submitted' if event == 'submitted' else 'Your leave request was approved' if status == 'Approved' else 'Your leave request was denied'
+        message = subject + '. Open the request to review the dates and current status.'
+        template = 'leave.received' if event == 'submitted' else 'leave.approved' if status == 'Approved' else 'leave.rejected'
+        await action_email(db, tenant, key + ':employee', own_address, subject, message,
+            portal_link('/leave?view=my&request=', record['id']), template)
+        if event == 'submitted':
+            address = await employee_address(db, record.get('line_manager_id'), tenant)
+            if address and address != own_address:
+                await action_email(db, tenant, key + ':manager', address, 'Leave request awaiting your approval',
+                    'A direct report has submitted a leave request. Please review the request in Team Leave.',
+                    portal_link('/leave?view=team&request=', record['id']), 'leave.pending_lm')
     except Exception:
-        pass  # Existing mail failures do not undo a saved leave transaction.
+        pass  # Email outages cannot undo a saved leave transaction.
 
 
 async def notify(db, record, event):
@@ -229,6 +236,8 @@ async def create(db, user, payload, balance_loader):
             record["_id"] = inserted.inserted_id
             await audit(db, user, record, "leave.submitted")
     await notify(db, record, "submitted")
+    from utils.email_routing import leave_action
+    await leave_action(db, employee, record, "submitted")
     if previous is None:
         await email_existing(db, employee, record, "submitted")
         from automation.engine import automation_engine
@@ -325,6 +334,9 @@ async def decide(db, user, reference, body, balance_loader):
                 except DuplicateKeyError:
                     pass
     await notify(db, result, "decision")
+    if not replay:
+        from utils.email_routing import leave_action
+        await leave_action(db, employee, result, "decision")
     if not replay and result["status"] in {"Approved", "Rejected"}:
         await email_existing(db, employee, result, "decision")
     return await view(db, user, result)
@@ -388,6 +400,10 @@ async def supplement(db, user, reference, body, *, balance_loader=None):
         result = await db.leave_requests.find_one_and_update({"_id": current["_id"]}, {"$set": update}, return_document=True)
         await audit(db, user, result, "leave.resubmitted" if resubmitting else "leave.supplemented")
     await notify(db, result, "supplemented")
+    if resubmitting:
+        from utils.email_routing import leave_action
+        await leave_action(db, employee, result, "submitted")
+        await email_existing(db, employee, result, "submitted")
     return await view(db, user, result)
 
 
@@ -407,4 +423,6 @@ async def cancel(db, user, reference, reason):
         result = await db.leave_requests.find_one_and_update({"_id": current["_id"]}, {"$set": {"status": "Cancelled", "updated_at": stamp(), "approval_history": history}}, return_document=True)
         await audit(db, user, result, "leave.withdrawn")
     await notify(db, result, "withdrawn")
+    from utils.email_routing import leave_action
+    await leave_action(db, employee, result, "withdrawn")
     return await view(db, user, result)

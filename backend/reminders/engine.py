@@ -204,44 +204,27 @@ class ReminderEngine:
 
     async def _fire(self, rule: dict, target: dict) -> bool:
         """Resolve recipients and fire the event into the Notification Service."""
-        from utils.email_triggers import fire_and_forget
-        template_key = rule["template_key"]
-        # Build extra context — pass everything from target as merge tags
+        from utils.email_triggers import trigger
+        from utils.email_routing import employee_address, role_addresses
+        from utils.employee_integrity import find_employee
+        template_key = rule['template_key']
         extra = {k: v for k, v in target.items() if isinstance(v, (str, int, float, bool))}
-        recipients = rule.get("recipients") or ["employee"]
+        addresses = set()
+        employee = await find_employee(self.db, target.get('employee_id'), TENANT) if target.get('employee_id') else None
+        for role in rule.get('recipients') or ['employee']:
+            if role in {'employee', 'line_manager'}:
+                reference = employee.get('line_manager_id') if employee and role == 'line_manager' else target.get('employee_id') if employee else None
+                address = await employee_address(self.db, reference, TENANT)
+                if address: addresses.add(address)
+            elif role in {'hr_admin', 'hr_manager', 'finance', 'it_admin'}:
+                addresses.update(await role_addresses(self.db, {role}, TENANT))
         any_ok = False
-        for role in recipients:
+        for address in sorted(addresses):
             try:
-                if role == "employee":
-                    if target.get("employee_id"):
-                        await fire_and_forget(self.db, template_key,
-                                              employee_id=target["employee_id"],
-                                              extra=extra)
-                        any_ok = True
-                elif role == "line_manager":
-                    lm_id = target.get("line_manager_id")
-                    if not lm_id and target.get("employee_id"):
-                        emp = await self.db.employees.find_one({"id": target["employee_id"]})
-                        lm_id = (emp or {}).get("line_manager_id")
-                    if lm_id:
-                        lm = await self.db.employees.find_one({"id": lm_id}) or {}
-                        if lm.get("work_email"):
-                            await fire_and_forget(self.db, template_key,
-                                                  employee_id=target.get("employee_id"),
-                                                  to_override=lm["work_email"],
-                                                  extra=extra)
-                            any_ok = True
-                else:
-                    # Role lookup — pick the user record for the role.
-                    user = await self.db.users.find_one({"tenant_id": TENANT, "role": role})
-                    if user and user.get("email"):
-                        await fire_and_forget(self.db, template_key,
-                                              employee_id=target.get("employee_id"),
-                                              to_override=user["email"],
-                                              extra=extra)
-                        any_ok = True
-            except Exception as e:
-                logger.warning("Reminder _fire(%s, role=%s) failed: %s", template_key, role, e)
+                result = await trigger(self.db, template_key, employee_id=target.get('employee_id'), to_override=address, extra=extra)
+                any_ok = result.get('status') == 'sent' or any_ok
+            except Exception:
+                logger.warning('Reminder recipient delivery needs review: %s', template_key)
         return any_ok
 
     # ────────────────────── observability ──────────────────

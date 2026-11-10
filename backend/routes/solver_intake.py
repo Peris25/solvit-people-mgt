@@ -507,6 +507,8 @@ async def public_apply(
             "status": "Ineligible — not in pipeline",
         })
         await _bump_counters(db, rid, received=1, ineligible=1)
+        from utils.email_routing import solver_application
+        await solver_application(db, common, req, False)
         return {
             "result": "ineligible",
             "failed_criteria": failed,
@@ -556,24 +558,8 @@ async def public_apply(
     })
     await _bump_counters(db, rid, received=1, eligible=1)
 
-    # Notify authorized applicant administrators (best-effort)
-    try:
-        from utils.email_triggers import fire_and_forget
-        await fire_and_forget(db, "recruitment.application_received",
-                              extra={"candidate_name": full_name,
-                                     "role_applied_for": req.get("title"),
-                                     "requisition_code": req.get("code")})
-        # Internal alert to authorized HR / IT administrators
-        sm = await db.users.find_one({"tenant_id": "solvit",
-                                       "role": {"$in": ["hr_admin", "it_admin"]}})
-        if sm and sm.get("email"):
-            await fire_and_forget(db, "recruitment.application_received",
-                                  to_override=sm["email"],
-                                  extra={"candidate_name": full_name,
-                                         "role_applied_for": req.get("title"),
-                                         "requisition_code": req.get("code")})
-    except Exception:
-        pass
+    from utils.email_routing import solver_application
+    await solver_application(db, common, req, True)
 
     # Auto-close requisition if target hit (received >= target_hires AND
     # target_hires set). Spec says "if a target is set" — we count eligible.

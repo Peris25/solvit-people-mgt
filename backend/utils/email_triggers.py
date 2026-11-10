@@ -20,14 +20,16 @@ logger = logging.getLogger(__name__)
 async def _resolve_employee(db, employee_id: str) -> dict:
     if not employee_id:
         return {}
-    return await db.employees.find_one({"tenant_id": "solvit", "id": employee_id}) or {}
+    from utils.employee_integrity import find_employee
+    return await find_employee(db, employee_id, "solvit") or {}
 
 
 async def _resolve_manager(db, employee: dict) -> dict:
     lm_id = (employee or {}).get("line_manager_id")
     if not lm_id:
         return {}
-    return await db.employees.find_one({"tenant_id": "solvit", "id": lm_id}) or {}
+    from utils.employee_integrity import find_employee
+    return await find_employee(db, lm_id, "solvit") or {}
 
 
 async def _resolve_hr_name(db) -> str:
@@ -66,7 +68,7 @@ async def trigger(
     hr_name = await _resolve_hr_name(db)
     to = to_override or emp.get("work_email")
 
-    public_url = os.environ.get("FRONTEND_URL", "https://solvit.co.ke")
+    public_url = (os.environ.get("PUBLIC_APP_URL") or os.environ.get("FRONTEND_URL") or "https://people.solvit.co.ke").rstrip("/")
     now = datetime.now(timezone.utc)
 
     context = {
@@ -112,17 +114,18 @@ async def trigger(
         logger.warning("trigger(%s) failed: %s", template_key, e)
         return {"status": "failed", "error": str(e)}
 
-    # CC roles
+    # Copy only active authorized role accounts, once per mailbox.
     if cc_roles:
-        for role in cc_roles:
-            users = await db.users.find({"tenant_id": "solvit", "role": role}).to_list(20)
-            for u in users:
-                if u.get("email") and u["email"] != to:
-                    try:
-                        from utils.email_service import send_email
-                        await send_email(db, to=u["email"], template_key=template_key, context=context)
-                    except Exception:
-                        pass
+        from utils.email_routing import role_addresses
+        copied = {str(to).strip().lower()}
+        for address in await role_addresses(db, set(cc_roles), 'solvit'):
+            if address not in copied:
+                copied.add(address)
+                try:
+                    from utils.email_service import send_email
+                    await send_email(db, to=address, template_key=template_key, context=context)
+                except Exception:
+                    logger.warning('Template role-copy delivery needs review: %s', template_key)
     return result
 
 

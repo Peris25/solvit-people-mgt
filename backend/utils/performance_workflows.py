@@ -120,6 +120,9 @@ async def notify(db, row, event):
             **({"recipient_role": recipient} if kind == "role" else {"recipient_type": "employee", "recipient_id": recipient}),
             "data": {"employee_id": employee_key(employee), "performance_review_id": row["id"], "performance_event": base_event}}}, upsert=True)
 
+    from utils.email_routing import performance_action
+    await performance_action(db, employee, manager, row, event)
+
 
 async def launch_cycle(db, user, reference):
     """HR explicitly distributes a cycle; existing reviews are never replaced."""
@@ -252,13 +255,14 @@ async def email_submitted_review(db, row, employee, manager):
     """One submission event; reuse email delivery policy, logs and retries."""
     status = "skipped"
     try:
-        if tenant_of(employee) == "solvit" and manager and manager.get("work_email"):
+        from utils.email_routing import eligible, portal_link
+        if tenant_of(employee) == "solvit" and manager and eligible(manager) and manager.get("work_email"):
             from utils.email_service import send_email
             context = {
                 "employee_name": escape(employee.get("full_name") or "Employee"),
                 "review_period": f"{row['cycle_type'].replace('_', ' ')} {row['cycle_year']}",
                 "manager_review_due_date": row.get("manager_due_on") or "See portal",
-                "platform_link": os.environ.get("FRONTEND_URL", "https://people.solvit.co.ke").rstrip('/') + '/performance?review=' + quote(row['id'], safe='')}
+                "platform_link": portal_link('/performance?review=', row['id'])}
             templates = getattr(db, 'email_templates', None)
             template = await templates.find_one({'tenant_id': 'solvit', 'key': 'performance.self_review_submitted'}) if templates is not None else None
             fallback = {} if template else {'subject': 'Employee performance review submitted', 'html': f"<p>{context['employee_name']} has submitted a self-assessment. Manager review is due {escape(str(context['manager_review_due_date']))}.</p><p><a href=\"{escape(context['platform_link'], quote=True)}\">Open the review securely</a></p>"}

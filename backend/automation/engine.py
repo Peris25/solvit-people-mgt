@@ -320,7 +320,8 @@ class AutomationEngine:
             "AR-LV-01",  # leave.pending_lm — already sent by routes/leave.py
             "AR-LV-03",  # high-activity flag — HR sees in-app banner
         }
-        send_email_too = rule.get("rule_id") not in email_suppressed_rules
+        email_suppressed_rules.add("AR-PF-03")  # Workflow sends the targeted HR meeting action.
+        send_email_too = rule.get("rule_id") not in email_suppressed_rules and bool(payload.get("message"))
         for recipient_role in recipients:
             notif = {
                 "id": str(uuid.uuid4()),
@@ -335,7 +336,9 @@ class AutomationEngine:
             }
             # Preserve the existing generator; bind employee/manager events to
             # saved relationships instead of broadcasting private events.
-            if recipient_role in ("employee", "line_manager") and data.get("employee_id"):
+            if recipient_role in ("employee", "line_manager"):
+                if not data.get("employee_id"):
+                    continue
                 from utils.employee_integrity import find_employee, employee_key
                 employee = await find_employee(self.db, data["employee_id"])
                 if not employee:
@@ -358,19 +361,26 @@ class AutomationEngine:
                 continue
             if not send_email_too:
                 continue
-            # Best-effort email — does nothing if email provider not configured
+            # Specific staff/manager addresses only; never broadcast personal events by role.
             try:
-                users = await self.db.users.find({"role": recipient_role, "tenant_id": "solvit"}).to_list(50)
-                for u in users:
-                    if u.get("email"):
-                        from utils.email_service import send_email
-                        await send_email(
-                            self.db, u["email"],
-                            subject=notif["title"],
-                            html=f"<p>{message}</p><p><small>Sent by Solvit People Platform automation</small></p>"
-                        )
-            except Exception as e:
-                logger.warning(f"Email notification skipped: {e}")
+                from utils.email_routing import employee_address, role_addresses, action_email, portal_link
+                if recipient_role in ('employee', 'line_manager'):
+                    address = await employee_address(self.db, employee_key(recipient), 'solvit')
+                    addresses = [address] if address else []
+                elif recipient_role in {'hr_admin', 'hr_manager', 'finance', 'it_admin'}:
+                    addresses = await role_addresses(self.db, {recipient_role}, 'solvit')
+                else:
+                    addresses = []
+                import json
+                event = hashlib.sha256(json.dumps(data, sort_keys=True, default=str).encode()).hexdigest()
+                if rule.get('trigger_type') == 'cron':
+                    event += ':' + datetime.now(timezone.utc).date().isoformat()
+                category = str(rule.get('category') or 'Workflow')
+                for address in addresses:
+                    await action_email(self.db, 'solvit', f"automation:{rule.get('rule_id')}:{event}", address,
+                        f'Action required: {category}', 'A workflow action requires your attention. Sign in to review the authorized record.', portal_link('/notifications'), 'automation.action')
+            except Exception:
+                logger.warning('Automation email recipient resolution needs review for %s', rule.get('rule_id'))
 
     async def _change_state_action(self, rule: dict, data: dict, payload: dict):
         new_state = payload.get("new_state")
