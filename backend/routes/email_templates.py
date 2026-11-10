@@ -469,6 +469,14 @@ async def update_template(key: str, request: Request):
         raise HTTPException(status_code=403, detail="Only IT Admin can edit templates")
     db = get_db()
     body = await request.json()
+    from utils.email_content import content_error
+    import re
+    # Merge tags are valid in saved templates; validate the surrounding template structure.
+    def sample(value):
+        return re.sub(r'\{\{.*?\}\}', 'sample', value, flags=re.S) if isinstance(value, str) else value
+    invalid = content_error(sample(body.get('subject')), sample(body.get('body')))
+    if invalid:
+        raise HTTPException(422, invalid)
     update = {
         "subject": body.get("subject"),
         "body": body.get("body"),

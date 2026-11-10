@@ -19,6 +19,8 @@ import re
 import smtplib
 import time
 import logging
+from html import escape
+from utils.email_content import content_error
 from datetime import datetime, timezone, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -85,7 +87,7 @@ def _wrap_solvit_brand(body_html: str) -> str:
         <span style="font-size:10px;font-weight:700;letter-spacing:0.2em;color:#FF353F;margin-left:4px;">PEOPLE PLATFORM</span>
       </td></tr>
       <tr><td style="padding:18px 32px 28px 32px;color:#191919;font-size:14px;line-height:1.55;font-family:Nunito Sans,Arial,sans-serif;">
-        {body_html}
+        <!--solvit-body-start-->{body_html}<!--solvit-body-end-->
       </td></tr>
       <tr><td style="padding:14px 32px;background:#191919;color:#9CA3AF;font-size:10px;letter-spacing:0.1em;">
         SOLVIT LIMITED · NAIROBI, KENYA · NO-REPLY@SOLVIT.CO.KE
@@ -211,12 +213,26 @@ async def send_email(
     ctx = context or {}
     if template_key and (not subject or not html):
         tpl = await db.email_templates.find_one({"tenant_id": "solvit", "key": template_key})
+        if not tpl:
+            message = 'Email template is missing; no message was sent'
+            await _log_skip(db, to, message, template_key, mode=mode)
+            logger.warning('Blocked missing email template: %s', template_key)
+            return {'status': 'skipped', 'reason': 'missing_email_template', 'message': message}
         if tpl:
             subject = subject or _merge(tpl.get("subject", ""), ctx)
             html = html or _merge(tpl.get("body", ""), ctx)
 
-    subject = subject or "Solvit People Platform"
-    html = _wrap_solvit_brand(html or "<p>(no body)</p>")
+    # Reject empty payloads before the branded header/footer adds visible text.
+    # Plain-text callers remain supported with escaped HTML generated from their text.
+    if html is None and isinstance(text, str):
+        html = '<p>' + escape(text).replace('\n', '<br>') + '</p>'
+    invalid = content_error(subject, html)
+    if invalid:
+        await _log_skip(db, to, invalid, template_key, mode=mode)
+        logger.warning('Blocked invalid email content for template %s: %s', template_key or 'direct', invalid)
+        return {'status': 'skipped', 'reason': 'invalid_email_content', 'message': invalid}
+    subject = subject.strip()
+    html = _wrap_solvit_brand(html)
 
     mime = MIMEMultipart("alternative")
     mime["Subject"] = subject
@@ -325,7 +341,10 @@ async def process_retry_queue(db) -> int:
         if result.get("reason") == "outbound_email_disabled":
             await db.email_retry_queue.update_one({"_id": row["_id"]}, {"$set": {"status": "pending"}})
             break
-        final_status = "sent" if result.get("status") == "sent" else "exhausted" if row["retry_count"] >= len(RETRY_DELAYS_MIN) else "requeued"
+        if result.get('reason') in {'invalid_email_content', 'missing_email_template'}:
+            final_status = 'blocked'
+        else:
+            final_status = "sent" if result.get("status") == "sent" else "exhausted" if row["retry_count"] >= len(RETRY_DELAYS_MIN) else "requeued"
         await db.email_retry_queue.update_one(
             {"_id": row["_id"]},
             {"$set": {"status": final_status, "completed_at": datetime.now(timezone.utc).isoformat()}}
