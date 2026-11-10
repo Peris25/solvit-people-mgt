@@ -482,3 +482,18 @@ def test_proposed_and_confirmed_notification_previews_link_to_review():
         items = run(list_inbox(db, users[actor]))['items']
         assert any(n['title'] == 'Performance review meeting scheduled' and reference in n['link'] for n in items)
         assert not any(n['title'] == 'Review meeting date proposed' for n in items)
+
+
+def test_more_than_five_kpis_complete_employee_and_manager_assessments_with_same_average():
+    db, users = fixture(); row = create(db, users)
+    for i in range(6):
+        run(service.goals(db, users['manager'], row['id'], {'action':'assign', 'objective':f'Extended objective {i}', 'metric':'Measure', 'target':'Target', 'due_on':'2026-10-20'}))
+    run(service.goals(db, users['staff'], row['id'], {'action':'acknowledge'}))
+    run(service.assess(db, users['staff'], row['id'], 'self', self_body()))
+    goals = db.performance_reviews.docs[0]['section_a_kpis']
+    body = manager_body(goals)
+    for i, item in enumerate(body['kpi_scores']): item['score'] = 1 + i % 3
+    run(service.assess(db, users['manager'], row['id'], 'manager', body))
+    saved = db.performance_reviews.docs[0]
+    assert saved['status'] == 'Manager_Submitted'
+    assert len(saved['manager_assessment']['kpi_scores']) == 6 and saved['section_a_score'] == 2

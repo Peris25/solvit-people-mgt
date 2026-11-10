@@ -1,3 +1,4 @@
+import { MAX_REVIEW_KPIS } from './performanceLimits';
 import React, { useState } from 'react';
 import * as api from '../services/api';
 
@@ -81,7 +82,7 @@ export default function PerformanceWorkflow({ review, onUpdated }) {
     </article>)}
     {(review.can_manage || review.can_hr_review) && ['Draft', 'Self_Draft'].includes(review.status) && !review.goals_acknowledged_at && <form onSubmit={e => { e.preventDefault(); perform(async () => { await api.updateReviewGoals(review.id, { action: 'assign', ...goal }); setGoal({ objective: '', metric: '', target: '', due_on: '' }); }); }}>
       <h4>Assign an agreed goal</h4>{[['objective','Objective'],['metric','Measurement'],['target','Target'],['due_on','Due date']].map(([key, label]) => <label key={key} style={field}>{label}<input required type={key === 'due_on' ? 'date' : 'text'} value={goal[key]} onChange={e => setGoal(previous => ({ ...previous, [key]: e.target.value }))} /></label>)}
-      <button style={button} disabled={busy || goals.length >= 5}>Assign goal</button>
+      <button style={button} disabled={busy || goals.length >= MAX_REVIEW_KPIS}>Assign goal</button>
     </form>}
     {review.goals_acknowledged_at && <p>Goals acknowledged: {review.goals_acknowledged_at.slice(0, 10)}</p>}
     {review.can_self_assess && !review.goals_acknowledged_at && goals.length >= 3 && <button style={button} disabled={busy} onClick={() => perform(() => api.updateReviewGoals(review.id, { action: 'acknowledge' }))}>Acknowledge agreed goals</button>}

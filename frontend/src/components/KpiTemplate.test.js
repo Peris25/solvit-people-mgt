@@ -47,7 +47,11 @@ test('new template starts with three blank KPIs and no fabricated targets', asyn
   expect(container.textContent).toContain('No empty reviews are available');
   await click('Add KPI'); await click('Add KPI');
   expect(container.querySelectorAll('fieldset').length).toBe(5);
-  expect([...container.querySelectorAll('button')].find(b => b.textContent === 'Add KPI').disabled).toBe(true);
+  expect([...container.querySelectorAll('button')].find(b => b.textContent === 'Add KPI').disabled).toBe(false);
+  await click('Add KPI');
+  expect(container.querySelectorAll('fieldset').length).toBe(6);
+  await click('Remove KPI 6');
+  expect(container.querySelectorAll('fieldset').length).toBe(5);
 });
 
 test('server failure is visible without claiming KPIs were applied', async () => {

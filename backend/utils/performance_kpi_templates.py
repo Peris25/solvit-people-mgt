@@ -27,8 +27,8 @@ def validate(body):
         flow.fail('Invalid KPI template fields')
     name = flow.text(body.get('name'), 'template name', 150)
     rows = body.get('goals')
-    if not isinstance(rows, list) or not 3 <= len(rows) <= 5:
-        flow.fail('A standard template requires three to five KPIs')
+    if not isinstance(rows, list) or not 3 <= len(rows) <= flow.MAX_KPIS:
+        flow.fail('A standard template requires 3 to 100 KPIs')
     goals = []
     for row in rows:
         if not isinstance(row, dict) or set(row) != {'objective', 'metric', 'target'}:

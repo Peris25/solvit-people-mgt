@@ -100,3 +100,20 @@ def test_invalid_or_stale_apply_never_changes_reviews(changes):
     db, users, row, template = setup(); before = deepcopy(db.performance_reviews.docs)
     with pytest.raises(HTTPException): run(service.apply(db, users['hr'], {**apply_body(row, template), **changes}))
     assert db.performance_reviews.docs == before
+
+
+@pytest.mark.parametrize('count', [6, 12, 100])
+def test_larger_templates_apply_without_truncating(count):
+    db, users = fixture(); row = create(db, users)
+    values = body(); values['goals'] = [{'objective': f'Objective {i}', 'metric':'Measure', 'target':'Target'} for i in range(count)]
+    template = run(service.save(db, users['hr'], values))
+    result = run(service.apply(db, users['hr'], apply_body(row, template)))
+    assert result['applied'] == [row['id']]
+    assert len(db.performance_reviews.docs[0]['section_a_kpis']) == count
+
+
+def test_template_resource_limit_rejects_oversized_request():
+    db, users = fixture(); values = body()
+    values['goals'] = [{'objective': f'Objective {i}', 'metric':'Measure', 'target':'Target'} for i in range(101)]
+    with pytest.raises(HTTPException): run(service.save(db, users['hr'], values))
+    assert not db.system_settings.docs

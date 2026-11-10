@@ -14,6 +14,8 @@ from utils.employee_integrity import employee_key, find_employee, is_direct_repo
 from utils.staff_views import restricted
 
 HR = {"hr_admin", "hr_manager", "general_manager"}
+MAX_KPIS = 100
+
 POLICIES = {"handbook_frd": {"weights": [50, 30, 20], "section_c": "Client Feedback"},
             "developer_brief": {"weights": [60, 25, 15], "section_c": "Alignment"}}
 
@@ -357,7 +359,7 @@ async def goals(db, user, reference, body):
         personal_grant(user, "M05", write=True)
         if set(body) != {"action"}: fail("Goal acknowledgement cannot alter targets")
         if employee_key(employee) != user.get("employee_id"): fail("Only the employee may acknowledge their goals", 403)
-        if not 3 <= len(items) <= 5: fail("Agree three to five KPIs before sign-off", 409)
+        if not 3 <= len(items) <= MAX_KPIS: fail("Agree at least three KPIs before sign-off", 409)
         if not row.get("goals_acknowledged_at"):
             await save(db, user, row, {"goals_acknowledged_at": now(), "goals_acknowledged_by": user["id"]}, "performance.goals.acknowledged")
         return projection(row, user, employee)
@@ -367,7 +369,7 @@ async def goals(db, user, reference, body):
         await employee_access(db, user, row["employee_id"], write=True)
         if employee_key(employee) == user.get("employee_id"): fail("Goals require another authorized manager or HR", 403)
         if set(body) - {"action", "objective", "metric", "target", "due_on"}: fail("Unknown goal fields")
-        if len(items) >= 5: fail("A review supports up to five agreed KPIs")
+        if len(items) >= MAX_KPIS: fail("A review supports up to 100 agreed KPIs")
         try: due = date.fromisoformat(body["due_on"])
         except (KeyError, TypeError, ValueError): fail("A valid goal due date is required")
         if any(item.get("objective", "").strip().casefold() == text(body.get("objective"), "objective", 500).casefold() for item in items):
@@ -422,8 +424,8 @@ async def assess(db, user, reference, stage, body):
         if status not in {"Draft", "Self_Draft"}: fail("Self-assessment has already been submitted", 409)
         if set(body) - {"summary", "achievements", "support_needed", "submit"}: fail("Self-assessments cannot contain manager or score fields")
         if "submit" in body and not isinstance(body["submit"], bool): fail("Submission must be a boolean")
-        if row.get("cycle_type") != "Probation" and body.get("submit") and not 3 <= len(row.get("section_a_kpis") or []) <= 5:
-            fail("Agree three to five measurable KPIs before submitting the assessment", 409)
+        if row.get("cycle_type") != "Probation" and body.get("submit") and not 3 <= len(row.get("section_a_kpis") or []) <= MAX_KPIS:
+            fail("Agree at least three measurable KPIs before submitting the assessment", 409)
         if row.get("cycle_type") != "Probation" and body.get("submit") and not row.get("goals_acknowledged_at"):
             fail("Employee acknowledgement of agreed goals is required", 409)
         if body.get("submit"):
@@ -441,8 +443,8 @@ async def assess(db, user, reference, stage, body):
         if set(body) - {"summary", "kpi_scores"}: fail("Managers cannot set HR scores, signatures or final ratings")
         inputs = body.get("kpi_scores")
         agreed = row.get("section_a_kpis") or []
-        if not isinstance(inputs, list) or not 3 <= len(inputs) <= 5 or len(inputs) != len(agreed):
-            fail("Assess all three to five agreed KPIs")
+        if not isinstance(inputs, list) or not 3 <= len(inputs) <= MAX_KPIS or len(inputs) != len(agreed):
+            fail("Assess every agreed KPI")
         if any(not isinstance(item, dict) or not isinstance(item.get("goal_id"), str) for item in inputs):
             fail("KPI assessments require valid goal identifiers")
         if {item.get("goal_id") for item in inputs if isinstance(item, dict)} != {item["id"] for item in agreed} or len({item.get("goal_id") for item in inputs}) != len(inputs):

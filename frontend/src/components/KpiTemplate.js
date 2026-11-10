@@ -1,3 +1,4 @@
+import { MAX_REVIEW_KPIS } from './performanceLimits';
 import React, { useEffect, useState } from 'react';
 import * as api from '../services/api';
 import LeaveActionButton from './LeaveActionButton';
@@ -56,7 +57,7 @@ export default function KpiTemplate({ reviews, onUpdated }) {
           {values.goals.length > 3 && <LeaveActionButton disabled={busy} onClick={() => setValues(v => ({ ...v, goals: v.goals.filter((_, i) => i !== index) }))}>Remove KPI {index + 1}</LeaveActionButton>}
         </fieldset>)}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-          <LeaveActionButton disabled={busy || values.goals.length >= 5} onClick={() => setValues(v => ({ ...v, goals: [...v.goals, blank()] }))}>Add KPI</LeaveActionButton>
+          <LeaveActionButton disabled={busy || values.goals.length >= MAX_REVIEW_KPIS} onClick={() => setValues(v => ({ ...v, goals: [...v.goals, blank()] }))}>Add KPI</LeaveActionButton>
           <LeaveActionButton type="submit" variant="primary" disabled={busy}>Save KPI template</LeaveActionButton>
           {saved && !dirty && <span role="status">Template saved</span>}
         </div>
