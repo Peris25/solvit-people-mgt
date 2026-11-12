@@ -25,3 +25,8 @@
 .profile-editor-notice { position:fixed; bottom:24px; right:24px; z-index:1100; padding:12px 18px; border:1px solid #abefc6; border-radius:12px; background:#ecfdf3; color:#067647; box-shadow:0 6px 20px #10182812; font:500 13px Arial,sans-serif; text-transform:none; letter-spacing:normal; }
 .profile-editor-dialog button:disabled { opacity:.55; cursor:wait; }
 @media(max-width:560px) { .profile-editor-fields, .profile-editor-group { grid-template-columns:1fr; } .profile-editor-heading,.profile-editor-fields { padding:20px; } .profile-editor-education { grid-template-columns:1fr; } .profile-editor-footer { padding:16px 20px; } }
+[data-theme="dark"] .profile-editor-dialog { background:#1f2632; color:#ecf0f6; border-color:#343e4d; }
+[data-theme="dark"] .profile-editor-dialog :is(input,select,textarea), [data-theme="dark"] .profile-editor-dialog .profile-editor-secondary, [data-theme="dark"] .profile-editor-icon { background:#252e3c; color:#ecf0f6; border-color:#465367; }
+[data-theme="dark"] .profile-editor-heading, [data-theme="dark"] .profile-editor-group { border-color:#343e4d; }
+[data-theme="dark"] .profile-editor-footer { background:#252e3c; border-color:#343e4d; }
+[data-theme="dark"] .profile-editor-heading p, [data-theme="dark"] .profile-editor-fields small { color:#a9b2c1; }

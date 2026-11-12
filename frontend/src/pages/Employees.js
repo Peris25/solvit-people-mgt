@@ -6,6 +6,8 @@ import EmployeePicker from '../components/EmployeePicker';
 import EmployeeAccountForm from '../components/EmployeeAccountForm';
 import EmployeeLoginReview from '../components/EmployeeLoginReview';
 import * as api from '../services/api';
+import { Search } from 'lucide-react';
+import WorkspaceSkeleton from '../components/WorkspaceSkeleton';
 
 const LIFECYCLE_STATES = ['Active', 'Inactive', 'Onboarding', 'Probation', 'On_Leave', 'PIP', 'Realignment', 'Suspended', 'Notice_Period', 'Exiting', 'Exited'];
 const ROLE_LEVELS = ['L1', 'L2', 'L3', 'L4', 'L5', 'B1a', 'B1b'];
@@ -171,14 +173,14 @@ export default function Employees() {
   };
 
   return (
-    <div data-testid="employees-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '24px' }}>
+    <div data-testid="employees-page" className="workspace-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
+      <div className="workspace-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '24px' }}>
         <div>
           <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', margin: 0 }}>Employee Database</h1>
           <p style={{ color: '#525252', fontSize: '13px', margin: 0, marginTop: '4px' }}>FTE employees — {employees.length} records</p>
         </div>
         {canEdit && (
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div className="workspace-page-actions" style={{ display: 'flex', gap: '8px' }}>
             {user?.role === 'hr_admin' && <button type="button" disabled={accountBusy} onClick={() => setShowLogins(value => !value)} aria-expanded={showLogins} style={{ padding: '10px 18px', backgroundColor: 'transparent', border: '1px solid #191919', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>Employee logins</button>}
             <button data-testid="export-employees-csv" onClick={() => api.downloadCSV('employees')} style={{ padding: '10px 18px', backgroundColor: 'transparent', color: '#191919', border: '1px solid #191919', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>↓ CSV</button>
             <button data-testid="add-employee-btn" onClick={() => { setSelected(null); setShowForm(true); }} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>
@@ -203,14 +205,14 @@ export default function Employees() {
       )}
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
-        <input data-testid="search-employees" placeholder="Search name, email, role..." value={search} onChange={e => setSearch(e.target.value)}
-          style={{ padding: '8px 12px', border: '1px solid rgba(25,25,25,0.15)', fontSize: '13px', width: '240px', fontFamily: 'Arial', outline: 'none' }} />
-        <select data-testid="filter-state" value={filterState} onChange={e => setFilterState(e.target.value)} style={{ padding: '8px 12px', border: '1px solid rgba(25,25,25,0.15)', fontSize: '13px', fontFamily: 'Arial', outline: 'none' }}>
+      <div className="workspace-toolbar" style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        <label className="workspace-search"><Search size={17} aria-hidden="true" /><input className="workspace-search-input" aria-label="Search employees" data-testid="search-employees" placeholder="Search name, email, role..." value={search} onChange={e => setSearch(e.target.value)}
+          style={{ padding: '8px 12px', border: '1px solid rgba(25,25,25,0.15)', fontSize: '13px', width: '240px', fontFamily: 'Arial', outline: 'none' }} /></label>
+        <select aria-label="Employee status" data-testid="filter-state" value={filterState} onChange={e => setFilterState(e.target.value)} style={{ padding: '8px 12px', border: '1px solid rgba(25,25,25,0.15)', fontSize: '13px', fontFamily: 'Arial', outline: 'none' }}>
           <option value="">All Statuses</option>
           {LIFECYCLE_STATES.map(s => <option key={s} value={s}>{s.replaceAll('_', ' ')}</option>)}
         </select>
-        <select data-testid="filter-dept" value={filterDept} onChange={e => setFilterDept(e.target.value)} style={{ padding: '8px 12px', border: '1px solid rgba(25,25,25,0.15)', fontSize: '13px', fontFamily: 'Arial', outline: 'none' }}>
+        <select aria-label="Employee department" data-testid="filter-dept" value={filterDept} onChange={e => setFilterDept(e.target.value)} style={{ padding: '8px 12px', border: '1px solid rgba(25,25,25,0.15)', fontSize: '13px', fontFamily: 'Arial', outline: 'none' }}>
           <option value="">All Departments</option>
           {filterDepartments.map(d => <option key={d} value={d}>{d}</option>)}
         </select>
@@ -219,8 +221,8 @@ export default function Employees() {
       {/* Table */}
       {refreshing && !loading && <p role="status" style={{ fontSize: 12, color: '#667085' }}>Updating employee list...</p>}
       {listError && <p role="alert">{listError} <button onClick={loadEmployees}>Retry</button></p>}
-      <div aria-busy={refreshing} style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
-        {loading ? <div style={{ padding: '48px', textAlign: 'center', color: '#525252' }}>Loading...</div> : (
+      <div className="workspace-table" aria-busy={refreshing} style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
+        {loading ? <WorkspaceSkeleton label="Loading employees..." /> : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
               <tr style={{ backgroundColor: '#F5F5F5' }}>
@@ -236,13 +238,13 @@ export default function Employees() {
             </thead>
             <tbody>
               {employees.map((emp, i) => (
-                <tr key={emp.id} data-testid={`emp-row-${emp.id}`} onClick={() => navigate(`/employees/${emp.id}`)} style={{ borderBottom: '1px solid rgba(25,25,25,0.05)', backgroundColor: selectedIds.has(emp.id) ? '#FEF2F2' : (i % 2 === 0 ? '#fff' : '#FAFAFA'), cursor: 'pointer' }} onMouseEnter={e => { if (!selectedIds.has(emp.id)) e.currentTarget.style.backgroundColor = '#FEF2F2'; }} onMouseLeave={e => { if (!selectedIds.has(emp.id)) e.currentTarget.style.backgroundColor = i % 2 === 0 ? '#fff' : '#FAFAFA'; }}>
+                <tr key={emp.id} data-testid={`emp-row-${emp.id}`} data-selected={selectedIds.has(emp.id)} onClick={() => navigate(`/employees/${emp.id}`)} style={{ borderBottom: '1px solid rgba(25,25,25,0.05)', backgroundColor: selectedIds.has(emp.id) ? '#FEF2F2' : (i % 2 === 0 ? '#fff' : '#FAFAFA'), cursor: 'pointer' }} onMouseEnter={e => { if (!selectedIds.has(emp.id)) e.currentTarget.style.backgroundColor = '#FEF2F2'; }} onMouseLeave={e => { if (!selectedIds.has(emp.id)) e.currentTarget.style.backgroundColor = i % 2 === 0 ? '#fff' : '#FAFAFA'; }}>
                   {canEdit && (
                     <td style={{ padding: '10px 12px', width: '32px' }} onClick={e => e.stopPropagation()}>
                       <input type="checkbox" data-testid={`bulk-select-${emp.id}`} checked={selectedIds.has(emp.id)} onChange={() => toggleSelect(emp.id)} />
                     </td>
                   )}
-                  <td style={{ padding: '10px 16px', fontWeight: 700, color: '#191919' }}>{emp.full_name}</td>
+                  <td style={{ padding: '10px 16px', fontWeight: 700, color: '#191919' }}><span className="workspace-employee-name"><span className="workspace-employee-avatar" aria-hidden="true">{(emp.full_name || '?').split(' ').filter(Boolean).map(part => part[0]).slice(0,2).join('')}</span><span>{emp.full_name}</span></span></td>
                   <td style={{ padding: '10px 16px', color: '#525252' }}>{emp.work_email}</td>
                   <td style={{ padding: '10px 16px', color: '#525252' }}>{emp.role_title}</td>
                   <td style={{ padding: '10px 16px', color: '#525252' }}>{emp.department}</td>
@@ -264,7 +266,7 @@ export default function Employees() {
                 </tr>
               ))}
               {employees.length === 0 && (
-                <tr><td colSpan={9} style={{ padding: '32px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>No employees found</td></tr>
+                <tr><td colSpan={canEdit ? 10 : 9} style={{ padding: '32px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>No employees found</td></tr>
               )}
             </tbody>
           </table>

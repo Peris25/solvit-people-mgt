@@ -9,6 +9,7 @@ import EmployeeDocuments from '../components/EmployeeDocuments';
 import ProfilePhoto from '../components/ProfilePhoto';
 import StatutoryEditor from '../components/StatutoryEditor';
 import ProfileCardEditor from '../components/ProfileCardEditor';
+import WorkspaceSkeleton from '../components/WorkspaceSkeleton';
 
 const fmtKES = (n) => n != null ? `KES ${Number(n).toLocaleString('en-KE')}` : '—';
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
@@ -36,7 +37,7 @@ export default function EmployeeProfile({ selfService = false }) {
   }, [selfService, id, key]);
   useEffect(() => { active.current = key; setTab('overview'); load(); return () => { active.current = null; }; }, [load, key]);
 
-  if (loading || loadedFor !== key) return <div style={{ padding: '48px', textAlign: 'center' }}>Loading profile...</div>;
+  if (loading || loadedFor !== key) return <WorkspaceSkeleton profile label="Loading profile..." />;
   if (!profile) return <div style={{ padding: '24px' }}><p role="alert">{error}</p><button onClick={load}>Retry</button>{selfService && <RequiredPasswordChange required={false} />}</div>;
 
   const e = profile.employee;
@@ -62,18 +63,20 @@ export default function EmployeeProfile({ selfService = false }) {
   if (selfService) TABS.push({ k: 'account', l: 'Account security' });
 
   return (
-    <div data-testid="employee-profile-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
+    <div data-testid="employee-profile-page" className="workspace-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
       {/* Header card */}
-      <div style={{ backgroundColor: '#191919', color: '#fff', padding: '28px', marginBottom: '20px' }}>
-        <button data-testid="back-to-employees" onClick={() => navigate(selfService ? '/dashboard' : '/employees')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: '11px', fontFamily: 'Arial', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '14px', padding: 0 }}>{selfService ? '← Staff Home · My Profile' : '← Back to Employees'}</button>
-        <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
+      <div className="workspace-profile-hero" style={{ backgroundColor: '#191919', color: '#fff', padding: '28px', marginBottom: '20px' }}>
+        <button className="workspace-profile-back" data-testid="back-to-employees" onClick={() => navigate(selfService ? '/dashboard' : '/employees')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: '11px', fontFamily: 'Arial', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '14px', padding: 0 }}>{selfService ? '← Staff Home · My Profile' : '← Back to Employees'}</button>
+        <div className="workspace-profile-identity" style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
           {selfService ? <ProfilePhoto key={key} initials={initials} /> : <div style={{ width: '72px', height: '72px', borderRadius: '50%', backgroundColor: '#FF353F', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <span style={{ color: '#fff', fontWeight: 900, fontSize: '24px' }}>{initials}</span>
           </div>}
           <div style={{ flex: 1 }}>
             <h1 style={{ fontSize: '28px', fontWeight: 900, letterSpacing: '-0.04em', margin: 0, color: '#fff' }}>{e.full_name}</h1>
-            <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', marginTop: '4px' }}>{e.role_title} · {e.department} · {e.role_level}</div>
-            <div style={{ display: 'flex', gap: '14px', marginTop: '14px', flexWrap: 'wrap', fontSize: '11px' }}>
+            <div className="workspace-profile-role" style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', marginTop: '4px' }}>{[e.role_title, e.department, e.role_level || e.job_level].filter(Boolean).join(' · ')}</div>
+          </div>
+        </div>
+            <div className="workspace-profile-facts" style={{ display: 'flex', gap: '14px', marginTop: '14px', flexWrap: 'wrap', fontSize: '11px' }}>
               <Stat label="State" value={<StatusBadge status={e.lifecycle_state} small />} />
               <Stat label="Email" value={e.work_email} />
               <Stat label="Phone" value={e.phone_number || '—'} />
@@ -83,12 +86,10 @@ export default function EmployeeProfile({ selfService = false }) {
               <Stat label="Last Score" value={e.last_performance_score ?? '—'} />
               {e.flight_risk_level && <Stat label="Flight Risk" value={<span style={{ color: e.flight_risk_level === 'Critical' ? '#FF353F' : e.flight_risk_level === 'High' ? '#F97316' : e.flight_risk_level === 'Elevated' ? '#FCD34D' : '#22C55E', fontWeight: 900 }}>{e.flight_risk_level}</span>} />}
             </div>
-          </div>
-        </div>
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', borderBottom: '2px solid rgba(25,25,25,0.1)', marginBottom: '20px', flexWrap: 'wrap' }}>
+      <div className="workspace-tabs" style={{ display: 'flex', borderBottom: '2px solid rgba(25,25,25,0.1)', marginBottom: '20px', flexWrap: 'wrap' }}>
         {TABS.map(t => (
           <button key={t.k} data-testid={`profile-tab-${t.k}`} onClick={() => setTab(t.k)} style={{ padding: '10px 18px', backgroundColor: 'transparent', border: 'none', borderBottom: tab === t.k ? '2px solid #FF353F' : '2px solid transparent', marginBottom: '-2px', cursor: 'pointer', fontSize: '11px', fontWeight: tab === t.k ? 700 : 400, color: tab === t.k ? '#FF353F' : '#525252', fontFamily: 'Arial', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{t.l}</button>
         ))}
@@ -131,20 +132,20 @@ function Overview({ profile, user, onEmployeeSaved }) {
     return value ? [value.name, value.relationship, value.phone_number, value.email].filter(Boolean).join(' · ') || 'Not recorded' : 'Not recorded';
   };
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '12px' }}>
+    <div className="workspace-profile-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '12px' }}>
       <Card title="Personal & Statutory" action={canEdit ? <StatutoryEditor employee={e} user={user} onSaved={onEmployeeSaved} /> : null}>
-        <Row k="National ID" v={e.national_id_number || '—'} />
-        <Row k="KRA PIN" v={e.kra_pin || '—'} />
-        <Row k="NSSF" v={e.nssf_number || '—'} />
-        <Row k="SHA" v={e.sha_number || '—'} />
-        <Row k="DOB" v={fmtDate(e.date_of_birth)} />
-        <Row k="Gender" v={e.gender || '—'} />
+        <Row k="National ID" v={e.national_id_number || 'Not recorded'} />
+        <Row k="KRA PIN" v={e.kra_pin || 'Not recorded'} />
+        <Row k="NSSF" v={e.nssf_number || 'Not recorded'} />
+        <Row k="SHA" v={e.sha_number || 'Not recorded'} />
+        <Row k="DOB" v={e.date_of_birth ? fmtDate(e.date_of_birth) : 'Not recorded'} />
+        <Row k="Gender" v={e.gender || 'Not recorded'} />
       </Card>
       <Card title="Employment" action={editor('employment')}>
         <Row k="Staff ID" v={e.staff_id || e.employee_number || 'Not recorded'} />
         <Row k="Type" v={e.employment_type || 'Full Time'} />
         <Row k="Start Date" v={fmtDate(e.start_date)} />
-        <Row k="Probation Ends" v={fmtDate(e.probation_end_date)} />
+        <Row k="Probation Ends" v={e.probation_end_date ? fmtDate(e.probation_end_date) : 'Not recorded'} />
         <Row k="Lifecycle" v={<StatusBadge status={e.lifecycle_state} small />} />
         <Row k="Project Eligible" v={e.project_ownership_eligible ? 'Yes' : 'No'} />
       </Card>
@@ -171,7 +172,7 @@ function Overview({ profile, user, onEmployeeSaved }) {
               </div>
             ))}
           </div>
-        ) : <div style={{ fontSize: '12px', color: '#9CA3AF' }}>No reviews yet</div>}
+        ) : <div style={{ fontSize: '13px', color: '#667080' }}>No reviews yet</div>}
       </Card>
       <Card title="Recognitions Received">
         {profile.recognitions?.length ? (
@@ -183,7 +184,7 @@ function Overview({ profile, user, onEmployeeSaved }) {
               </div>
             ))}
           </div>
-        ) : <div style={{ fontSize: '12px', color: '#9CA3AF' }}>No recognitions yet</div>}
+        ) : <div style={{ fontSize: '13px', color: '#667080' }}>No recognitions yet</div>}
       </Card>
     </div>
   );
@@ -191,8 +192,8 @@ function Overview({ profile, user, onEmployeeSaved }) {
 
 function Card({ title, children, action }) {
   return (
-    <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', borderRadius: 14, minWidth: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 60, boxSizing: 'border-box', padding: '10px 16px', borderBottom: '1px solid rgba(25,25,25,0.08)', borderRadius: '14px 14px 0 0', backgroundColor: '#F9FAFB', fontWeight: 700, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.12em' }}><span>{title}</span>{action}</div>
+    <div className="workspace-profile-card" style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', borderRadius: 14, minWidth: 0 }}>
+      <div className="workspace-profile-card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 60, boxSizing: 'border-box', padding: '10px 16px', borderBottom: '1px solid rgba(25,25,25,0.08)', borderRadius: '14px 14px 0 0', backgroundColor: '#F9FAFB', fontWeight: 700, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.12em' }}><span>{title}</span>{action}</div>
       <div style={{ padding: '14px 16px' }}>{children}</div>
     </div>
   );
@@ -200,7 +201,7 @@ function Card({ title, children, action }) {
 
 function Row({ k, v }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '9px 0', borderBottom: '1px solid rgba(25,25,25,0.04)', fontSize: '12px', alignItems: 'baseline' }}>
+    <div className="workspace-profile-row" style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '9px 0', borderBottom: '1px solid rgba(25,25,25,0.04)', fontSize: '12px', alignItems: 'baseline' }}>
       <span style={{ color: '#525252', flexShrink: 0 }}>{k}</span>
       <span style={{ fontWeight: 600, color: '#191919', textAlign: 'right', overflowWrap: 'anywhere', minWidth: 0 }}>{v}</span>
     </div>

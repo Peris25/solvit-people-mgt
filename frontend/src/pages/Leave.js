@@ -1,6 +1,7 @@
 import EmployeeLeaveGroups from '../components/EmployeeLeaveGroups';
 import EmployeeLeaveBalances from '../components/EmployeeLeaveBalances';
 import LeaveActionButton from '../components/LeaveActionButton';
+import WorkspaceSkeleton from '../components/WorkspaceSkeleton';
 import { leaveStatus } from '../utils/leaveDisplay';
 import LeaveHistory, { HistoricalLeaveDecision } from '../components/LeaveHistory';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -237,8 +238,8 @@ export default function Leave() {
   );
 
   return (
-    <div data-testid="leave-page" style={{ fontFamily: 'Nunito Sans, sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '24px' }}>
+    <div data-testid="leave-page" className="workspace-page" style={{ fontFamily: 'Nunito Sans, sans-serif' }}>
+      <div className="workspace-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '24px' }}>
         <div>
           <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', margin: 0, fontFamily: 'Barlow' }}>Leave Management</h1>
           <p style={{ color: '#525252', fontSize: '13px', margin: '4px 0 0' }}>Handbook v2 · Contract terms take precedence · Manager and HR approval</p>
@@ -257,7 +258,7 @@ export default function Leave() {
 
       {/* Balances */}
       {balances && loadedFor === accountKey && (
-        <div data-testid="leave-balances" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px', marginBottom: '24px' }}>
+        <div className="workspace-balances" data-testid="leave-balances" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px', marginBottom: '24px' }}>
           {/* Accrued balance card */}
           {annualBal && (
             <div data-testid="balance-accrued" style={{ backgroundColor: '#191919', color: '#fff', padding: '14px 18px' }}>
@@ -287,7 +288,7 @@ export default function Leave() {
         {!loading && selectedRequests.length === 0 ? 'The requested leave record is unavailable or not authorized.' : 'Viewing a linked leave request.'}
         <button onClick={() => setSearchParams({})} style={{ marginLeft: '12px', minHeight: '44px' }}>Show all requests</button>
       </div>}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0', borderBottom: '2px solid rgba(25,25,25,0.1)', marginBottom: '20px' }}>
+      <div className="workspace-tabs" style={{ display: 'flex', flexWrap: 'wrap', gap: '0', borderBottom: '2px solid rgba(25,25,25,0.1)', marginBottom: '20px' }}>
         <TabButton id="my" label="My Applications" Icon={ClipboardList} />
         {hasTeam && <TabButton id="team" label="Team Leave" Icon={UsersIcon} />}
         {isHR && <TabButton id="balances" label="Employee Balances" Icon={UsersIcon} />}
@@ -297,12 +298,12 @@ export default function Leave() {
       </div>
 
       {error && <div role="alert" style={{ padding: '16px', background: '#FEE2E2', marginBottom: '16px' }}>{error}</div>}
-      {!historyAvailable && !loading && loadedFor === accountKey ? <p>Leave history is unavailable. <button style={btnGhost} onClick={load}>Retry</button></p> : loading || loadedFor !== accountKey ? <div style={{ padding: '48px', textAlign: 'center', color: '#525252' }}>Loading…</div> : (
+      {!historyAvailable && !loading && loadedFor === accountKey ? <p>Leave history is unavailable. <button style={btnGhost} onClick={load}>Retry</button></p> : loading || loadedFor !== accountKey ? <WorkspaceSkeleton label="Loading leave..." /> : (
         <>
           {tab === 'my' && <RequestsTable rows={myRequests} withdraw={withdraw} edit={openForm} review={openReview} saving={saving} testId="my-applications" />}
           {tab === 'team' && hasTeam && <>
             <p>All matching applications are listed below with their review actions. This queue refreshes every 30 seconds and when you return to this window. Workbook corrections remain under Imported leave history.</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+            <div className="workspace-toolbar" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
               <input aria-label="Search team leave" placeholder="Search employee, leave type or date" value={teamSearch} onChange={event => setTeamSearch(event.target.value)} style={{ ...inp, maxWidth: '360px' }} />
               <select aria-label="Team leave status" value={teamStatus} onChange={event => setTeamStatus(event.target.value)} style={{ ...inp, maxWidth: '200px' }}>{['All', 'Pending', 'Approved', 'Denied', 'Withdrawn'].map(status => <option key={status}>{status}</option>)}</select>
               <button style={btnGhost} onClick={load}>Refresh requests</button>
@@ -448,7 +449,7 @@ function RequestsTable(props) {
 
 function LeaveRecordsTable({ rows, withdraw, review, historicalReview, edit, saving, testId }) {
   return (
-    <div data-testid={testId} style={{ overflowX: 'auto', backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
+    <div className="workspace-table" data-testid={testId} style={{ overflowX: 'auto', backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
         <thead>
           <tr style={{ backgroundColor: '#F5F5F5' }}>
