@@ -103,6 +103,23 @@ def calculate_overall_score(a: float, b: float, c: float) -> float:
     return round(a * 0.5 + b * 0.3 + c * 0.2, 1)
 
 
+@router.get('/role-kpi-library')
+async def get_role_kpi_library(request: Request):
+    from utils import role_kpi_library
+    return await role_kpi_library.listing(get_db(), await get_current_user(request))
+
+
+@router.put('/role-kpi-library/{role_id}')
+async def save_role_kpis(role_id: str, request: Request):
+    from utils import role_kpi_library
+    user = await get_current_user(request)
+    workflow.require_hr(user)
+    body = await request.json()
+    db = get_db()
+    async with integrity_write(db):
+        return await role_kpi_library.save(db,user,role_id,body)
+
+
 @router.get('/kpi-template')
 async def get_kpi_template(request: Request):
     from utils import performance_kpi_templates as templates

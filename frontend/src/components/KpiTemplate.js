@@ -2,12 +2,19 @@ import { MAX_REVIEW_KPIS } from './performanceLimits';
 import React, { useEffect, useState } from 'react';
 import * as api from '../services/api';
 import LeaveActionButton from './LeaveActionButton';
+import RoleKpiLibrary from './RoleKpiLibrary';
+import { useAuth } from '../context/AuthContext';
 
 const blank = () => ({ objective: '', metric: '', target: '' });
 const control = { width: '100%', minHeight: 44, padding: 10, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', font: 'inherit' };
 const message = e => typeof e?.response?.data?.detail === 'string' ? e.response.data.detail : e.message || 'Unable to complete this action.';
 
-export default function KpiTemplate({ reviews, onUpdated }) {
+export default function KpiTemplate(props) {
+  const { user } = useAuth();
+  return <><RoleKpiLibrary key={`${user?.id}:${user?.role}`} /><details style={{marginBottom:20}}><summary>Previous standard template and existing reviews</summary><p>This keeps the earlier review setup available while the V3 role-based review process is being completed.</p><LegacyKpiTemplate {...props} /></details></>;
+}
+
+export function LegacyKpiTemplate({ reviews, onUpdated }) {
   const [saved, setSaved] = useState(null);
   const [values, setValues] = useState({ name: 'Standard employee KPIs', goals: [blank(), blank(), blank()] });
   const [loading, setLoading] = useState(true);

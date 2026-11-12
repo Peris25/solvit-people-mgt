@@ -1,6 +1,6 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import KpiTemplate from './KpiTemplate';
+import { LegacyKpiTemplate as KpiTemplate } from './KpiTemplate';
 import * as api from '../services/api';
 jest.mock('../services/api');
 global.IS_REACT_ACT_ENVIRONMENT = true;
