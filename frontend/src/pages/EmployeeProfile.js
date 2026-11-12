@@ -138,12 +138,12 @@ function Overview({ profile, user, onEmployeeSaved }) {
         <Row k="KRA PIN" v={e.kra_pin || 'Not recorded'} />
         <Row k="NSSF" v={e.nssf_number || 'Not recorded'} />
         <Row k="SHA" v={e.sha_number || 'Not recorded'} />
-        <Row k="DOB" v={e.date_of_birth ? fmtDate(e.date_of_birth) : 'Not recorded'} />
+        <Row k="Date of birth" v={e.date_of_birth ? fmtDate(e.date_of_birth) : 'Not recorded'} />
         <Row k="Gender" v={e.gender || 'Not recorded'} />
       </Card>
       <Card title="Employment" action={editor('employment')}>
         <Row k="Staff ID" v={e.staff_id || e.employee_number || 'Not recorded'} />
-        <Row k="Type" v={e.employment_type || 'Full Time'} />
+        <Row k="Employment type" v={e.employment_type?.replaceAll('_', ' ') || 'Not recorded'} />
         <Row k="Start Date" v={fmtDate(e.start_date)} />
         <Row k="Probation Ends" v={e.probation_end_date ? fmtDate(e.probation_end_date) : 'Not recorded'} />
         <Row k="Lifecycle" v={<StatusBadge status={e.lifecycle_state} small />} />
@@ -191,10 +191,16 @@ function Overview({ profile, user, onEmployeeSaved }) {
 }
 
 function Card({ title, children, action }) {
+  const descriptions = {
+    'Personal & Statutory': 'Identity, statutory records and personal details',
+    Employment: 'Employment dates, status and eligibility',
+    'Contacts & personal information': 'Contact details, next of kin and education',
+    'Bank & payment': 'Bank account and payment preferences',
+  };
   return (
     <div className="workspace-profile-card" style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', borderRadius: 14, minWidth: 0 }}>
       <div className="workspace-profile-card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 60, boxSizing: 'border-box', padding: '10px 16px', borderBottom: '1px solid rgba(25,25,25,0.08)', borderRadius: '14px 14px 0 0', backgroundColor: '#F9FAFB', fontWeight: 700, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.12em' }}><span>{title}</span>{action}</div>
-      <div style={{ padding: '14px 16px' }}>{children}</div>
+      <div className="workspace-profile-card-body" style={{ padding: '14px 16px' }}>{descriptions[title] && <p className="workspace-profile-card-description">{descriptions[title]}</p>}{children}</div>
     </div>
   );
 }
@@ -203,7 +209,7 @@ function Row({ k, v }) {
   return (
     <div className="workspace-profile-row" style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '9px 0', borderBottom: '1px solid rgba(25,25,25,0.04)', fontSize: '12px', alignItems: 'baseline' }}>
       <span style={{ color: '#525252', flexShrink: 0 }}>{k}</span>
-      <span style={{ fontWeight: 600, color: '#191919', textAlign: 'right', overflowWrap: 'anywhere', minWidth: 0 }}>{v}</span>
+      <span data-empty={v === 'Not recorded' || !v ? 'true' : undefined} style={{ fontWeight: 600, color: '#191919', textAlign: 'right', overflowWrap: 'anywhere', minWidth: 0 }}>{v || 'Not recorded'}</span>
     </div>
   );
 }

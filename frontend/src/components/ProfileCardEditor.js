@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Pencil, X, Plus, Trash2 } from 'lucide-react';
 import * as api from '../services/api';
+import { FieldError, FormNotice, fieldErrorsFrom } from './FormDialog';
 import './ProfileCardEditor.css';
 
 export const PROFILE_SECTIONS = {
@@ -40,6 +41,7 @@ export default function ProfileCardEditor({ employee, section, user, onSaved }) 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const mounted = useRef(true);
   const dialog = useRef(null);
   const trigger = useRef(null);
@@ -53,12 +55,16 @@ export default function ProfileCardEditor({ employee, section, user, onSaved }) 
     if (!editing) return undefined;
     const element = dialog.current;
     if (element.showModal) element.showModal(); else element.setAttribute('open', '');
+    element.querySelector('input:not([disabled]),select:not([disabled]),textarea:not([disabled])')?.focus();
     const button = trigger.current;
     return () => { if (element.close) element.close(); button?.focus(); };
   }, [editing]);
-  const setField = (field, value) => setForm(previous => ({ ...previous, [field]: value }));
+  const setField = (field, value) => {
+    setForm(previous => ({ ...previous, [field]: value }));
+    setFieldErrors(previous => ({ ...previous, [field]: undefined }));
+  };
   const save = async event => {
-    event.preventDefault(); setError(''); setSuccess('');
+    event.preventDefault(); setError(''); setSuccess(''); setFieldErrors({});
     const original = initialValues(employee, config.fields);
     const changes = Object.fromEntries(Object.entries(form).map(([field, value]) => [field, typeof value === 'string' ? value.trim() : value])
       .filter(([field, value]) => JSON.stringify(value) !== JSON.stringify(original[field])));
@@ -66,6 +72,7 @@ export default function ProfileCardEditor({ employee, section, user, onSaved }) 
     setSaving(true);
     try {
       const response = await api.updateEmployee(employee.id, changes);
+      if (!response?.data || response.status >= 400) throw new Error('Save could not be confirmed');
       if (mounted.current) {
         onSaved({ ...changes, ...response.data }); setEditing(false); setSuccess(config.saved || `${config.title} saved.`);
       }
@@ -73,6 +80,7 @@ export default function ProfileCardEditor({ employee, section, user, onSaved }) 
       if (mounted.current) {
         const detail = err?.response?.data?.detail;
         setError(typeof detail === 'string' ? detail : 'Changes could not be saved. Please check the fields and try again.');
+        setFieldErrors(fieldErrorsFrom(err));
       }
     } finally { if (mounted.current) setSaving(false); }
   };
@@ -101,8 +109,8 @@ export default function ProfileCardEditor({ employee, section, user, onSaved }) 
   };
   return <>
     <button ref={trigger} type="button" className="profile-editor-icon" aria-label={`Edit ${config.title}`} title={`Edit ${config.title}`}
-      onClick={() => { setForm(initialValues(employee, config.fields)); setError(''); setSuccess(''); setEditing(true); }}><Pencil size={16} aria-hidden="true" /></button>
-    {success && <span className="profile-editor-notice" role="status">{success}</span>}
+      onClick={() => { setForm(initialValues(employee, config.fields)); setError(''); setFieldErrors({}); setSuccess(''); setEditing(true); }}><Pencil size={16} aria-hidden="true" /></button>
+    <FormNotice message={success} onDismiss={setSuccess} />
     {editing && <dialog ref={dialog} className="profile-editor-dialog" aria-labelledby={`profile-editor-${section}-title`}
       onCancel={event => { event.preventDefault(); if (!saving) setEditing(false); }}>
       <form onSubmit={save} aria-label={`Edit ${config.title}`}>
@@ -110,16 +118,18 @@ export default function ProfileCardEditor({ employee, section, user, onSaved }) 
           <button type="button" className="profile-editor-icon" aria-label="Close editor" disabled={saving} onClick={() => setEditing(false)}><X size={20} /></button>
         </header>
         <fieldset disabled={saving} className="profile-editor-fields">
+          <p className="profile-editor-guidance">Update the details you need. Only changed fields are saved.{section === 'bank' && ' Keep any leading zeroes in the account number.'}</p>
           {config.fields.map(([field, label, type, maxLength]) => {
             if (type === 'contact') return contactInput(field, label);
             if (type === 'education') return educationInput(field);
             const disabled = field === 'lifecycle_state' && !['hr_admin', 'general_manager'].includes(user?.role);
             return <label key={field} className={type === 'checkbox' ? 'profile-editor-checkbox' : ''}>{label}
-              {Array.isArray(type) ? <select aria-label={label} value={form[field]} disabled={disabled} onChange={event => setField(field, event.target.value)}>
+              {Array.isArray(type) ? <select aria-label={label} aria-invalid={!!fieldErrors[field]} aria-describedby={fieldErrors[field] ? `form-error-${field}` : undefined} value={form[field]} disabled={disabled} onChange={event => setField(field, event.target.value)}>
                 <option value="">Not specified</option>{[...new Set([...type, ...(form[field] ? [form[field]] : [])])].map(value => <option key={value} value={value}>{value.replaceAll('_', ' ')}</option>)}
-              </select> : <input aria-label={label} type={type} maxLength={maxLength} value={type === 'checkbox' ? undefined : form[field]} checked={type === 'checkbox' ? form[field] : undefined}
+              </select> : <input aria-label={label} aria-invalid={!!fieldErrors[field]} aria-describedby={fieldErrors[field] ? `form-error-${field}` : undefined} type={type} maxLength={maxLength} value={type === 'checkbox' ? undefined : form[field]} checked={type === 'checkbox' ? form[field] : undefined}
                 onChange={event => setField(field, type === 'checkbox' ? event.target.checked : event.target.value)} />}
               {disabled && <small>Lifecycle changes require an HR admin.</small>}
+              <FieldError field={field} errors={fieldErrors} />
             </label>;
           })}
         </fieldset>

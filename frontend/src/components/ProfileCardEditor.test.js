@@ -56,3 +56,23 @@ test('unchanged modal closes without writing or clearing missing fields', async 
   expect(api.updateEmployee).not.toHaveBeenCalled();
   expect(container.querySelector('dialog')).toBeNull();
 });
+
+test('an unconfirmed save stays open without announcing success', async () => {
+  await open('bank');
+  api.updateEmployee.mockResolvedValue({ status: 500, data: null });
+  await change('Bank name', 'Synthetic bank'); await submit();
+  expect(saved).not.toHaveBeenCalled();
+  expect(container.querySelector('dialog')).not.toBeNull();
+  expect(container.querySelector('[role="alert"]').textContent).toContain('could not be saved');
+  expect(container.querySelector('[role="status"]')).toBeNull();
+});
+
+test('field validation retains the draft and omits server input values', async () => {
+  await open('bank');
+  api.updateEmployee.mockRejectedValue({ response: { data: { detail: [{ loc: ['body', 'bank_name'], msg: 'Use a shorter bank name', input: 'private-server-value' }] } } });
+  await change('Bank name', 'Synthetic bank'); await submit();
+  expect(container.querySelector('[aria-label="Bank name"]').getAttribute('aria-invalid')).toBe('true');
+  expect(container.querySelector('[aria-label="Bank name"]').value).toBe('Synthetic bank');
+  expect(container.textContent).toContain('Use a shorter bank name');
+  expect(container.textContent).not.toContain('private-server-value');
+});
