@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import StatusBadge from '../components/StatusBadge';
@@ -42,6 +42,7 @@ export default function Employees() {
   const [accountSelection, setAccountSelection] = useState([]);
   const [accountBusy, setAccountBusy] = useState(false);
   const [accountReviewVersion, setAccountReviewVersion] = useState(0);
+  const listSequence = useRef(0);
 
   const toggleSelect = (id) => setSelectedIds(prev => {
     const next = new Set(prev);
@@ -86,11 +87,12 @@ export default function Employees() {
   const filterDepartments = [...new Set([...departments, ...employees.map(e => e.department).filter(Boolean)])];
 
   const loadEmployees = useCallback(async () => {
+    const sequence = ++listSequence.current;
     try {
       setLoading(true);
       const res = await api.getEmployees({ search, lifecycle_state: filterState || undefined, department: filterDept || undefined });
-      setEmployees(res.data);
-    } finally { setLoading(false); }
+      if (sequence === listSequence.current) setEmployees(res.data);
+    } finally { if (sequence === listSequence.current) setLoading(false); }
   }, [search, filterState, filterDept]);
 
   useEffect(() => { loadEmployees(); }, [loadEmployees]);
@@ -116,14 +118,31 @@ export default function Employees() {
         if (form.role_level === (selected.role_level ?? selected.job_level ?? '')) delete data.role_level;
         if (form.employment_type === selected.employment_type) delete data.employment_type;
         if (form.lifecycle_state === (selected.lifecycle_state ?? selected.employment_status ?? selected.status ?? '')) delete data.lifecycle_state;
-        await api.updateEmployee(selected.id, data);
+        const response = await api.updateEmployee(selected.id, data);
+        const saved = { ...selected, ...data, ...response.data };
+        // The save response is authoritative; avoid another full list request
+        // that hides the table and delays the confirmation of a successful edit.
+        ++listSequence.current;
+        setLoading(false);
+        let matchesSearch = true;
+        if (search) {
+          try {
+            const pattern = new RegExp(search, 'i');
+            matchesSearch = [saved.full_name, saved.work_email, saved.role_title].some(value => pattern.test(value || ''));
+          } catch { matchesSearch = false; }
+        }
+        const visible = matchesSearch && (!filterDept || saved.department === filterDept)
+          && (filterState ? saved.lifecycle_state === filterState : saved.lifecycle_state !== 'Exited');
+        setEmployees(rows => rows.flatMap(employee => employee.id === selected.id ? visible ? [saved] : [] : [employee])
+          .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')));
+        if (!visible) setSelectedIds(previous => { const next = new Set(previous); next.delete(selected.id); return next; });
       } else {
         await api.createEmployee(data);
       }
       setShowForm(false);
       setSelected(null);
       setForm({ full_name: '', work_email: '', department: '', role_title: '', role_level: 'L2', start_date: '', employment_type: 'Full_Time', current_salary_kes: '', lifecycle_state: 'Onboarding', line_manager_id: '' });
-      loadEmployees();
+      if (!selected) loadEmployees();
     } catch (err) {
       setError(employeeError(err, 'Failed to save'));
     } finally { setSaving(false); }

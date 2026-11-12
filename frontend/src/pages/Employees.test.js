@@ -38,6 +38,35 @@ test('employee rows offer only Edit and HR can select the supported statuses', a
   await act(async () => { status.value = 'Inactive'; status.dispatchEvent(new Event('change', { bubbles: true })); });
   await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
   expect(api.updateEmployee).toHaveBeenCalledWith('example', expect.objectContaining({ lifecycle_state: 'Inactive' }));
+  expect(api.getEmployees).toHaveBeenCalledTimes(1);
+  expect(container.querySelector('[data-testid="emp-row-example"]').textContent).toContain('Inactive');
+  expect(container.textContent).not.toContain('Loading...');
+});
+
+test('saved edits update the visible row from the server response without waiting for a list reload', async () => {
+  api.getEmployees.mockResolvedValue({ data: [{ id: 'example', full_name: 'Before editing', lifecycle_state: 'Active', line_manager_id: 'boss' }] });
+  api.getAllMastersSettings.mockResolvedValue({ data: {} });
+  api.updateEmployee.mockResolvedValue({ data: { id: 'example', full_name: 'Saved name', lifecycle_state: 'Active', line_manager_id: 'boss' } });
+  await act(async () => root.render(<Employees />));
+  await act(async () => container.querySelector('[data-testid="emp-row-example"] button').click());
+  // Any accidental follow-up list request would leave the old Loading screen.
+  api.getEmployees.mockReturnValue(new Promise(() => {}));
+  await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(api.getEmployees).toHaveBeenCalledTimes(1);
+  expect(container.querySelector('[data-testid="emp-row-example"]').textContent).toContain('Saved name');
+  expect(container.querySelector('form')).toBeNull();
+  expect(container.textContent).not.toContain('Loading...');
+});
+
+test('an employee moved to Exited is removed immediately from the default active list', async () => {
+  api.getEmployees.mockResolvedValue({ data: [{ id: 'example', full_name: 'Synthetic employee', lifecycle_state: 'Active', line_manager_id: 'boss' }] });
+  api.getAllMastersSettings.mockResolvedValue({ data: {} });
+  api.updateEmployee.mockResolvedValue({ data: { id: 'example', full_name: 'Synthetic employee', lifecycle_state: 'Exited' } });
+  await act(async () => root.render(<Employees />));
+  await act(async () => container.querySelector('[data-testid="emp-row-example"] button').click());
+  await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(container.querySelector('[data-testid="emp-row-example"]')).toBeNull();
+  expect(api.getEmployees).toHaveBeenCalledTimes(1);
 });
 
 test('existing employee mode allows unknown start date and role level', async () => {
