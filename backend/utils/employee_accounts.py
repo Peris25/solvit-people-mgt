@@ -145,6 +145,10 @@ async def provision_employee_account(db, employee_id, password, actor):
             "metadata": {"employee_id": key, "created": created},
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
+        # Approved exact-role KPIs become available immediately; missing or
+        # ambiguous role configuration remains for HR and is never guessed.
+        from utils.performance_v3 import auto_assignment
+        await auto_assignment(db, employee, actor)
         return {"id": user_id, "employee_id": key, "created": created}
 
 

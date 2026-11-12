@@ -109,6 +109,12 @@ async def get_role_kpi_library(request: Request):
     return await role_kpi_library.listing(get_db(), await get_current_user(request))
 
 
+@router.get('/my-role-kpis')
+async def get_my_role_kpis(request: Request):
+    from utils.performance_v3 import my_kpis
+    return await my_kpis(get_db(), await get_current_user(request))
+
+
 @router.put('/role-kpi-library/{role_id}')
 async def save_role_kpis(role_id: str, request: Request):
     from utils import role_kpi_library

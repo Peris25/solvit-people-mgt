@@ -29,6 +29,7 @@ FTE_ONBOARDING_TASKS = [
     {"task_key": "T15", "title": "Week 2: Review KPIs and clarify expectations", "assigned_role": "line_manager", "day_offset": 8},
     {"task_key": "T16", "title": "Week 3: Complete Solvit Values & Culture session", "assigned_role": "hr_admin", "day_offset": 14},
     {"task_key": "T17", "title": "Week 3: Buddy check-in with peer", "assigned_role": "employee", "day_offset": 14},
+    {"task_key": "KPI_W3", "title": "Week 3: Check assigned role KPIs and clarify expectations", "assigned_role": "line_manager", "day_offset": 14},
     {"task_key": "T18", "title": "Week 3: MD Onboarding Meeting (triggers probation)", "assigned_role": "hr_admin", "day_offset": 17},
     {"task_key": "C30", "title": "30-day check-in", "assigned_role": "line_manager", "day_offset": 30},
     {"task_key": "C60", "title": "60-day check-in", "assigned_role": "line_manager", "day_offset": 60},

@@ -4,6 +4,7 @@ import DeleteReviewDialog from '../components/DeleteReviewDialog';
 import { useNotifications } from '../context/NotificationContext';
 import CreateReviewDialog from '../components/CreateReviewDialog';
 import KpiTemplate from '../components/KpiTemplate';
+import MyRoleKpis from '../components/MyRoleKpis';
 import PerformanceWorkflow, { CycleConfiguration } from '../components/PerformanceWorkflow';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -199,6 +200,7 @@ export default function Performance() {
       </div>
 
       {error && <div role="alert">{error} <button onClick={load}>Retry</button></div>}
+      {user?.employee_id && <MyRoleKpis key={user.employee_id} />}
       {isHR && <KpiTemplate reviews={reviews} onUpdated={load} />}
       {['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) && <CycleConfiguration cycles={cycles} onUpdated={load} />}
       {['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) && <section style={{ background: '#fff', padding: 20, marginBottom: 20, borderRadius: 12 }}>

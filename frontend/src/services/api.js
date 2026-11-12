@@ -509,4 +509,5 @@ export const uploadMyProfilePhoto = (file, consent) => {
 export const deleteMyProfilePhoto = () => api.delete('/documents/me/profile-photo');
 
 export const getRoleKpiLibrary = () => api.get('/performance/role-kpi-library');
+export const getMyRoleKpis = () => api.get('/performance/my-role-kpis');
 export const saveRoleKpis = (id, data) => api.put(`/performance/role-kpi-library/${encodeURIComponent(id)}`, data);

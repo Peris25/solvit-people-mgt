@@ -62,6 +62,9 @@ def released(row):
 
 
 def projection(row, user, employee=None):
+    if row.get('workflow_version') == 3 and employee is not None:
+        from utils.performance_v3 import projection as v3_projection
+        return v3_projection(row, user, employee)
     result = {key: deepcopy(row[key]) for key in ("employee_id", "cycle_id", "cycle_type", "cycle_label", "cycle_year", "review_date", "status",
         "created_at", "updated_at", "self_due_on", "manager_due_on", "review_due_on", "workflow_version", "released_at", "review_meeting", "meeting_proposal", "starts_on", "review_month", "review_scope") if key in row}
     result["goals_acknowledged_at"] = row.get("goals_acknowledged_at")
