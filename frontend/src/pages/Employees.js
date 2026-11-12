@@ -109,6 +109,7 @@ export default function Employees() {
       if (selected) {
         // Preserve legacy identity/reporting values unless explicitly edited.
         if (form.work_email === selected.work_email) delete data.work_email;
+        if ((form.gender || '') === (selected.gender || '')) delete data.gender;
         if (form.line_manager_id === selected.line_manager_id) delete data.line_manager_id;
         // Omit an unchanged department, including legacy or missing values.
         if (form.department === selected.department) delete data.department;
@@ -263,6 +264,7 @@ export default function Employees() {
                   </div>
                 ))}
                 {[
+                  { key: 'gender', label: 'Gender', options: ['Female', 'Male', 'Other', 'Prefer not to say'] },
                   { key: 'department', label: 'Department', options: departmentOptions },
                   { key: 'role_level', label: 'Role Level', options: ROLE_LEVELS },
                   { key: 'employment_type', label: 'Employment Type', options: ['Full_Time', 'Part_Time', 'Fixed_Term'] },
@@ -270,10 +272,10 @@ export default function Employees() {
                 ].map(f => (
                   <div key={f.key}>
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>{f.label}</label>
-                    <select disabled={f.key === 'lifecycle_state' && !!selected && !['hr_admin', 'general_manager'].includes(user?.role)} required={f.key === 'department' && !selected} data-testid={`employee-${f.key}`} value={form[f.key] || ''} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
+                    <select aria-label={f.label} disabled={f.key === 'lifecycle_state' && !!selected && !['hr_admin', 'general_manager'].includes(user?.role)} required={f.key === 'department' && !selected} data-testid={`employee-${f.key}`} value={form[f.key] || ''} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
                       style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', boxSizing: 'border-box', outline: 'none' }}>
                       {f.key === 'department' && <option value="">Select department</option>}
-                      {f.key !== 'department' && !form[f.key] && <option value="">Not specified</option>}
+                      {f.key !== 'department' && (!form[f.key] || f.key === 'gender') && <option value="">Not specified</option>}
                       {[...new Set([...f.options, ...(typeof form[f.key] === 'string' && form[f.key] ? [form[f.key]] : [])])].map(o => <option key={o} value={o}>{f.key === 'lifecycle_state' ? o.replaceAll('_', ' ') : o}</option>)}
                     </select>
                   </div>

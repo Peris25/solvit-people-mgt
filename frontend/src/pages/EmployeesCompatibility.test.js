@@ -26,9 +26,30 @@ test.each(['FTE', 'Full-Time', 'Consultant', 'Legacy Type'])('unchanged legacy t
     expect(container.querySelector('[data-testid="employee-department"]').value).toBe('HR_People');
     await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
     const update = api.updateEmployee.mock.calls[0][1];
-    for (const key of ['employment_type', 'role_level', 'lifecycle_state', 'department', 'line_manager_id']) {
+    for (const key of ['employment_type', 'role_level', 'lifecycle_state', 'department', 'line_manager_id', 'gender']) {
       expect(update).not.toHaveProperty(key);
     }
     expect(update.job_level).toBe('Legacy Level');
+  } finally { await act(async () => root.unmount()); container.remove(); jest.clearAllMocks(); }
+});
+
+test.each([['Female', 'Male'], [undefined, 'Female'], ['Male', '']])('HR can correct saved gender %s to %s', async (saved, chosen) => {
+  const container = document.createElement('div'); document.body.appendChild(container);
+  const root = createRoot(container);
+  api.getEmployees.mockResolvedValue({ data: [{ id: 'staff', full_name: 'Synthetic staff', gender: saved,
+    department: 'HR & People', line_manager_id: 'boss', work_email: 'staff@example.com', role_title: 'HR', start_date: '2025-01-01' }] });
+  api.getAllMastersSettings.mockResolvedValue({ data: { workforce: { departments: [{ name: 'HR & People' }] } } });
+  api.updateEmployee.mockResolvedValue({ data: {} });
+  try {
+    await act(async () => root.render(<Employees />));
+    await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === 'Edit').click());
+    const gender = container.querySelector('[aria-label="Gender"]');
+    expect(gender.value).toBe(saved || '');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(gender, chosen);
+      gender.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await act(async () => gender.closest('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(api.updateEmployee).toHaveBeenCalledWith('staff', expect.objectContaining({ gender: chosen }));
   } finally { await act(async () => root.unmount()); container.remove(); jest.clearAllMocks(); }
 });
