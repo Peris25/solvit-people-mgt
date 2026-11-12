@@ -30,14 +30,27 @@ async def listing(db, user):
     result = []
     for row in rows:
         subject = await process.find_employee(db, row['employee_id'], process.tenant_of(user))
-        if not subject: continue
-        result.append({'id': row['id'], 'employee_name': subject.get('full_name'), 'due_on': row['due_on'], 'status': row['status']})
+        if not subject or not process.enabled(subject) or not process.fte(subject) or row['employee_id'] in reference_ids(employee): continue
+        can_submit = False
+        if row['status'] == 'Assigned':
+            try:
+                window = await process.cycle(db, user, row['cycle_id'])
+                can_submit = window.get('status') == 'Open' and date.fromisoformat(window['starts_on']) <= process.today() <= date.fromisoformat(row['due_on'])
+            except (KeyError, ValueError, TypeError):
+                continue
+            except flow.HTTPException as error:
+                if error.status_code in (404, 409): continue
+                raise
+        result.append({'id': row['id'], 'employee_name': subject.get('full_name'), 'department': subject.get('department'),
+                       'role_title': subject.get('role_title'), 'due_on': row['due_on'], 'status': row['status'], 'can_submit': can_submit})
     return result
 
 
 async def submit(db, user, reference, body):
     process.fields(body, {'scores', 'retain', 'relationship', 'comment'})
     task, employee = await owned_task(db, user, reference)
+    subject = await process.find_employee(db, task['employee_id'], process.tenant_of(user))
+    if not subject or not process.enabled(subject) or not process.fte(subject): flow.fail('The colleague is no longer eligible for this review', 409)
     if task['status'] != 'Assigned': flow.fail('This task was already submitted or needs recovery', 409)
     window = await process.cycle(db, user, task['cycle_id'])
     if window.get('status') != 'Open' or not date.fromisoformat(window['starts_on']) <= process.today() <= date.fromisoformat(task['due_on']):

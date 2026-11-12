@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import PeerReviewSelector from '../components/PeerReviewSelector';
 
 export default function Forms() {
   const { user } = useAuth();
@@ -161,7 +162,7 @@ export default function Forms() {
                 {result.score !== undefined && <p style={{ fontSize: '14px', marginTop: '12px' }}>Score: <strong style={{ fontSize: '20px', color: result.passed ? '#22C55E' : '#FF353F' }}>{result.score} / {result.pass_mark || schema?.total_marks}</strong> {result.passed ? '— PASSED' : '— FAILED'}</p>}
                 <button onClick={() => { setSelected(null); setSchema(null); setResult(null); }} style={{ marginTop: '24px', padding: '10px 24px', backgroundColor: '#191919', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Close</button>
               </div>
-            ) : (
+            ) : selected.id === 'form-26' ? <div style={{ padding: 24 }}><PeerReviewSelector /></div> : (
               <form onSubmit={submit} style={{ padding: '24px' }}>
                 {!schema || !(schema.sections || []).length || (schema.sections || []).every(s => !(s.fields || []).length) ? (
                   <div style={{ padding: '24px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px', backgroundColor: '#FAFAFA', border: '1px solid rgba(25,25,25,0.05)' }}>

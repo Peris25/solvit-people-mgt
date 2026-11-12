@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from '../services/api';
 import './PerformanceV3.css';
+import PeerReviewSelector from './PeerReviewSelector';
 
 export const errorText = error => typeof error?.response?.data?.detail === 'string' ? error.response.data.detail : 'Unable to complete the action. Your input has been kept; please retry.';
 const dateAfter = (start, days) => start ? new Date(new Date(`${start}T12:00:00Z`).getTime() + days * 86400000).toISOString().slice(0, 10) : 'Select a start date';
@@ -55,7 +56,6 @@ export default function PerformanceV3Panel({ user, onUpdated, createOpen, onClos
   const [employeeId, setEmployeeId] = useState(''); const [role, setRole] = useState(''); const [reason, setReason] = useState('');
   const [individual, setIndividual] = useState(null); const [roleChange, setRoleChange] = useState(false);
   const [peerId, setPeerId] = useState(new URLSearchParams(window.location.search).get('peer') || '');
-  const [peerForm, setPeerForm] = useState({ scores: Array(5).fill(''), retain: '', relationship: 'Peer', comment: '' });
   const [alignmentId, setAlignmentId] = useState(new URLSearchParams(window.location.search).get('alignment') || ''); const [answers, setAnswers] = useState({});
   const [cycleId, setCycleId] = useState(''); const [feedback, setFeedback] = useState({ nps: '', csat: '', source_reference: '', reason: '' });
   const [reviewId, setReviewId] = useState(''); const [reviewerIds, setReviewerIds] = useState([]); const [extend, setExtend] = useState(0); const [peerReason, setPeerReason] = useState('');
@@ -107,13 +107,8 @@ export default function PerformanceV3Panel({ user, onUpdated, createOpen, onClos
       {tasks.team_cycles?.map(c => <p key={c.id}>{c.title}<button disabled={busy} onClick={() => perform(async () => { const response = await api.getPerformanceV3AlignmentReport(c.id); setReport(response.data); })}>View my team’s anonymous Alignment score</button></p>)}
       {!hr && report && <p>Team responses: {report.response_count} · Team Alignment: {report.score ?? 'At least three responses are required'}{report.score != null && '%'}</p>}
       {tasks.peers.length === 0 && tasks.alignment.length === 0 && <p>No peer or Alignment tasks are assigned.</p>}
-      {tasks.peers.map(t => <p key={t.id}>{t.employee_name} · Due {t.due_on} · {t.status}<button disabled={t.status !== 'Assigned'} onClick={() => setPeerId(t.id)}>Complete peer review</button></p>)}
-      {tasks.peers.some(t => t.id === peerId && t.status === 'Assigned') && <form onSubmit={e => { e.preventDefault(); perform(async () => { await api.performanceV3Action('peers', peerId, 'submit', peerForm); setPeerId(''); setPeerForm({ scores: Array(5).fill(''), retain: '', relationship: 'Peer', comment: '' }); }); }}>
-        {tasks.peer_questions.map((q, i) => <label key={q}>{q}<input required aria-label={`Peer value ${i + 1}`} type="number" min="0" max="10" step="any" value={peerForm.scores[i]} onChange={e => setPeerForm(old => ({ ...old, scores: old.scores.map((v, n) => n === i ? (e.target.value === '' ? '' : Number(e.target.value)) : v) }))} /></label>)}
-        <label>Working relationship<select value={peerForm.relationship} onChange={e => setPeerForm(old => ({ ...old, relationship: e.target.value }))}><option value="Peer">Peer</option><option value="Direct_Report">Direct report</option><option value="Cross_Functional">Cross-functional colleague</option></select></label>
-        <label>Would you fight to keep this person? (HR only)<select required value={peerForm.retain} onChange={e => setPeerForm(old => ({ ...old, retain: e.target.value === '' ? '' : Number(e.target.value) }))}><option value="">Choose</option><option value={10}>Yes</option><option value={5}>Maybe</option><option value={0}>No</option></select></label>
-        <label>Optional anonymous comment<textarea maxLength={4000} value={peerForm.comment} onChange={e => setPeerForm(old => ({ ...old, comment: e.target.value }))} /></label><button className="primary" disabled={busy}>Submit peer review</button><button type="button" onClick={() => setPeerId('')}>Close</button>
-      </form>}
+      {tasks.peers.map(t => <p key={t.id}>{t.employee_name} · Due {t.due_on} · {t.status}<button disabled={!t.can_submit} onClick={() => setPeerId(t.id)}>Complete peer review</button></p>)}
+      {tasks.peers.some(t => t.status === 'Assigned') && <PeerReviewSelector key={peerId} initialTaskId={peerId} onSubmitted={async () => { await load(); await onUpdated(); }} />}
       {tasks.alignment.map(w => <p key={w.id}>{w.title} Alignment · Due {w.due_on}<button disabled={w.submitted} onClick={() => { setAlignmentId(w.id); setAnswers({}); }}>{w.submitted ? 'Submitted' : 'Complete Alignment Survey'}</button></p>)}
       {tasks.alignment.some(w => w.id === alignmentId && !w.submitted) && <form onSubmit={e => { e.preventDefault(); perform(async () => { await api.performanceV3Action('cycles', alignmentId, 'alignment', { answers }); setAlignmentId(''); }); }}>{tasks.questions.map(q => <label key={q.id}>{q.text}<select required value={answers[q.id] || ''} onChange={e => setAnswers(old => ({ ...old, [q.id]: Number(e.target.value) }))}><option value="">Choose score</option>{[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}</select></label>)}<button className="primary" disabled={busy}>Submit Alignment Survey</button></form>}
     </section>}

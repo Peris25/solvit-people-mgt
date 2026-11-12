@@ -403,6 +403,8 @@ async def start_form_submission(form_id: str, request: Request):
 
     body = await request.json()
     db = get_db()
+    if form_id == 'form-26':
+        raise HTTPException(409, 'Use the assigned 360 peer review selector; standalone submissions cannot feed the active performance review')
     if form_id in {'form-01', 'form-02', 'form-03'}:
         raise HTTPException(409, 'Use the single-step Solver form or evidence-backed induction workflow')
     employee = await form_subject(db, user, body, matrix)
@@ -454,6 +456,8 @@ async def sign_form_step(submission_id: str, request: Request):
         raise HTTPException(409, 'Historical Solver workflows cannot grant induction or assessment outcomes')
     expected_role = sub.get("next_required_role")
     await authorize_signature(db, user, expected_role, sub.get("subject_employee_id"), sub.get("started_by"))
+    if sub.get('form_id') == 'form-26':
+        raise HTTPException(409, 'Use the assigned 360 peer review selector; historical standalone peer forms remain read-only')
     if sub.get("form_id") == "form-06":
         raise HTTPException(409, "Use the staged Performance Management assessment workflow")
     if sub.get("form_id") == "form-15":
@@ -538,6 +542,9 @@ async def get_form_schema(form_id: str, request: Request):
     schema = FORM_SCHEMAS.get(form_id)
     if not schema:
         raise HTTPException(status_code=404, detail=f"Form {form_id} not found")
+    if form_id == 'form-26':
+        return {**schema, 'description': 'Select an assigned colleague and complete the confidential 360 review using the approved 0–10 scale.',
+                'sections': [], 'submission_mode': 'assigned_peer_review', 'rating_scale': {'min': 0, 'max': 10}}
     from routes.forms_workflow import FORM_WORKFLOW_MATRIX
     matrix = FORM_WORKFLOW_MATRIX.get(form_id, {})
     from copy import deepcopy
@@ -554,6 +561,8 @@ async def submit_form(form_id: str, request: Request):
     user = await get_current_user(request)
     db = get_db()
     body = await request.json()
+    if form_id == 'form-26':
+        raise HTTPException(409, 'Use the assigned 360 peer review selector; standalone submissions cannot feed the active performance review')
 
     schema = FORM_SCHEMAS.get(form_id)
     if not schema:
