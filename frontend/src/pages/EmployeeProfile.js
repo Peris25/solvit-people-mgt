@@ -8,6 +8,7 @@ import RequiredPasswordChange from '../components/RequiredPasswordChange';
 import EmployeeDocuments from '../components/EmployeeDocuments';
 import ProfilePhoto from '../components/ProfilePhoto';
 import StatutoryEditor from '../components/StatutoryEditor';
+import ProfileCardEditor from '../components/ProfileCardEditor';
 
 const fmtKES = (n) => n != null ? `KES ${Number(n).toLocaleString('en-KE')}` : '—';
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
@@ -70,7 +71,7 @@ export default function EmployeeProfile({ selfService = false }) {
             <span style={{ color: '#fff', fontWeight: 900, fontSize: '24px' }}>{initials}</span>
           </div>}
           <div style={{ flex: 1 }}>
-            <h1 style={{ fontSize: '28px', fontWeight: 900, letterSpacing: '-0.04em', margin: 0 }}>{e.full_name}</h1>
+            <h1 style={{ fontSize: '28px', fontWeight: 900, letterSpacing: '-0.04em', margin: 0, color: '#fff' }}>{e.full_name}</h1>
             <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', marginTop: '4px' }}>{e.role_title} · {e.department} · {e.role_level}</div>
             <div style={{ display: 'flex', gap: '14px', marginTop: '14px', flexWrap: 'wrap', fontSize: '11px' }}>
               <Stat label="State" value={<StatusBadge status={e.lifecycle_state} small />} />
@@ -122,18 +123,24 @@ function Stat({ label, value }) {
 
 function Overview({ profile, user, onEmployeeSaved }) {
   const e = profile.employee;
+  const canEdit = ['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role);
+  const editor = section => canEdit ? <ProfileCardEditor employee={e} section={section} user={user} onSaved={onEmployeeSaved} /> : null;
+  const contactText = value => {
+    if (typeof value === 'string') return value || 'Not recorded';
+    if (Array.isArray(value)) return value.map(row => [row.qualification, row.institution, row.year].filter(Boolean).join(' · ')).filter(Boolean).join('; ') || 'Not recorded';
+    return value ? [value.name, value.relationship, value.phone_number, value.email].filter(Boolean).join(' · ') || 'Not recorded' : 'Not recorded';
+  };
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '12px' }}>
-      <Card title="Personal & Statutory">
+      <Card title="Personal & Statutory" action={canEdit ? <StatutoryEditor employee={e} user={user} onSaved={onEmployeeSaved} /> : null}>
         <Row k="National ID" v={e.national_id_number || '—'} />
         <Row k="KRA PIN" v={e.kra_pin || '—'} />
         <Row k="NSSF" v={e.nssf_number || '—'} />
         <Row k="SHA" v={e.sha_number || '—'} />
         <Row k="DOB" v={fmtDate(e.date_of_birth)} />
         <Row k="Gender" v={e.gender || '—'} />
-        {['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) && <StatutoryEditor employee={e} onSaved={onEmployeeSaved} />}
       </Card>
-      <Card title="Employment">
+      <Card title="Employment" action={editor('employment')}>
         <Row k="Staff ID" v={e.staff_id || e.employee_number || 'Not recorded'} />
         <Row k="Type" v={e.employment_type || 'Full Time'} />
         <Row k="Start Date" v={fmtDate(e.start_date)} />
@@ -141,9 +148,19 @@ function Overview({ profile, user, onEmployeeSaved }) {
         <Row k="Lifecycle" v={<StatusBadge status={e.lifecycle_state} small />} />
         <Row k="Project Eligible" v={e.project_ownership_eligible ? 'Yes' : 'No'} />
       </Card>
-      <Card title="Contacts & personal information">
-        {['personal_email', 'phone_number', 'next_of_kin', 'emergency_contact', 'education', 'bank_name', 'bank_branch', 'bank_account_number', 'mpesa_number'].map(field =>
-          <Row key={field} k={field.replaceAll('_', ' ')} v={e[field] ? typeof e[field] === 'object' ? JSON.stringify(e[field]) : String(e[field]) : 'Not recorded'} />)}
+      <Card title="Contacts & personal information" action={editor('contacts')}>
+        <Row k="Personal email" v={e.personal_email || 'Not recorded'} />
+        <Row k="Phone number" v={e.phone_number || 'Not recorded'} />
+        <Row k="Next of kin" v={contactText(e.next_of_kin)} />
+        <Row k="Emergency contact" v={contactText(e.emergency_contact)} />
+        <Row k="Education" v={contactText(e.education)} />
+      </Card>
+      <Card title="Bank & payment" action={editor('bank')}>
+        <Row k="Bank name" v={e.bank_name || 'Not recorded'} />
+        <Row k="Bank branch" v={e.bank_branch || 'Not recorded'} />
+        <Row k="Account number" v={(e.bank_account_number ?? e.bank_account) || 'Not recorded'} />
+        <Row k="M-Pesa number" v={e.mpesa_number || 'Not recorded'} />
+        <Row k="Payment method" v={(e.payment_method ?? e.preferred_payment_method) || 'Not recorded'} />
       </Card>
       <Card title="Recent Performance">
         {profile.performance_history?.length ? (
@@ -172,10 +189,10 @@ function Overview({ profile, user, onEmployeeSaved }) {
   );
 }
 
-function Card({ title, children }) {
+function Card({ title, children, action }) {
   return (
-    <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
-      <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(25,25,25,0.08)', backgroundColor: '#F9FAFB', fontWeight: 700, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.12em' }}>{title}</div>
+    <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', borderRadius: 14, minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 60, boxSizing: 'border-box', padding: '10px 16px', borderBottom: '1px solid rgba(25,25,25,0.08)', borderRadius: '14px 14px 0 0', backgroundColor: '#F9FAFB', fontWeight: 700, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.12em' }}><span>{title}</span>{action}</div>
       <div style={{ padding: '14px 16px' }}>{children}</div>
     </div>
   );
@@ -183,9 +200,9 @@ function Card({ title, children }) {
 
 function Row({ k, v }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(25,25,25,0.04)', fontSize: '12px' }}>
-      <span style={{ color: '#525252' }}>{k}</span>
-      <span style={{ fontWeight: 700, color: '#191919' }}>{v}</span>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '9px 0', borderBottom: '1px solid rgba(25,25,25,0.04)', fontSize: '12px', alignItems: 'baseline' }}>
+      <span style={{ color: '#525252', flexShrink: 0 }}>{k}</span>
+      <span style={{ fontWeight: 600, color: '#191919', textAlign: 'right', overflowWrap: 'anywhere', minWidth: 0 }}>{v}</span>
     </div>
   );
 }

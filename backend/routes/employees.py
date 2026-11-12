@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Union, Dict
 from datetime import datetime, timezone, date
 from bson import ObjectId
 from database import get_db
@@ -54,6 +54,18 @@ class EmployeeCreate(BaseModel):
 
 
 class EmployeeUpdate(BaseModel):
+    staff_id: Optional[str] = None
+    probation_end_date: Optional[str] = None
+    project_ownership_eligible: Optional[bool] = None
+    personal_email: Optional[str] = None
+    next_of_kin: Optional[Union[str, Dict[str, str]]] = None
+    emergency_contact: Optional[Union[str, Dict[str, str]]] = None
+    education: Optional[Union[str, List[Dict[str, str]]]] = None
+    bank_name: Optional[str] = None
+    bank_branch: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    mpesa_number: Optional[str] = None
+    payment_method: Optional[str] = None
     date_of_birth: Optional[str] = None
     gender: Optional[str] = None
     start_date: Optional[str] = None
@@ -668,14 +680,36 @@ async def update_employee(employee_id: str, upd: EmployeeUpdate, request: Reques
             if upd.model_fields_set & {"line_manager_id", "work_email", "is_md", "reports_to_md", "reports_to_finance_ops", "reports_to_board"}:
                 raise HTTPException(403, "HR must change identity or reporting relationships.")
             protected = {"role_title", "role_level", "department", "employment_type", "start_date", "lifecycle_state", "profile_photo_url",
-                         "current_salary_kes", "national_id_number", "kra_pin", "nssf_number", "sha_number", "gender", "date_of_birth"}
+                         "current_salary_kes", "national_id_number", "kra_pin", "nssf_number", "sha_number", "gender", "date_of_birth",
+                         "staff_id", "probation_end_date", "project_ownership_eligible", "personal_email", "next_of_kin", "emergency_contact",
+                         "education", "bank_name", "bank_branch", "bank_account_number", "mpesa_number", "payment_method"}
             proposed = upd.model_dump(exclude_unset=True, exclude_none=True)
             if any(field in proposed and proposed[field] != current.get(field) for field in protected):
                 raise HTTPException(403, "HR must change role titles or restricted identity/pay fields.")
         update_data = {k: v for k, v in upd.model_dump(exclude_unset=True).items() if v is not None}
-        from utils.profile_self_service import validated
+        from utils.profile_self_service import validated, validate_changes, EDITABLE, LEGACY, text
         for field in {'national_id_number', 'kra_pin', 'nssf_number', 'sha_number', 'gender', 'date_of_birth'} & update_data.keys():
             update_data[field] = validated(field, update_data[field])
+        profile_fields = {field: value for field, value in update_data.items() if field in EDITABLE and value != current.get(field)}
+        # Preserve legacy text contacts/education while validating new structured values.
+        for field in ('next_of_kin', 'emergency_contact', 'education'):
+            if field in profile_fields and isinstance(profile_fields[field], str):
+                update_data[field] = text(profile_fields.pop(field), 1000)
+        if profile_fields:
+            update_data.update(validate_changes(profile_fields))
+        for field, legacy in LEGACY.items():
+            if field in update_data:
+                update_data[legacy] = update_data[field]
+        if 'staff_id' in update_data:
+            update_data['staff_id'] = text(update_data['staff_id'], 60)
+            update_data['employee_number'] = update_data['staff_id']
+        if 'probation_end_date' in update_data and update_data['probation_end_date']:
+            try:
+                if len(update_data['probation_end_date']) != 10:
+                    raise ValueError()
+                date.fromisoformat(update_data['probation_end_date'])
+            except ValueError:
+                raise HTTPException(422, 'Enter a valid probation end date')
         if "work_email" in upd.model_fields_set:
             if upd.work_email == current.get("work_email"):
                 update_data.pop("work_email", None)
