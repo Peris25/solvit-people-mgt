@@ -510,4 +510,10 @@ export const deleteMyProfilePhoto = () => api.delete('/documents/me/profile-phot
 
 export const getRoleKpiLibrary = () => api.get('/performance/role-kpi-library');
 export const getMyRoleKpis = () => api.get('/performance/my-role-kpis');
+export const getPerformanceV3Setup = () => api.get('/performance/v3/setup');
+export const getPerformanceV3Tasks = () => api.get('/performance/v3/learning');
+export const getPerformanceV3Evidence = () => api.get('/performance/v3/evidence');
+export const getPerformanceHandoffs = scorecard => api.get('/compensation/performance-handoffs', { params: scorecard === '' ? {} : { company_scorecard: Number(scorecard) } });
+export const getPerformanceV3AlignmentReport = id => api.get(`/performance/v3/cycles/${encodeURIComponent(id)}/alignment`);
+export const performanceV3Action = (kind, id, action, data) => api.post(`/performance/v3/${kind}/${encodeURIComponent(id)}/${action}`, data);
 export const saveRoleKpis = (id, data) => api.put(`/performance/role-kpi-library/${encodeURIComponent(id)}`, data);

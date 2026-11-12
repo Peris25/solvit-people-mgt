@@ -167,6 +167,16 @@ async def related_link(db, user, row, category):
         if data.get('solver_workflow') and data.get('solver_id'):
             await authorize_solver(db, user, data['solver_id'])
             return '/solvers', None
+        if category == 'Performance' and data.get('performance_peer_task_id'):
+            from utils.performance_v3_peers import owned_task
+            task, employee = await owned_task(db, user, data['performance_peer_task_id'])
+            return '/performance?peer=' + quote(task['id'], safe=''), None
+        if category == 'Performance' and data.get('performance_alignment_cycle_id'):
+            from utils.performance_v3_alignment import windows
+            assigned = await windows(db, user)
+            if any(w['id'] == data['performance_alignment_cycle_id'] for w in assigned):
+                return '/performance?alignment=' + quote(data['performance_alignment_cycle_id'], safe=''), None
+            return None, None
         if category == "Performance" and data.get("performance_review_id"):
             from utils.performance_workflows import record
             review, employee = await record(db, user, data["performance_review_id"])
@@ -293,6 +303,9 @@ async def list_inbox(db, user, *, category=None, kind=None, read_status="all", o
         if category_value == "Performance" and (row.get("data") or {}).get("performance_review_id") and not link:
             return None  # Removed/unavailable reviews must not become generic stale alerts.
         title, message = PREVIEWS[category_value]
+        if category_value == 'Performance' and link and (row.get('data') or {}).get('performance_v3'):
+            title = str(row.get('title') or 'Performance action')[:180]
+            message = 'Open this performance item in the portal to review the action and deadline.'
         if category_value in {"Leave", "Approvals"} and link:
             title, message = await leave_preview(db, user, row, action)
         if category_value == "Performance" and link:

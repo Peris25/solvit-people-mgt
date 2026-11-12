@@ -90,3 +90,14 @@ def placement(a,b):
     if a<Decimal('1.5'): return 'Stars' if b<Decimal('1.5') else 'Core_Contributor' if b<2 else 'Culture_Risk'
     if a<2: return 'Core_Contributor' if b<2 else 'Culture_Risk'
     return 'Realignment_Needed' if b<2 else 'Exit_Track'
+
+
+def bonus_multiplier(score, company_scorecard, values_hold=False):
+    score = number(score, 1, 3)
+    gate = number(company_scorecard, 0, 100)
+    if gate < 80 or values_hold or score >= Decimal('2.5'): return 0.0
+    bands = [(Decimal('1'), Decimal('1.15')), (Decimal('1.5'), Decimal('1.05')),
+             (Decimal('2'), Decimal('1')), (Decimal('2.5'), Decimal('0'))]
+    for (low, start), (high, end) in zip(bands, bands[1:]):
+        if low <= score <= high:
+            return float((start + (end - start) * (score - low) / (high - low)).quantize(Decimal('.0001'), rounding=ROUND_HALF_UP))

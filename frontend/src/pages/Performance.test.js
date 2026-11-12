@@ -16,6 +16,8 @@ beforeEach(() => {
   api.getReviews.mockResolvedValue({ data: [] }); api.getActiveCycle.mockResolvedValue({ data: { is_active: false } });
   api.getReviewCycles.mockResolvedValue({ data: [] }); api.getTalentDensity.mockResolvedValue({ data: null });
   api.getEmployees.mockResolvedValue({ data: [] });
+  api.getPerformanceV3Setup.mockResolvedValue({ data: { employees: [], cycles: [], roles: [], reviews: [], reviewers: [] } });
+  api.getPerformanceV3Tasks.mockResolvedValue({ data: { peers: [], alignment: [], questions: [], peer_questions: [] } });
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); jest.clearAllMocks(); });
 const render = async element => { await act(async () => root.render(element)); };
@@ -143,7 +145,9 @@ test('Create Review always opens employee popup even with no configured cycles',
   await act(async()=>container.querySelector('[data-testid="create-review-btn"]').click());
   expect(container.querySelector('[role="dialog"]')).toBeTruthy();
   expect(container.querySelector('[aria-label="Review employee"]')).toBeTruthy();
-  for(const name of ['Review start','Employee submission deadline','Manager submission deadline','HR completion deadline']) expect(container.querySelector(`[aria-label="${name}"]`)).toBeTruthy();
+  expect(container.textContent).toContain('Self and peer deadline');
+  expect(container.textContent).toContain('Manager deadline');
+  expect(container.textContent).toContain('Meetings and HR release by');
   expect(api.configureReviewCycle).not.toHaveBeenCalled();
 });
 

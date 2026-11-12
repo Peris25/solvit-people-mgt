@@ -6,10 +6,11 @@ import secrets
 import uuid
 from bson import ObjectId
 from utils import performance_workflows as flow, performance_v3_scoring as calc, role_kpi_library as library
-from utils.employee_integrity import tenant_of, tenant_query, find_employee, employee_key, is_direct_report, user_employee_aliases
+from utils.employee_integrity import tenant_of, tenant_query, find_employee, employee_key, is_direct_report, user_employee_aliases, validate_manager
 from utils.employee_access import find_linked_record, reference_ids, personal_grant
 from utils.staff_views import token
 from utils.profile_self_service import self_employee
+from utils.runtime_controls import outbound_email_enabled
 
 ASSIGNMENT = 'performance_employee_kpis_v3'
 MANAGER_MEETING_PEER_ACCESS = True
@@ -22,7 +23,7 @@ def scoped(user, extra=None): return {'$and': [tenant_query(tenant_of(user)), ex
 def enabled(employee): return token(employee.get('lifecycle_state') or employee.get('status')) in {'active', 'probation', 'onboarding', 'onleave', 'pip'}
 def md(employee): return bool(employee.get('is_md')) or token(employee.get('role_title')) in {'managingdirector', 'md', 'ceo', 'chiefexecutiveofficer'}
 def ed(employee): return bool(employee.get('is_ed')) or token(employee.get('role_title')) == 'executivedirector'
-def fte(employee): return token(employee.get('employment_type')) in {'', 'fulltime', 'fte'}
+def fte(employee): return not flow.restricted(employee.get('board_only')) and token(employee.get('employment_type')) in {'', 'fulltime', 'fte'}
 def clean(row): return {k: deepcopy(v) for k, v in row.items() if k not in {'_id', 'tenant_id'}}
 
 
@@ -42,7 +43,7 @@ async def auto_assignment(db, employee, actor):
     if len(matches) != 1: return
     values = matches[0]['published_values']
     if values.get('scope') not in {'Annual', 'Probation'} or library.issues(values): return
-    return await _assign(db, actor, employee, values, matches[0]['version'], 'Approved role assigned at account setup', None, False)
+    return await _assign(db, actor, employee, values, matches[0].get('published_version') or matches[0]['version'], 'Approved role assigned at account setup', None, False)
 
 
 async def _assign(db, user, employee, values, source_version, reason, expected, role_change):
@@ -78,7 +79,7 @@ async def assign(db, user, reference, body):
             flow.fail('Individual overrides must retain the approved role and review scope')
         if library.issues(values): flow.fail('Individual KPIs need complete approved targets, weights and an approval reference')
     if body.get('role_change') not in (None, False, True): flow.fail('Invalid role-change confirmation')
-    return await _assign(db, user, employee, values, source['version'], reason, body.get('expected_version'), body.get('role_change') is True)
+    return await _assign(db, user, employee, values, source.get('published_version') or source['version'], reason, body.get('expected_version'), body.get('role_change') is True)
 
 
 async def setup(db, user):
@@ -148,17 +149,23 @@ async def notice(db, row, event, kind, recipient, title):
     identity = key('v3-notice', tenant_of(row), row['id'], event, kind, recipient)
     await db.notifications.update_one({'_id': identity}, {'$setOnInsert': {'id': str(identity), 'tenant_id': tenant_of(row), 'category': 'Performance',
         'recipient_type': kind, 'recipient_id': recipient, 'title': title, 'message': 'Open the authorized performance item for details.',
-        'data': {'performance_review_id': row.get('review_id') or row['id'], 'cycle_id': row.get('cycle_id'), 'performance_v3': True},
-        'is_read': False, 'created_at': flow.now(), 'v3_email_pending': True}}, upsert=True)
+        'data': {**({'performance_peer_task_id': row['peer_task_id']} if row.get('peer_task_id') else
+                   {'performance_alignment_cycle_id': row['cycle_id']} if row.get('alignment') else
+                   {'performance_review_id': row.get('review_id') or row['id']}),
+                 'employee_id': row.get('employee_id'), 'cycle_id': row.get('cycle_id'), 'performance_v3': True},
+        'is_read': False, 'created_at': flow.now(), 'v3_email_pending': outbound_email_enabled()}}, upsert=True)
 
 
 async def hr_notice(db, row, event, title):
+    subject = await find_employee(db, row.get('employee_id'), tenant_of(row)) if row.get('employee_id') else None
+    needs_gm = bool(subject and await db.users.find_one(scoped(row, {'employee_id': {'$in': reference_ids(subject)},
+        'role': {'$in': ['hr_admin', 'hr_manager']}, 'is_active': {'$ne': False}})))
     for role in ('hr_admin', 'hr_manager', 'general_manager'):
         identity = key('v3-hr', tenant_of(row), row['id'], event, role)
         await db.notifications.update_one({'_id': identity}, {'$setOnInsert': {'id': str(identity), 'tenant_id': tenant_of(row), 'category': 'Performance',
             'recipient_role': role, 'title': title, 'message': 'A performance workflow requires HR attention.',
-            'data': {'performance_review_id': row.get('review_id') or row['id'], 'cycle_id': row.get('cycle_id'), 'performance_v3': True},
-            'is_read': False, 'created_at': flow.now(), 'v3_email_pending': role != 'general_manager'}}, upsert=True)
+            'data': {'performance_review_id': row.get('review_id') or row['id'], 'employee_id': row.get('employee_id'), 'cycle_id': row.get('cycle_id'), 'performance_v3': True},
+            'is_read': False, 'created_at': flow.now(), 'v3_email_pending': (role != 'general_manager' or needs_gm) and outbound_email_enabled()}}, upsert=True)
 
 
 async def save(db, user, row, update, event):
@@ -174,20 +181,28 @@ async def peer_task(db, user, review, reviewer, deadline):
     if await db.performance_peer_tasks.find_one({'_id': identity}): return
     await db.performance_peer_tasks.insert_one({'_id': identity, 'id': str(identity), 'tenant_id': tenant_of(user), 'cycle_id': review['cycle_id'],
         'review_id': review['id'], 'reviewer_employee_id': employee_key(reviewer), 'employee_id': review['employee_id'], 'status': 'Assigned', 'due_on': deadline})
-    await notice(db, review, 'peer-assigned:' + str(identity), 'employee', employee_key(reviewer), 'Complete an anonymous 360 review')
+    await notice(db, {**review, 'peer_task_id': str(identity)}, 'peer-assigned:' + str(identity), 'employee', employee_key(reviewer), 'Complete an anonymous 360 review')
 
 
-async def open_cycle(db, user, reference):
+async def open_cycle(db, user, reference, employee_ids=None):
     flow.require_hr(user); window = await cycle(db, user, reference)
     if window.get('workflow_version') != 3: flow.fail('Use a V3 cycle for the revised workflow', 409)
-    if window['status'] == 'Open': return clean(window)
-    if window['status'] not in {'Configured', 'Opening'}: flow.fail('This cycle cannot be opened', 409)
+    if window['status'] == 'Open' and employee_ids is None: return clean(window)
+    if window['status'] not in {'Configured', 'Opening', 'Open'}: flow.fail('This cycle cannot be opened', 409)
     if today() > date.fromisoformat(window['self_due_on']): flow.fail('Week 1 has ended; configure valid cycle dates', 409)
     employees = [e for e in await db.employees.find(tenant_query(tenant_of(user))).to_list(None) if enabled(e) and fte(e) and not md(e)]
+    candidates = employees
+    if employee_ids is not None:
+        if not isinstance(employee_ids, list) or not employee_ids or len(employee_ids) > 200 or any(not isinstance(i, str) for i in employee_ids): flow.fail('Select eligible employees')
+        if set(employee_ids) - {employee_key(e) for e in employees}: flow.fail('One or more employees are not eligible', 409)
+        candidates = [e for e in employees if employee_key(e) in employee_ids]
     ready, missing = [], []
-    for employee in employees:
+    for employee in candidates:
         saved = await assignment(db, employee)
         manager = await find_employee(db, employee.get('line_manager_id'), tenant_of(user))
+        try: await validate_manager(db, employee.get('line_manager_id'), employee, tenant_of(user))
+        except flow.HTTPException:
+            missing.append(employee.get('full_name') or employee_key(employee)); continue
         if not saved or saved['values']['scope'] != 'Annual' or library.issues(saved['values']) or not manager or not enabled(manager) or employee_key(manager) == employee_key(employee):
             missing.append(employee.get('full_name') or employee_key(employee)); continue
         existing = await db.performance_reviews.find(scoped(user, {'employee_id': {'$in': reference_ids(employee)}, 'cycle_type': window['cycle_type'], 'cycle_year': window['cycle_year'], 'status': {'$nin': ['Archived', 'Cancelled']}})).to_list(None)
@@ -214,7 +229,7 @@ async def open_cycle(db, user, reference):
         if md(manager): await peer_task(db, user, row, manager, window['peer_due_on'])
         await notice(db, row, 'opened', 'employee', employee_key(employee), 'Complete your performance self-review')
         await notice(db, row, 'manager-week2', 'employee', employee_key(manager), 'Your team performance cycle is open')
-        await notice(db, {**row, 'id': survey_id, 'review_id': row['id']}, 'alignment:' + employee_key(employee), 'employee', employee_key(employee), 'Complete the Alignment Survey')
+        await notice(db, {**row, 'alignment': True}, 'alignment:' + employee_key(employee), 'employee', employee_key(employee), 'Complete the Alignment Survey')
     await db.survey_windows.update_one({'_id': ObjectId(survey_id)}, {'$setOnInsert': {'id': survey_id, 'tenant_id': tenant_of(user), 'survey_type': 'alignment_fte',
         'title': f"{window['cycle_type']} {window['cycle_year']} Alignment Survey", 'performance_workflow_version': 3, 'cycle_id': window['id'],
         'open_date': window['starts_on'], 'close_date': window['self_due_on'], 'status': 'Open', 'questions': deepcopy(FTE_ALIGNMENT_QUESTIONS), 'created_at': flow.now()}}, upsert=True)
@@ -227,13 +242,22 @@ def projection(row, user, employee):
     hr = user.get('role') in flow.HR and not own
     manager = not own and is_direct_report(employee, user) and row.get('line_manager_id') in user_employee_aliases(user)
     result = {k: deepcopy(row[k]) for k in ('id', 'employee_id', 'cycle_id', 'cycle_type', 'cycle_year', 'workflow_version', 'status', 'version', 'starts_on', 'self_due_on', 'peer_due_on', 'manager_due_on', 'review_due_on', 'section_a_kpis', 'group_weights', 'self_assessment', 'review_meeting', 'meeting_proposal', 'meeting_completed_at', 'ack_due_on', 'acknowledged_at') if k in row}
+    if own or hr:
+        if row.get('dispute'): result['dispute'] = deepcopy(row['dispute'])
+    if hr: result['actual_corrections'] = deepcopy(row.get('actual_corrections', []))
     result.update(employee_name=employee.get('full_name'), department=employee.get('department'), role_title=employee.get('role_title'), scores_released=flow.released(row), can_self_assess=own and row['status'] == 'Self_Draft', can_manage=manager, can_hr_review=hr, can_delete=False)
+    try: personal_grant(user, 'M05', write=True)
+    except flow.HTTPException:
+        for flag in ('can_self_assess', 'can_manage', 'can_hr_review'): result[flag] = False
     if hr or flow.released(row):
-        for field in ('manager_assessment', 'section_a_score', 'section_b_score', 'section_c_score', 'overall_score', 'rating', 'nine_box_placement', 'hr_summary', 'scoring_policy', 'released_at', 'outcomes'):
+        for field in ('manager_assessment', 'section_a_kpi_scores', 'section_a_score', 'section_b_score', 'section_c_score', 'overall_score', 'rating', 'nine_box_placement', 'hr_summary', 'scoring_policy', 'released_at', 'outcomes'):
             if field in row: result[field] = deepcopy(row[field])
     elif manager:
         result['manager_assessment'] = deepcopy(row.get('manager_assessment'))
+        result['section_a_kpi_scores'] = deepcopy(row.get('section_a_kpi_scores'))
         result['section_a_score'] = row.get('section_a_score')
+    if 'scoring_policy' in result and not hr:
+        result['scoring_policy'] = {field: result['scoring_policy'].get(field) for field in ('source', 'weights', 'section_c')}
     summary = row.get('peer_summary') or {}
     # Do not reveal rolling averages: comparing successive results could identify
     # a respondent. The collection period and minimum count apply to HR too.

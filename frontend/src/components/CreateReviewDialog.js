@@ -5,8 +5,8 @@ import LeaveActionButton from './LeaveActionButton';
 const control = { width:'100%', padding:'11px 12px', minHeight:44, border:'1px solid #cbd5e1', borderRadius:9, font:'inherit', boxSizing:'border-box', background:'#fff' };
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone:'Africa/Nairobi', year:'numeric',month:'2-digit',day:'2-digit' }).format(new Date());
 const state = employee => String(employee.lifecycle_state || employee.status || '').toLowerCase().replace(/[^a-z]/g,'');
-export default function CreateReviewDialog({ employees, onClose, onCreated }) {
-  const [values,setValues] = useState({ employee_id:'', cycle_type:'Year_End', starts_on:today(), self_due_on:'', manager_due_on:'', review_due_on:'', review_month:1, policy:'', policy_confirmed:false });
+export default function CreateReviewDialog({ employees, onClose, onCreated, probationOnly = false }) {
+  const [values,setValues] = useState({ employee_id:'', cycle_type:probationOnly ? 'Probation' : 'Year_End', starts_on:today(), self_due_on:'', manager_due_on:'', review_due_on:'', review_month:1, policy:'', policy_confirmed:false });
   const [error,setError] = useState(''); const [busy,setBusy] = useState(false); const first=useRef(null);
   const probation = values.cycle_type === 'Probation';
   const eligible = employees.filter(e => probation ? ['onboarding','probation'].includes(state(e)) || e.onboarding_recorded_status === 'In_Progress' : ['active','onboarding','probation','onleave','pip'].includes(state(e)));
@@ -25,7 +25,7 @@ export default function CreateReviewDialog({ employees, onClose, onCreated }) {
       <p>Select the employee, review type and deadlines. Creating sends the review to the employee.</p>
       {error&&<p role="alert" style={{padding:12,background:'#fff1f2',color:'#9f1239',borderRadius:8}}>{error}</p>}
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:16}}>
-        <label>Review type<select ref={first} style={control} aria-label="Review type" value={values.cycle_type} onChange={e=>setValues(v=>({...v,cycle_type:e.target.value,employee_id:'',policy_confirmed:false}))}><option value="Year_End">Year-end review</option><option value="Mid_Year">Mid-year review</option><option value="Probation">Probation Review</option></select></label>
+        <label>Review type<select ref={first} style={control} aria-label="Review type" value={values.cycle_type} onChange={e=>setValues(v=>({...v,cycle_type:e.target.value,employee_id:'',policy_confirmed:false}))}>{!probationOnly && <><option value="Year_End">Year-end review</option><option value="Mid_Year">Mid-year review</option></>}<option value="Probation">Probation Review</option></select></label>
         <label>Employee<select style={control} aria-label="Review employee" required value={values.employee_id} onChange={e=>change('employee_id',e.target.value)}><option value="">Select employee</option>{eligible.map(e=><option key={e.id} value={e.id}>{e.full_name} - {e.role_title}</option>)}</select></label>
         {probation&&<label>Probation review month<select aria-label="Probation review month" style={control} value={values.review_month} onChange={e=>change('review_month',Number(e.target.value))}><option value={1}>Month 1</option><option value={2}>Month 2</option><option value={3}>Month 3 (final)</option></select></label>}
         {[['starts_on','Review start'],['self_due_on','Employee submission deadline'],['manager_due_on','Manager submission deadline'],['review_due_on','HR completion deadline']].map(([key,label])=><label key={key}>{label}<input style={control} aria-label={label} required type="date" min={key==='starts_on'?undefined:values.starts_on||today()} value={values[key]} onChange={e=>change(key,e.target.value)} /></label>)}

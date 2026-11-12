@@ -1,83 +1,56 @@
-# Performance V3 implementation status
+﻿# Performance V3 implementation and release report
 
-12 November 2026. Work in progress, not a completion or deployment report.
+12 November 2026. Supersedes the earlier work-in-progress status.
 
-## Existing functionality preserved
+## Implemented flow
 
-The previously committed HR role KPI library remains unchanged. Its draft saving,
-editable role KPIs and approval-reference publication requirement remain available.
-No existing employee, review, score or production record was changed in this work.
+1. HR edits and publishes role KPIs with an MD/line-manager approval reference. Drafts and historical versions remain in the existing library/audit records. Publishing assigns approved exact-role defaults to currently unassigned employees; it never overwrites an existing assignment.
+2. HR maps employees to an approved role and may make approved individual amendments with a reason. Targets lock when a cycle opens. Role-change amendments cannot rewrite submitted or partially completed assessments.
+3. Create Review opens one popup: choose employees, an existing cycle or a new Mid-year/Year-end cycle, year, start date and approval reference. Deadlines are calculated for four weeks; weights are fixed at 50/30/20. HR confirms the displayed existing Alignment Survey questions. No separate configuration page is required.
+4. Employees see My role KPIs throughout the year and a review/deadline on Staff Home and Performance. They can save partial self-assessments, resume them and submit actuals, evidence, self-ratings, accomplishments and values examples.
+5. Department colleagues receive separate peer tasks; MD reviews direct reports, and Executive Director accounts are excluded as staff peer reviewers. HR can nominate additional eligible cross-department reviewers. Peer submissions use separate assignment/completion and anonymous response records.
+6. Managers confirm actuals in Week 2; changes require explanations. HR receives an actionable notification and email through the existing delivery infrastructure. HR can correct verified actuals with a reason and preserved history, requiring reassessment before release.
+7. HR records verified company NPS/CSAT from Week 2. HR compilation requires manager completion, a closed peer window and at least three responses. Section A, B, C, final rating and placement are derived, not manually entered.
+8. The manager proposes a date using the portal calendar and recorded availability suggestions. HR arranges the meeting manually, confirms it and records completion. Employee and manager receive portal notifications; no Outlook integration is introduced.
+9. HR releases the review after the meeting. Late releases require a reason after 48 hours. Employees acknowledge within five recorded working days or submit a written dispute. HR can record a written resolution. Disputes remain employee/HR-only.
+10. Released outcomes appear in HR's tracker: development, mentoring/recognition, values/realignment discussions and applicable 30/60-day PIP checkpoints. These are tracked actions, not automatic employment-status changes or termination.
+11. Compensation provides an authorized Finance handoff with released final scores. Multiplier interpolation follows the V3 bands, requires an entered company scorecard of at least 80%, and respects values holds. It does not calculate or execute payments or overwrite salary/bonus records.
 
-## Local foundations implemented
+## Privacy and integration
 
-- `backend/utils/performance_v3_scoring.py`: fixed 50/30/20 calculations, numeric,
-  binary and rated KPIs, approved group weights, five peer dimensions, minimum
-  three responses, company NPS/CSAT and two-decimal rounding.
-- `backend/utils/performance_v3.py`: draft service foundations for individual KPI
-  assignment, four-week cycle preparation/opening, privacy projections and evidence
-  checks. The approved KPI account-setup hook, own-KPI read endpoint and V3
-  privacy projection are integrated. Cycle-opening and assignment mutation
-  services remain unregistered until the wider workflow is complete.
-- `backend/utils/performance_v3_reviews.py`: validated self-assessment and manager
-  assessment transitions, stale-version checks, changed-actual explanations and
-  HR compilation gates. Callers must use the existing integrity write lock.
-- `backend/utils/performance_v3_peers.py`: scoped reviewer tasks, anonymous response
-  storage, atomic submission claim and duplicate protection. No individual response
-  endpoint is exposed. A `Submitting` claim is never automatically removed after
-  an uncertain write; controlled operator recovery remains to be documented.
+- HR and the assigned current manager can see anonymous peer averages after collection closes and three or more responses exist. Employees see results only after HR release. Retention answers remain HR-only. Respondent identities/response IDs are never returned alongside answers.
+- HR can extend insufficient peer collection by up to three days after the original deadline. Compiled results cannot be reopened for additional responses. Response submission claims and deterministic MongoDB IDs prevent duplicate concurrent submissions.
+- Existing Survey collections are reused for Alignment. V3 responses omit employee/account identity fields and timestamps; manager tags support team aggregates only after at least three responses. The alternate existing survey submission endpoint delegates V3 windows to the same checks.
+- Alignment is separate from individual scores. V3 talent density is 50% Stars/Core share, 30% normalized Section B and 20% Alignment. It waits for released reviews covering all eligible staff; a partial selected-employee cycle is never presented as a company score.
+- Staff Home, My Tasks, Performance and Notification Centre link to authorized review, peer and Alignment items. Notification previews and email bodies contain no assessment answers, medical or payroll details.
+- Event emails use existing recipient resolution and durable delivery claims. HR owners are excluded from their own approval emails; General Manager email escalation is used for HR-owned reviews. Email and background-job deployment switches remain enforced.
+- Daily reminders cover three/one-day deadlines, peer shortfalls, overdue actions, meeting dates, release SLA and follow-ups. Existing legacy reminder rules do not select V3 Open cycles as legacy Active cycles.
+- Earlier reviews and qualitative monthly probation reviews remain on their existing workflows. Probation does not receive Section C. Existing records, scores, employee status, passwords, leave balances and account permissions are preserved.
 
-The full V3 assessment workflow is not routed into the running portal while its
-meeting/release stages remain unfinished. Compilation does not establish readiness.
+## HR inputs and rollout prerequisites
 
-## Approved decisions implemented
+HR must publish approved role scopes, targets, weights/group blends, data sources, owners and approval references. Several supplied role profiles are probation/reference profiles: they are not silently converted into Annual KPIs. HR must explicitly approve an Annual configuration before using it for an annual review. Missing or ambiguous role matches require HR mapping.
 
-- HR and the assigned current line manager can see anonymous peer aggregates
-  after collection closes and at least three responses exist. Employees see them
-  only after HR release. Retention answers remain HR-only. Unknown response
-  metadata is excluded from the projection.
-- Account creation/linking assigns an exact, unambiguous, approved role KPI set
-  immediately, without overwriting existing assignments. Missing, incomplete or
-  ambiguous approved roles are left for HR; no targets are invented.
-- Employees can read their own assigned KPIs under Performance, including through
-  legacy employee identity resolution. The endpoint accepts no employee selector.
-- New onboarding checklists contain a line-manager Week 3 KPI check (day 14).
-  Existing checklists and accounts are not bulk changed.
-- Frontend files: `frontend/src/components/MyRoleKpis.js`, its tests,
-  `frontend/src/pages/Performance.js`, and `frontend/src/services/api.js`.
-- Existing backend integrations changed: `backend/utils/employee_accounts.py`,
-  `backend/utils/performance_workflows.py`, `backend/routes/performance.py`, and
-  `backend/routes/onboarding.py`.
+HR supplies reviewer nominations for small departments, verified company NPS/CSAT, meeting arrangements and review follow-up decisions. The application does not invent these inputs. MD reviews remain Board-administered outside this annual employee workflow. No automatic production backfill, migration or index installation was performed.
 
-## Validation executed
+The documented Year-end 2026 example is 30 November to 27 December: self/peer deadline 6 December, manager deadline 13 December, meetings in Weeks 3–4. No live cycle was created automatically.
 
-- New calculation, assessment authorization and peer isolation tests: **46 passed**.
-- Final full backend suite after integration and privacy regressions: **1,679
-  passed, 321 skipped**, five existing warnings.
-- Python compilation passed for the new service modules.
-- Python compilation and tracked diff whitespace check passed. Staged-diff and
-  secret-pattern checks are required before committing.
-- Full frontend suite: **358 passed in 51 suites**.
-- Strict CI and normal production builds passed.
+## Interrupted peer submission recovery
 
-## Required before release
+A task in Submitting is deliberately fail-closed; no automatic timeout deletes its claim. An authorized operator must stop all writers/schedulers, take a backup and follow the existing Task 02 integrity-lock recovery procedure before investigating. Locate the exact tenant/task and deterministic response ID produced by key('v3-response', tenant, task.id). If the response exists, reconcile completion to Submitted without changing answers. If no response exists and all writers are confirmed stopped, reset only that exact Submitting task to Assigned using a compare-and-set predicate and record the operator/reason in the audit trail. If uncertain, leave it blocked. Never bulk-remove claims or the persistent integrity lock while a writer may still be running.
 
-1. Complete and test meeting proposal, HR scheduling/completion, score release,
-   acknowledgement/dispute and probation transitions.
-2. Complete peer nomination/extension controls and interrupted-write recovery.
-3. Integrate the existing Alignment Survey without exposing individual responses;
-   implement the approved aggregate reporting and outcome/compensation handoffs.
-4. Register authenticated routes using the existing integrity lock and permission
-   checks; prevent alternate legacy routes from mutating V3 records.
-5. Build the HR and employee screens, document selectors and Staff Home actions.
-6. Add authorized notification deep links and reminders. Pending draft notice
-   helpers must not be used until peer/Alignment links are implemented correctly.
-7. The two visibility/onboarding decisions are approved and implemented as above.
-   Existing accounts without assignments still require HR mapping; no automatic
-   production backfill has been performed.
-8. Review all draft service paths, run full backend/frontend suites, strict and
-   normal builds, compilation and whitespace checks, then commit/push and verify
-   the deployment. No partial workflow should be published as complete.
+## Validation
 
-HR still supplies real targets, missing weights/group blends, approval references,
-review dates, reviewer nominations and verified company NPS/CSAT. The application
-must not invent these inputs.
+- Full backend: 1,707 passed, 321 skipped, five existing deprecation warnings.
+- Full frontend: 365 passed in 52 suites.
+- Strict CI and normal production builds both passed. Calculated V3 9-box placements are read-only in the UI and API; historical review tools remain compatible.
+- Python compilation and whitespace checks passed.
+- Tests use synthetic in-memory repositories with background jobs and outbound mail disabled. No production account, employee, assessment or database was used for test writes; no disposable database was created.
+- No authenticated live HR/employee walkthrough is claimed. Automated workflow/authorization tests exercise the complete sequence and failure cases.
+- Final V3-focused regression run after the last company-coverage safeguard: 90 passed, including circular reporting-chain, board-only and partial-company-report guards.
+
+## Changed files
+
+Backend: routes/performance_v3.py, routes/performance.py, routes/surveys.py, routes/compensation.py; utils/performance_v3.py, performance_v3_reviews.py, performance_v3_admin.py, performance_v3_alignment.py, performance_v3_reminders.py, performance_v3_scoring.py, performance_workflows.py, role_kpi_library.py, notification_centre.py, staff_home.py; automation/engine.py. New regression files: tests/test_performance_v3_end_to_end.py and tests/test_performance_v3_security.py.
+
+Frontend: components/PerformanceV3Panel.js, PerformanceV3Review.js, PerformanceV3.css, PerformanceV3.test.js, PerformanceHandoffs.js, PerformanceTaskLinks.js, PerformanceWorkflow.js, CreateReviewDialog.js; pages/Performance.js, Performance.test.js, Compensation.js, MyTasks.js; services/api.js.

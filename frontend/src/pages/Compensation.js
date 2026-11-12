@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import StatusBadge from '../components/StatusBadge';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import PerformanceHandoffs from '../components/PerformanceHandoffs';
 
 const fmtKES = (n) => n != null ? `KES ${Number(n).toLocaleString('en-KE')}` : '—';
 
@@ -60,6 +61,7 @@ export default function Compensation() {
 
   return (
     <div data-testid="compensation-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
+      {['hr_admin', 'hr_manager', 'general_manager', 'finance'].includes(user?.role) && <PerformanceHandoffs />}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '24px' }}>
         <div>
           <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', margin: 0 }}>Compensation</h1>

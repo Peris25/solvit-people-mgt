@@ -256,6 +256,10 @@ async def submit_response(resp: SurveyResponse, request: Request):
     user = await get_current_user(request)
     db = get_db()
     window = await find_linked_record(db.survey_windows, resp.survey_window_id, user)
+    if window.get('performance_workflow_version') == 3:
+        from utils.performance_v3_alignment import submit
+        async with integrity_write(db):
+            return await submit(db, user, window['cycle_id'], resp.responses)
     kind, subject = await eligible(db, user, window)
     if resp.respondent_type != kind:
         raise HTTPException(403, "Respondent identity is server-owned")

@@ -133,6 +133,7 @@ async def launch_cycle(db, user, reference):
     """HR explicitly distributes a cycle; existing reviews are never replaced."""
     require_hr(user)
     cycle = await find_linked_record(db.performance_cycles, reference, user)
+    if cycle.get('workflow_version') == 3: fail('Use the V3 review distribution controls', 409)
     from utils.staff_views import token
     result = {"created": [], "existing": [], "needs_review": []}
     employees = await db.employees.find(tenant_query(tenant_of(user))).to_list(None)
@@ -248,6 +249,8 @@ async def meeting_date_options(db, user, reference):
     dates = []
     for offset in range(1, 31):
         candidate = (today + timedelta(days=offset)).isoformat()
+        if row.get('workflow_version') == 3 and not row['manager_due_on'] < candidate <= row['review_due_on']:
+            continue
         if candidate in meeting_days or any(str(l.get("start_date", ""))[:10] <= candidate <= str(l.get("end_date", ""))[:10] for l in leaves):
             continue
         if all(working_units(candidate, candidate, holidays, policy["saturday_weight"], policy.get("workday_weights")) > 0 for policy in policies):
@@ -319,6 +322,7 @@ async def create_review(db, user, body):
     cycle = await db.performance_cycles.find_one({"$and": [tenant_query(tenant_of(user)), {
         "cycle_type": body["cycle_type"], "cycle_year": body["cycle_year"]}]})
     if not cycle: fail("HR must configure and approve this review cycle first", 409)
+    if cycle.get('workflow_version') == 3: fail('Use the V3 review distribution controls', 409)
     aliases = reference_ids(employee) + [employee["_id"]]
     prior = await db.performance_reviews.find({"$and": [tenant_query(tenant_of(user)), {
         "employee_id": {"$in": aliases}, "cycle_year": body["cycle_year"]}]}).to_list(None)

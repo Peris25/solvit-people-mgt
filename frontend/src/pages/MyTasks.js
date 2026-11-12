@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as api from '../services/api';
+import PerformanceTaskLinks from '../components/PerformanceTaskLinks';
 
 export default function MyTasks() {
   const navigate = useNavigate();
@@ -15,6 +16,7 @@ export default function MyTasks() {
 
   return (
     <div data-testid="my-tasks-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
+      <PerformanceTaskLinks />
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', margin: 0 }}>My Tasks</h1>
         <p style={{ color: '#525252', fontSize: '13px', margin: '4px 0 0' }}>Forms awaiting your sign-off · sequential workflow routing</p>

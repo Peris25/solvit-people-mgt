@@ -139,6 +139,11 @@ async def save(db, user, key, body):
     row = {**query, 'category':'performance_role_kpi_library', 'values':values, 'status':'Published' if body['action']=='publish' else 'Draft',
            'version':str(uuid.uuid4()), 'updated_at':flow.now(), 'updated_by':user['id'],
            'published_values':deepcopy(values) if body['action']=='publish' else deepcopy((previous or {}).get('published_values'))}
+    row['published_version'] = row['version'] if body['action'] == 'publish' else (previous or {}).get('published_version') or ((previous or {}).get('version') if (previous or {}).get('published_values') else None)
     await flow.audit(db,user,'performance.role_kpi.'+body['action'],{'id':key},before=view(previous) if previous else None,after=view(row),reason=reason)
     await db.system_settings.update_one(query,{'$set':{key:value for key,value in row.items() if key != '_id'}},upsert=True)
+    if body['action'] == 'publish':
+        from utils.performance_v3 import auto_assignment
+        for employee in await db.employees.find(tenant_query(tenant_of(user))).to_list(None):
+            await auto_assignment(db, employee, user)
     return view(row)

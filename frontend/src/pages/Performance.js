@@ -5,7 +5,8 @@ import { useNotifications } from '../context/NotificationContext';
 import CreateReviewDialog from '../components/CreateReviewDialog';
 import KpiTemplate from '../components/KpiTemplate';
 import MyRoleKpis from '../components/MyRoleKpis';
-import PerformanceWorkflow, { CycleConfiguration } from '../components/PerformanceWorkflow';
+import PerformanceV3Panel from '../components/PerformanceV3Panel';
+import PerformanceWorkflow from '../components/PerformanceWorkflow';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -18,7 +19,6 @@ export default function Performance() {
   const [selected,setSelected]=useState([]);
   const isHR=["hr_admin","hr_manager","general_manager"].includes(user?.role);
   const [reviews, setReviews] = useState([]);
-  const [cycles, setCycles] = useState([]);
   const [error, setError] = useState('');
   const [cycle, setCycle] = useState(null);
   const [nineBox, setNineBox] = useState(null);
@@ -36,8 +36,7 @@ export default function Performance() {
     setLoading(true);
     setError('');
     try {
-      const [revRes, cycleRes, cyclesRes] = await Promise.all([api.getReviews(), api.getActiveCycle(), api.getReviewCycles()]);
-      setCycles(cyclesRes.data);
+      const [revRes, cycleRes] = await Promise.all([api.getReviews(), api.getActiveCycle()]);
       setViewReview(previous => revRes.data.find(row => row.id === (previous?.id || new URLSearchParams(window.location.search).get('review'))) || null);
       setReviews(revRes.data);
       setSelected([]);
@@ -157,8 +156,8 @@ export default function Performance() {
                     <div style={{ flex: 1 }}>
                       {myEmps.map(emp => (
                         <div key={emp.employee_id}
-                          draggable
-                          onDragStart={() => setDraggedEmp({ emp, fromKey: cell.key })}
+                          draggable={emp.workflow_version !== 3}
+                          onDragStart={() => { if (emp.workflow_version !== 3) setDraggedEmp({ emp, fromKey: cell.key }); }}
                           onDragEnd={() => setDraggedEmp(null)}
                           data-testid={`ninebox-emp-${emp.employee_id}`}
                           style={{ fontSize: '11px', padding: '4px 6px', borderTop: '1px solid rgba(25,25,25,0.06)', cursor: 'grab', userSelect: 'none', transition: 'background-color 0.1s' }}
@@ -202,7 +201,8 @@ export default function Performance() {
       {error && <div role="alert">{error} <button onClick={load}>Retry</button></div>}
       {user?.employee_id && <MyRoleKpis key={user.employee_id} />}
       {isHR && <KpiTemplate reviews={reviews} onUpdated={load} />}
-      {['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) && <CycleConfiguration cycles={cycles} onUpdated={load} />}
+      <PerformanceV3Panel user={user} onUpdated={load} createOpen={showCreate === true} onCloseCreate={() => setShowCreate(false)} onOpenReview={openView} />
+      {isHR && <details><summary>Probation reviews</summary><p>Probation is a separate monthly assessment. Existing annual reviews remain accessible below.</p><button onClick={() => setShowCreate('legacy')}>Create probation review</button></details>}
       {['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) && <section style={{ background: '#fff', padding: 20, marginBottom: 20, borderRadius: 12 }}>
         <h2>Review meetings to arrange</h2>
         <p>Manager-approved assessments return to HR here. Open a review to arrange its meeting.</p>
@@ -224,17 +224,17 @@ export default function Performance() {
             <div style={{ padding: '10px 12px', backgroundColor: '#F9FAFB', border: '1px solid rgba(25,25,25,0.06)' }}>
               <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252' }}>Stars + Core %</div>
               <div style={{ fontSize: '20px', fontWeight: 900, color: '#191919' }}>{talentDensity.components.primary_stars_core_pct}%</div>
-              <div style={{ fontSize: '10px', color: '#9CA3AF' }}>weight 60%</div>
+              <div style={{ fontSize: '10px', color: '#9CA3AF' }}>weight {talentDensity.weights?.[0] ?? 60}%</div>
             </div>
             <div style={{ padding: '10px 12px', backgroundColor: '#F9FAFB', border: '1px solid rgba(25,25,25,0.06)' }}>
               <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252' }}>Section B Values</div>
               <div style={{ fontSize: '20px', fontWeight: 900, color: '#191919' }}>{talentDensity.components.secondary_values_avg_pct}%</div>
-              <div style={{ fontSize: '10px', color: '#9CA3AF' }}>weight 25%</div>
+              <div style={{ fontSize: '10px', color: '#9CA3AF' }}>weight {talentDensity.weights?.[1] ?? 25}%</div>
             </div>
             <div style={{ padding: '10px 12px', backgroundColor: '#F9FAFB', border: '1px solid rgba(25,25,25,0.06)' }}>
               <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252' }}>Alignment Survey</div>
               <div style={{ fontSize: '20px', fontWeight: 900, color: '#191919' }}>{talentDensity.components.tertiary_alignment_pct == null ? 'Awaiting data' : `${talentDensity.components.tertiary_alignment_pct}%`}</div>
-              <div style={{ fontSize: '10px', color: '#9CA3AF' }}>weight 15%</div>
+              <div style={{ fontSize: '10px', color: '#9CA3AF' }}>weight {talentDensity.weights?.[2] ?? 15}%</div>
             </div>
           </div>
         </div>
@@ -361,7 +361,7 @@ export default function Performance() {
                     <tbody>
                       {viewReview.section_a_kpis.map((k, i) => (
                         <tr key={i} style={{ borderBottom: '1px solid rgba(25,25,25,0.06)' }}>
-                          <td style={{ padding: '8px 12px' }}>{k.name || k.kpi || '—'}</td>
+                          <td style={{ padding: '8px 12px' }}>{k.objective || k.name || k.kpi || '—'}</td>
                           <td style={{ padding: '8px 12px', color: '#525252' }}>{k.weight ? `${k.weight}%` : '—'}</td>
                           <td style={{ padding: '8px 12px', fontWeight: 700 }}>{k.score ?? '—'}</td>
                         </tr>
@@ -387,7 +387,7 @@ export default function Performance() {
       )}
 
       {deleting.length>0&&<DeleteReviewDialog reviews={deleting} onClose={()=>setDeleting([])} onDeleted={async()=>{setDeleting([]);await load();await notifications?.refresh?.();}}/>}
-      {showCreate && <CreateReviewDialog employees={employees} onClose={() => setShowCreate(false)} onCreated={async () => { setShowCreate(false); await load(); }} />}
+      {showCreate === 'legacy' && <CreateReviewDialog probationOnly employees={employees} onClose={() => setShowCreate(false)} onCreated={async () => { setShowCreate(false); await load(); }} />}
 
     </div>
   );

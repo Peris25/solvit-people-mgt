@@ -1,6 +1,7 @@
 import { MAX_REVIEW_KPIS } from './performanceLimits';
 import React, { useState } from 'react';
 import * as api from '../services/api';
+import PerformanceV3Review from './PerformanceV3Review';
 
 const localMeetingTime = value => { const date = new Date(value); return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
 
@@ -58,6 +59,7 @@ export default function PerformanceWorkflow({ review, onUpdated }) {
   const [dateOptions, setDateOptions] = useState(null);
   const goals = review.section_a_kpis || [];
   const perform = async action => { setBusy(true); setError(''); try { await action(); await onUpdated(); } catch (err) { setError(typeof err.response?.data?.detail === 'string' ? err.response.data.detail : 'The assessment could not be saved.'); } finally { setBusy(false); } };
+  if (review.workflow_version === 3) return <PerformanceV3Review review={review} onUpdated={onUpdated} />;
   if (review.workflow_version !== 1) return <section><p>Historical review. Existing scores are preserved; updates require an approved reconciliation process.</p>
     {error && <p role="alert">{error}</p>}
     {review.can_hr_review && ['Completed', 'Imported'].includes(review.status) && !review.scores_released && <form onSubmit={e => { e.preventDefault(); perform(() => api.submitReviewAssessment(review.id, 'legacy-release', { approval_reference: legacyReference })); }}>

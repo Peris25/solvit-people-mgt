@@ -11,6 +11,8 @@ from utils.auth import get_current_user
 import uuid
 
 router = APIRouter(prefix="/performance", tags=["performance"])
+from routes.performance_v3 import router as v3_router
+router.include_router(v3_router)
 
 NINE_BOX = ["Stars", "Core_Contributor", "Culture_Risk", "Realignment_Needed", "Exit_Track"]
 RATING_LABELS = {(1.0, 1.49): "Exceeded", (1.5, 1.99): "Met", (2.0, 2.49): "Below", (2.5, 3.0): "Forfeited"}
@@ -158,7 +160,7 @@ async def list_cycles(request: Request):
     user = await get_current_user(request)
     personal_grant(user, "M05")
     rows = await get_db().performance_cycles.find(tenant_query(tenant_of(user))).sort("starts_on", -1).to_list(None)
-    fields = {"id", "cycle_type", "cycle_year", "starts_on", "ends_on", "self_due_on", "manager_due_on", "status"}
+    fields = {"id", "cycle_type", "cycle_year", "starts_on", "ends_on", "self_due_on", "manager_due_on", "status", "workflow_version"}
     if user.get("role") in workflow.HR: fields.add("scoring_policy")
     return [{key: row.get(key) for key in fields} for row in rows]
 
@@ -273,7 +275,7 @@ async def get_active_cycle(request: Request):
     personal_grant(user, "M05")
     today = datetime.now(timezone.utc).date().isoformat()
     rows = await get_db().performance_cycles.find(tenant_query(tenant_of(user))).to_list(None)
-    active = [row for row in rows if row.get("starts_on", "z") <= today <= row.get("ends_on", "")]
+    active = [row for row in rows if row.get('status') not in {'Archived', 'Cancelled'} and row.get("starts_on", "z") <= today <= row.get("ends_on", "")]
     if len(active) > 1:
         raise HTTPException(409, "Overlapping active cycles require HR review")
     if not active: return {"is_active": False, "cycle_type": None, "cycle_year": None}
@@ -378,6 +380,21 @@ async def get_talent_density_kpi(request: Request, cycle_year: Optional[int] = N
     db = get_db()
     year = cycle_year or datetime.now(timezone.utc).year
 
+    cycle_collection = getattr(db, 'performance_cycles', None)
+    if cycle_collection is not None:
+        v3_cycles = await cycle_collection.find({'$and': [tenant_query(tenant_of(user)), {'workflow_version': 3, 'cycle_year': year, 'status': {'$nin': ['Archived', 'Cancelled']}}]}).sort('starts_on', -1).to_list(1)
+        if v3_cycles:
+            aggregate = {}
+            if user.get('role') in workflow.HR:
+                from utils.performance_v3_alignment import report
+                try: aggregate = await report(db, user, v3_cycles[0]['id'])
+                except HTTPException as error:
+                    if error.status_code != 409: raise
+            score = aggregate.get('talent_density')
+            return {'score_pct': score, 'target_pct': 85, 'weights': [50, 30, 20],
+                    'status': 'Awaiting data' if score is None else 'Healthy' if score >= 85 else 'Below Target',
+                    'components': aggregate.get('components') or {'primary_stars_core_pct': None, 'secondary_values_avg_pct': None, 'alignment_survey_pct': aggregate.get('score')}}
+
     active_count = await db.employees.count_documents({"tenant_id": tenant_of(user), "lifecycle_state": "Active"})
     reviews = await db.performance_reviews.find({"tenant_id": tenant_of(user), "cycle_year": year}).to_list(500)
     in_target = sum(1 for r in reviews if r.get("nine_box_placement") in ["Stars", "Core_Contributor"])
@@ -467,6 +484,8 @@ async def update_nine_box_placement(employee_id: str, request: Request):
         if not reviews: raise HTTPException(404, "No review found for this period")
         if reviews[0].get("workflow_version") == 1 and reviews[0].get("status") not in {"HR_Reviewed", "Completed"}:
             raise HTTPException(409, "HR assessment must be completed before classification")
+        if reviews[0].get('workflow_version') == 3:
+            raise HTTPException(409, 'V3 placement is calculated from the approved assessment and cannot be dragged manually')
         await workflow.save(db, user, reviews[0], {"nine_box_placement": body["placement"]}, "performance.placement.changed")
     return {"status": "success", "employee_id": employee_id, "placement": body["placement"]}
 
@@ -505,6 +524,7 @@ async def get_nine_box_matrix(request: Request, cycle_year: Optional[int] = None
                     "role": emp.get("role_title"),
                     "department": emp.get("department"),
                     "score": visible.get("overall_score"),
-                    "rating": visible.get("rating")
+                    "rating": visible.get("rating"),
+                    **({'workflow_version': 3} if r.get('workflow_version') == 3 else {})
                 })
     return matrix

@@ -7,7 +7,7 @@ from database import get_db
 from utils.auth import get_current_user
 import uuid
 from utils.access_matrix import get_module_access
-from utils.employee_integrity import tenant_of, tenant_query
+from utils.employee_integrity import tenant_of, tenant_query, find_employee
 
 
 def compensation_access(user, write=False):
@@ -16,6 +16,29 @@ def compensation_access(user, write=False):
         raise HTTPException(403,"Compensation permission is required")
 
 router = APIRouter(prefix="/compensation", tags=["compensation"])
+
+
+@router.get('/performance-handoffs')
+async def performance_handoffs(request: Request, company_scorecard: Optional[float] = None):
+    user = await get_current_user(request)
+    compensation_access(user)
+    if user.get('role') not in {'finance', 'hr_admin', 'hr_manager', 'general_manager'}:
+        raise HTTPException(403, 'HR/Finance compensation oversight required')
+    from utils.performance_v3_scoring import bonus_multiplier, number
+    if company_scorecard is not None: number(company_scorecard, 0, 100)
+    db = get_db(); seen = set(); result = []
+    rows = await db.performance_reviews.find({'$and': [tenant_query(tenant_of(user)), {'workflow_version': 3, 'released_at': {'$exists': True}, 'released_by': {'$exists': True}}]}).sort('released_at', -1).to_list(None)
+    for row in rows:
+        if row['employee_id'] in seen: continue
+        seen.add(row['employee_id'])
+        employee = await find_employee(db, row['employee_id'], tenant_of(user))
+        if not employee: continue
+        hold = row.get('nine_box_placement') == 'Culture_Risk'
+        result.append({'employee_name': employee.get('full_name'), 'review_id': row['id'], 'period': f"{row['cycle_type']} {row['cycle_year']}",
+            'final_score': row['overall_score'], 'values_hold': hold,
+            'multiplier': bonus_multiplier(row['overall_score'], company_scorecard, hold) if company_scorecard is not None else None,
+            'status': 'Finance review required; no payment calculated or executed'})
+    return result
 
 
 def fmt(doc):

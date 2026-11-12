@@ -431,6 +431,9 @@ class AutomationEngine:
             await self._check_probation_reviews()
             await self._check_solver_inactive()
             await self._check_leave_requests()
+            from utils.performance_v3_reminders import daily as performance_reminders
+            if getattr(self.db, 'performance_peer_tasks', None) is not None:
+                await performance_reminders(self.db)
             logger.info("Daily cron completed")
         except Exception as e:
             logger.error(f"Daily cron error: {e}")

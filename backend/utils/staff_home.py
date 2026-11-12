@@ -175,9 +175,13 @@ async def staff_home_data(db, user, balance_loader):
         snapshot["reviews"] = [review_projection(row, user, employee) for row in rows]
         link("Performance", "/performance")
         for row in rows:
-            if row.get("workflow_version") == 1 and row.get("status") in {"Draft", "Self_Draft"}:
+            if row.get("workflow_version") in {1, 3} and row.get("status") in {"Draft", "Self_Draft"}:
                 snapshot["tasks"].append({"id": identifier(row), "kind": "performance", "title": "Complete self-assessment",
                     "status": row["status"], "due_date": row.get("self_due_on"), "path": "/performance?review=" + identifier(row)})
+        peer_collection = getattr(db, 'performance_peer_tasks', None)
+        if peer_collection is not None:
+            for task in await peer_collection.find({'$and': [tenant, {'reviewer_employee_id': {'$in': refs}, 'status': 'Assigned'}]}).to_list(50):
+                snapshot['tasks'].append({'id': identifier(task), 'kind': 'performance', 'title': 'Complete anonymous peer review', 'status': 'Assigned', 'due_date': task.get('due_on'), 'path': '/performance?peer=' + identifier(task)})
     if can_personal(user, "M11"):
         rows = await db.recognitions.find({"$and": [tenant, {"$or": [{"employee_id": {"$in": refs}}, {"nominee_id": {"$in": refs}}]}]}).sort("created_at", -1).to_list(30)
         snapshot["recognitions"] = [{"id": identifier(row), **project(row, ("recognition_type", "specific_behaviour", "created_at")),
