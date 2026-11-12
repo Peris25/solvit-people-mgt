@@ -4,23 +4,13 @@
  */
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
 import StatusBadge from '../components/StatusBadge';
 import * as api from '../services/api';
+import { DashboardAttention, DashboardMetric } from '../components/DashboardOverview';
+import WorkspaceSkeleton from '../components/WorkspaceSkeleton';
+import { Bell, ClipboardList, CheckSquare } from 'lucide-react';
 
-const KPI_TILE = ({ label, value, sub, color = '#191919', testId, onClick }) => (
-  <div
-    data-testid={testId || `kpi-${label.toLowerCase().replace(/ /g,'-')}`}
-    onClick={onClick}
-    style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '14px 16px', cursor: onClick ? 'pointer' : 'default', transition: 'all 0.15s' }}
-    onMouseEnter={e => onClick && (e.currentTarget.style.borderColor = '#FF353F')}
-    onMouseLeave={e => onClick && (e.currentTarget.style.borderColor = 'rgba(25,25,25,0.08)')}
-  >
-    <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#525252' }}>{label}</div>
-    <div style={{ fontSize: '26px', fontWeight: 900, letterSpacing: '-0.04em', color, marginTop: '4px' }}>{value ?? '—'}</div>
-    {sub && <div style={{ fontSize: '10px', color: '#525252', marginTop: '2px' }}>{sub}</div>}
-  </div>
-);
+const KPI_TILE = ({ label, value, sub, testId, onClick }) => <DashboardMetric label={label} value={value} sub={sub} testId={testId || `kpi-${label.toLowerCase().replace(/ /g,'-')}`} onClick={onClick} />;
 
 const ALERT_PRIORITY = (n) => {
   const cat = (n.category || '').toLowerCase();
@@ -97,7 +87,6 @@ const EVENT_COLOR = (type) => {
 };
 
 export default function Dashboard() {
-  const { user } = useAuth();
   const navigate = useNavigate();
   const [kanban, setKanban] = useState({ Onboarding: [], Active: [], Exiting: [], Exited: [] });
   const [stats, setStats] = useState(null);
@@ -108,23 +97,34 @@ export default function Dashboard() {
   const [search, setSearch] = useState('');
   const [dismissed, setDismissed] = useState(new Set());
   const [loading, setLoading] = useState(true);
+  const [alertsAvailable, setAlertsAvailable] = useState(false);
+  const [sectionErrors, setSectionErrors] = useState([]);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     setLoading(true);
+    setSectionErrors([]); setAlertsAvailable(false);
     try {
       const [k, s, n, c, td, va] = await Promise.allSettled([
         api.getKanban(), api.getEmployeeStats(), api.getNotifications(),
         api.getCalendarEvents(14), api.getTalentDensity(),
         api.getVoluntaryAttrition(),
       ]);
-      if (k.status === 'fulfilled') setKanban(k.value.data || {});
-      if (s.status === 'fulfilled') setStats(s.value.data);
-      if (n.status === 'fulfilled') setAlerts((n.value.data || []).filter(x => !x.is_read).slice(0, 12));
-      if (c.status === 'fulfilled') setCalendar(c.value.data || []);
-      if (td.status === 'fulfilled') setTalent(td.value.data);
-      if (va.status === 'fulfilled') setAttrition(va.value.data);
+      const failures = [];
+      if (k.status === 'fulfilled' && k.value.data && typeof k.value.data === 'object') setKanban(k.value.data);
+      else { setKanban({}); failures.push('Employee overview'); }
+      if (s.status === 'fulfilled' && s.value.data) setStats(s.value.data);
+      else { setStats(null); failures.push('Summary'); }
+      if (n.status === 'fulfilled' && Array.isArray(n.value.data)) { setAlerts(n.value.data.filter(x => !x.is_read).slice(0, 12)); setAlertsAvailable(true); }
+      else { setAlerts([]); failures.push('Alerts'); }
+      if (c.status === 'fulfilled' && Array.isArray(c.value.data)) setCalendar(c.value.data);
+      else { setCalendar([]); failures.push('Calendar'); }
+      if (td.status === 'fulfilled' && td.value.data) setTalent(td.value.data);
+      else { setTalent(null); failures.push('Talent density'); }
+      if (va.status === 'fulfilled' && va.value.data) setAttrition(va.value.data);
+      else { setAttrition(null); failures.push('Attrition'); }
+      setSectionErrors(failures);
     } finally { setLoading(false); }
   };
 
@@ -137,25 +137,43 @@ export default function Dashboard() {
   const visibleAlerts = alerts.filter(a => !dismissed.has(a.id));
 
   return (
-    <div data-testid="hr-dashboard" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
+    <div data-testid="hr-dashboard" className="dashboard-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
       {/* Header */}
       <div className="portal-welcome" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '20px' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: 900, letterSpacing: '-0.04em', color: '#191919', margin: 0 }}>HR Dashboard</h1>
           <p style={{ color: '#525252', fontSize: '12px', margin: '4px 0 0' }}>
-            {new Date().toLocaleDateString('en-KE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })} · EAT
+            {new Date().toLocaleDateString('en-KE', { timeZone: 'Africa/Nairobi', weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })} · EAT
           </p>
         </div>
-        <button data-testid="refresh-dashboard" onClick={loadData} style={{ padding: '8px 14px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Refresh</button>
+        <button data-testid="refresh-dashboard" disabled={loading} onClick={loadData} style={{ padding: '8px 14px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Refresh</button>
       </div>
 
       {/* Zone 1: Alerts banner */}
-      {visibleAlerts.length === 0 ? (
+      {sectionErrors.length > 0 && <p role="alert">Some sections could not be loaded: {sectionErrors.join(', ')}. Use Refresh to retry.</p>}
+      {loading ? (
+        <WorkspaceSkeleton label="Loading dashboard..." />
+      ) : (
+        <>
+          <div className="dashboard-summary-grid" data-testid="quick-stats-bar">
+            <KPI_TILE testId="stat-active-employees" label="Active FTE" value={stats?.active} onClick={() => navigate('/employees')} />
+            <KPI_TILE testId="stat-active-solvers" label="Active Solvers" value={stats?.active_solvers} onClick={() => navigate('/solvers')} />
+            <KPI_TILE testId="stat-onboarding" label="Onboarding" value={stats?.onboarding} onClick={() => navigate('/onboarding')} />
+            <KPI_TILE testId="stat-overdue-tasks" label="Open Tasks" value={stats?.open_tasks} onClick={() => navigate('/my-tasks')} />
+            <KPI_TILE testId="stat-attrition" label="Attrition" value={attrition ? `${attrition.pct}%` : '—'} sub={`Target ≤${attrition?.target_pct ?? 10}%`} onClick={() => navigate('/retention')} />
+            <KPI_TILE testId="stat-talent-density" label="Talent Density" value={talent ? `${(talent.score_pct || 0).toFixed(0)}%` : '—'} sub={`Target ${talent?.target_pct ?? 85}%`} onClick={() => navigate('/performance')} />
+          </div>
+          <DashboardAttention description="Operational updates and work to review." items={[
+            { key: 'approvals', label: 'Approval alerts', count: alertsAvailable ? visibleAlerts.filter(item => item.kind === 'Approvals' || item.action?.kind === 'leave_review').length : null, detail: 'Open notifications to review assigned approvals', Icon: CheckSquare, onClick: () => navigate('/notifications') },
+            { key: 'tasks', label: 'Open tasks', count: stats?.open_tasks, detail: 'Review the task list and assigned work', Icon: ClipboardList, onClick: () => navigate('/my-tasks') },
+            { key: 'alerts', label: 'Recent unread alerts', count: alertsAvailable ? visibleAlerts.length : null, detail: 'Read the latest operational updates', Icon: Bell, onClick: () => navigate('/notifications') },
+          ]} />
+      {!loading && alertsAvailable && visibleAlerts.length === 0 ? (
         <div data-testid="alerts-all-clear" style={{ backgroundColor: '#F0FDF4', border: '1px solid #22C55E', padding: '10px 16px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span style={{ color: '#22C55E', fontWeight: 900 }}>✓</span>
-          <span style={{ fontSize: '12px', color: '#14532D', fontWeight: 600 }}>All clear — no active alerts</span>
+          <span style={{ fontSize: '12px', color: '#14532D', fontWeight: 600 }}>No unread alerts in this overview.</span>
         </div>
-      ) : (
+      ) : visibleAlerts.length > 0 ? (
         <div data-testid="alerts-banner" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '20px' }}>
           {visibleAlerts.map(a => {
             const level = ALERT_PRIORITY(a);
@@ -172,12 +190,8 @@ export default function Dashboard() {
             );
           })}
         </div>
-      )}
+      ) : null}
 
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '48px', color: '#525252' }}>Loading dashboard...</div>
-      ) : (
-        <>
           {/* Search */}
           <input
             data-testid="kanban-search"
@@ -201,7 +215,7 @@ export default function Dashboard() {
                     </div>
                     <div style={{ padding: '8px', maxHeight: '500px', overflowY: 'auto' }}>
                       {employees.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '16px 0', fontSize: '10px', color: '#9CA3AF' }}>—</div>
+                        <div style={{ textAlign: 'center', padding: '20px 10px', fontSize: '12px', color: '#667080' }}>{sectionErrors.includes('Employee overview') ? 'Overview unavailable' : 'No employees in this stage'}</div>
                       ) : employees.map(emp => (
                         <KanbanCard key={emp.id} emp={emp} onClick={() => navigate(`/employees/${emp.id}`)} />
                       ))}
@@ -220,7 +234,7 @@ export default function Dashboard() {
                 </div>
                 <div style={{ padding: '8px 12px', maxHeight: '320px', overflowY: 'auto' }}>
                   {calendar.length === 0 ? (
-                    <div style={{ fontSize: '11px', color: '#9CA3AF', padding: '8px 0' }}>No upcoming events</div>
+                    <div style={{ fontSize: '13px', color: '#667080', padding: '16px 0' }}>{sectionErrors.includes('Calendar') ? 'Calendar information is unavailable.' : 'No upcoming events'}</div>
                   ) : calendar.slice(0, 8).map((e, i) => (
                     <div key={e.id || i} data-testid={`calendar-event-${i}`} style={{ padding: '6px 0', borderBottom: i < 7 ? '1px solid rgba(25,25,25,0.05)' : 'none', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
                       <span style={{ width: '6px', height: '6px', backgroundColor: EVENT_COLOR(e.event_type), borderRadius: '50%', marginTop: '6px', flexShrink: 0 }} />
@@ -237,15 +251,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Zone 4: Quick Stats Bar */}
-          <div data-testid="quick-stats-bar" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '8px' }}>
-            <KPI_TILE testId="stat-active-employees" label="Active FTE" value={stats?.active} color="#22C55E" onClick={() => navigate('/employees')} />
-            <KPI_TILE testId="stat-active-solvers"  label="Active Solvers" value={stats?.active_solvers} color="#8B5CF6" onClick={() => navigate('/solvers')} />
-            <KPI_TILE testId="stat-onboarding"     label="Onboarding" value={stats?.onboarding} color="#3B82F6" onClick={() => navigate('/onboarding')} />
-            <KPI_TILE testId="stat-attrition"      label="Attrition" value={attrition ? `${attrition.pct}%` : '—'} sub={`Target ≤${attrition?.target_pct ?? 10}%`} color={attrition && attrition.pct > 10 ? '#FF353F' : '#22C55E'} onClick={() => navigate('/retention')} />
-            <KPI_TILE testId="stat-overdue-tasks"  label="Open Tasks" value={stats?.open_tasks} color={(stats?.open_tasks || 0) > 0 ? '#FF353F' : '#191919'} onClick={() => navigate('/my-tasks')} />
-            <KPI_TILE testId="stat-talent-density" label="Talent Density" value={talent ? `${(talent.score_pct || 0).toFixed(0)}%` : '—'} sub={`Target ${talent?.target_pct ?? 85}%`} color={talent && talent.score_pct >= 85 ? '#22C55E' : '#FF353F'} onClick={() => navigate('/performance')} />
-          </div>
         </>
       )}
     </div>

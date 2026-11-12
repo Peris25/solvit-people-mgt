@@ -21,7 +21,7 @@ export default function RoleDashboard() {
   if (user.role === 'solver') return <SolverDashboard />;
   if (user.role === 'employee') return <EmployeeDashboard key={user.id} />;
   if (user.employee_id) return <>
-    <nav aria-label="Dashboard views" style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
+    <nav className="dashboard-view-switch" aria-label="Dashboard views" style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
       <button onClick={() => setView('home')} aria-pressed={view === 'home'} style={{ minHeight: '44px', padding: '10px 16px' }}>Staff Home</button>
       <button onClick={() => setView('role')} aria-pressed={view === 'role'} style={{ minHeight: '44px', padding: '10px 16px' }}>{isManager ? 'My Team' : 'Role Dashboard'}</button>
     </nav>

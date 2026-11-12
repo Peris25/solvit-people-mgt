@@ -16,28 +16,13 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../services/api';
 import { Users as UsersIcon, Palmtree, AlertTriangle, ClipboardList, ListChecks } from 'lucide-react';
+import { DashboardAttention, DashboardMetric } from '../components/DashboardOverview';
+import WorkspaceSkeleton from '../components/WorkspaceSkeleton';
 
 const RISK_COLOR = { Critical: '#FF353F', High: '#F97316', Elevated: '#EAB308', Healthy: '#22C55E' };
 
-const Tile = ({ label, value, sub, color = '#191919', Icon, onClick, testId }) => (
-  <div
-    data-testid={testId}
-    onClick={onClick}
-    style={{
-      backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)',
-      padding: '16px 18px', cursor: onClick ? 'pointer' : 'default',
-      transition: 'all 0.15s', display: 'flex', flexDirection: 'column', gap: '6px',
-    }}
-    onMouseEnter={e => onClick && (e.currentTarget.style.borderColor = '#FF353F')}
-    onMouseLeave={e => onClick && (e.currentTarget.style.borderColor = 'rgba(25,25,25,0.08)')}
-  >
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#525252' }}>
-      {Icon && <Icon size={14} />}
-      <span style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.18em' }}>{label}</span>
-    </div>
-    <div style={{ fontSize: '30px', fontWeight: 900, color, letterSpacing: '-0.04em', lineHeight: 1, fontFamily: 'Barlow' }}>{value}</div>
-    {sub && <div style={{ fontSize: '11px', color: '#525252' }}>{sub}</div>}
-  </div>
+const Tile = ({ label, value, sub, Icon, onClick, testId }) => (
+  <DashboardMetric label={label} value={value} sub={sub} Icon={Icon} onClick={onClick} testId={testId} />
 );
 
 export default function LineManagerDashboard() {
@@ -52,6 +37,7 @@ export default function LineManagerDashboard() {
     (async () => {
       try {
         const r = await api.getLineManagerWidget();
+        if (!Array.isArray(r.data?.team)) throw new Error('Team information is unavailable');
         if (!cancelled) setData(r.data);
       } catch (e) {
         if (!cancelled) setErr(e.response?.data?.detail || 'Failed to load team data');
@@ -62,7 +48,7 @@ export default function LineManagerDashboard() {
     return () => { cancelled = true; };
   }, []);
 
-  if (loading) return <div data-testid="lm-dashboard-loading" style={{ padding: '48px', textAlign: 'center', color: '#525252' }}>Loading your team…</div>;
+  if (loading) return <div data-testid="lm-dashboard-loading"><WorkspaceSkeleton label="Loading your team..." /></div>;
   if (err) return <div data-testid="lm-dashboard-err" style={{ padding: '24px', backgroundColor: '#FEE2E2', color: '#7F1D1D', border: '1px solid #FF353F' }}>{err}</div>;
 
   const team = data?.team || [];
@@ -70,7 +56,7 @@ export default function LineManagerDashboard() {
   const total = team.length || 1;
 
   return (
-    <div data-testid="line-manager-dashboard" style={{ fontFamily: 'Nunito Sans, sans-serif' }}>
+    <div data-testid="line-manager-dashboard" className="dashboard-page" style={{ fontFamily: 'Nunito Sans, sans-serif' }}>
       {/* Header */}
       <div style={{ marginBottom: '20px' }}>
         <h1 style={{ fontSize: '30px', fontWeight: 900, letterSpacing: '-0.04em', color: '#191919', margin: 0, fontFamily: 'Barlow' }}>
@@ -82,7 +68,7 @@ export default function LineManagerDashboard() {
       </div>
 
       {/* Top brief */}
-      <div data-testid="lm-brief" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+      <div className="dashboard-summary-grid" data-testid="lm-brief">
         <Tile testId="lm-tile-team" label="Direct Reports" value={data?.team_size || 0} Icon={UsersIcon} />
         <Tile
           testId="lm-tile-leave"
@@ -91,7 +77,7 @@ export default function LineManagerDashboard() {
           sub={data?.pending_leave ? 'Awaiting your decision' : 'Nothing waiting'}
           color={data?.pending_leave ? '#FF353F' : '#22C55E'}
           Icon={Palmtree}
-          onClick={() => navigate('/leave')}
+          onClick={() => navigate('/leave?view=team')}
         />
         <Tile
           testId="lm-tile-reviews"
@@ -112,6 +98,11 @@ export default function LineManagerDashboard() {
         />
       </div>
 
+      <DashboardAttention description="Approvals and work waiting for your team." items={[
+        { key: 'leave', label: 'Leave requests awaiting your decision', count: data?.pending_leave, detail: 'Open Team Leave to review the requests', Icon: Palmtree, onClick: () => navigate('/leave?view=team') },
+        { key: 'reviews', label: 'Team reviews in progress', count: data?.open_reviews, detail: 'Check your team’s current performance reviews', Icon: ClipboardList, onClick: () => navigate('/performance') },
+        { key: 'tasks', label: 'Your open tasks', count: data?.my_open_tasks, detail: 'Review your assigned tasks and deadlines', Icon: ListChecks, onClick: () => navigate('/my-tasks') },
+      ]} />
       {/* Flight risk bar */}
       <div data-testid="lm-flight-risk" style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '14px 18px', marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>

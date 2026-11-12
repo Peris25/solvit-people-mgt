@@ -7,6 +7,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../services/api';
+import { Bell, ClipboardList, CalendarDays } from 'lucide-react';
+import { DashboardAttention, DashboardMetric } from '../components/DashboardOverview';
+import WorkspaceSkeleton from '../components/WorkspaceSkeleton';
 
 const TABS = [
   { key: 'dashboard', label: 'My Dashboard' },
@@ -76,9 +79,12 @@ export default function EmployeeDashboard() {
     if (!b.due_date) return -1;
     return new Date(a.due_date) - new Date(b.due_date);
   });
+  const reviewActions = reviews.filter(review => review.workflow_version === 1 && ['Draft', 'Self_Draft'].includes(review.status));
+  const annualAvailable = leaveBalance && Object.prototype.hasOwnProperty.call(leaveBalance, 'annual_available_to_request')
+    ? leaveBalance.annual_available_to_request : leaveBalance?.annual_days_remaining;
 
   return (
-    <div data-testid="employee-dashboard" style={{ fontFamily: 'Arial, Helvetica, sans-serif', minHeight: '100vh' }}>
+    <div data-testid="employee-dashboard" className="dashboard-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif', minHeight: '100vh' }}>
       {/* Top bar / greeting */}
       <div className="portal-welcome" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '20px' }}>
         <div>
@@ -116,10 +122,20 @@ export default function EmployeeDashboard() {
       </div>
 
       {error ? <div role="alert" style={{ padding: '24px', backgroundColor: '#FEE2E2', color: '#7F1D1D' }}>{error}<button onClick={() => window.location.reload()} style={{ marginLeft: '12px', minHeight: '44px' }}>Retry</button></div> : loading || !homeData ? (
-        <div style={{ textAlign: 'center', padding: '48px', color: '#525252' }}>Loading...</div>
+        <WorkspaceSkeleton label="Loading your dashboard..." />
       ) : tab === 'dashboard' ? (
         <>
-          <nav aria-label="Staff quick links" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
+          <div className="dashboard-summary-grid" aria-label="My summary">
+            <DashboardMetric label="Open tasks" value={homeData.tasks == null ? null : tasks.length} sub={overdueTasks.length ? `${overdueTasks.length} overdue` : 'Your assigned work'} Icon={ClipboardList} onClick={() => navigate('/my-tasks')} />
+            {links.some(link => link.path === '/leave') && <DashboardMetric label="Annual leave available" value={annualAvailable} unit="days" sub={annualAvailable == null ? 'Needs HR review' : 'Available to request'} Icon={CalendarDays} onClick={() => navigate('/leave')} />}
+            <DashboardMetric label="Unread updates" value={homeData.unread_notifications} sub="In your notification centre" Icon={Bell} onClick={() => navigate('/notifications')} />
+          </div>
+          <DashboardAttention items={[
+            { key: 'tasks', label: 'Tasks to complete', count: homeData.tasks == null ? null : tasks.length, detail: overdueTasks.length ? `${overdueTasks.length} overdue · Open your task list` : 'Review your assigned tasks and deadlines', Icon: ClipboardList, urgent: overdueTasks.length > 0, onClick: () => navigate('/my-tasks') },
+            ...(homeData.reviews == null ? [] : [{ key: 'review', label: 'Performance review to complete', count: reviewActions.length, detail: 'Your self-assessment is ready to open', onClick: () => navigate(reviewActions.length === 1 ? '/performance?review=' + encodeURIComponent(reviewActions[0].id) : '/performance') }]),
+            { key: 'updates', label: 'Unread notifications', count: homeData.unread_notifications, detail: 'Check your latest updates and requests', Icon: Bell, onClick: () => navigate('/notifications') },
+          ]} />
+          <nav className="dashboard-quick-links" aria-label="Staff quick links" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
             {links.map(link => <button key={link.path} onClick={() => navigate(link.path)} style={{ minHeight: '44px', padding: '10px 16px', background: '#191919', color: '#fff', border: 'none', cursor: 'pointer' }}>{link.label}</button>)}
           </nav>
           <div data-testid="staff-pending-leave" style={{ background: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '20px', marginBottom: '20px' }}>
@@ -149,7 +165,7 @@ export default function EmployeeDashboard() {
               <span style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.18em', color: '#191919' }}>My Tasks</span>
               {overdueTasks.length > 0 && <span style={{ fontSize: '11px', color: '#FF353F', fontWeight: 700 }}>{overdueTasks.length} overdue</span>}
             </div>
-            {tasks.length === 0 ? (
+            {homeData.tasks == null ? <p style={{ padding: 20 }}>Task information is unavailable. Please refresh to retry.</p> : tasks.length === 0 ? (
               <div data-testid="emp-no-tasks" style={{ padding: '32px 20px', textAlign: 'center', color: '#22C55E', fontWeight: 700 }}>
                 ✓ You are up to date
               </div>
