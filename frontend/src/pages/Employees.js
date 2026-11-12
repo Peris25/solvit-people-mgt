@@ -27,6 +27,9 @@ export default function Employees() {
   const [departmentError, setDepartmentError] = useState('');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [listError, setListError] = useState('');
   const [filterState, setFilterState] = useState('');
   const [filterDept, setFilterDept] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -43,6 +46,11 @@ export default function Employees() {
   const [accountBusy, setAccountBusy] = useState(false);
   const [accountReviewVersion, setAccountReviewVersion] = useState(0);
   const listSequence = useRef(0);
+  const hasLoaded = useRef(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const toggleSelect = (id) => setSelectedIds(prev => {
     const next = new Set(prev);
@@ -89,11 +97,15 @@ export default function Employees() {
   const loadEmployees = useCallback(async () => {
     const sequence = ++listSequence.current;
     try {
-      setLoading(true);
-      const res = await api.getEmployees({ search, lifecycle_state: filterState || undefined, department: filterDept || undefined });
-      if (sequence === listSequence.current) setEmployees(res.data);
-    } finally { if (sequence === listSequence.current) setLoading(false); }
-  }, [search, filterState, filterDept]);
+      if (!hasLoaded.current) setLoading(true);
+      setRefreshing(true); setListError('');
+      const res = await api.getEmployees({ search: debouncedSearch, lifecycle_state: filterState || undefined, department: filterDept || undefined });
+      if (!Array.isArray(res.data)) throw new Error('Unavailable');
+      if (sequence === listSequence.current) { setEmployees(res.data); hasLoaded.current = true; }
+    } catch {
+      if (sequence === listSequence.current) setListError('Employee list could not be updated. Please retry.');
+    } finally { if (sequence === listSequence.current) { setLoading(false); setRefreshing(false); } }
+  }, [debouncedSearch, filterState, filterDept]);
 
   useEffect(() => { loadEmployees(); }, [loadEmployees]);
 
@@ -124,6 +136,7 @@ export default function Employees() {
         // that hides the table and delays the confirmation of a successful edit.
         ++listSequence.current;
         setLoading(false);
+        setRefreshing(false);
         let matchesSearch = true;
         if (search) {
           try {
@@ -204,7 +217,9 @@ export default function Employees() {
       </div>
 
       {/* Table */}
-      <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
+      {refreshing && !loading && <p role="status" style={{ fontSize: 12, color: '#667085' }}>Updating employee list...</p>}
+      {listError && <p role="alert">{listError} <button onClick={loadEmployees}>Retry</button></p>}
+      <div aria-busy={refreshing} style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
         {loading ? <div style={{ padding: '48px', textAlign: 'center', color: '#525252' }}>Loading...</div> : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>

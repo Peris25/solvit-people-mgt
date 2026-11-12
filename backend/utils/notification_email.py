@@ -7,10 +7,11 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
+from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 
 from utils.email_routing import action_email, eligible, portal_link
-from utils.employee_integrity import normalize_email, tenant_of, tenant_query
+from utils.employee_integrity import normalize_email, tenant_of, tenant_query, find_employee, employee_key, email_query
 from utils.notification_centre import list_inbox, date_value, storage_key
 from utils.runtime_controls import background_jobs_enabled, outbound_email_enabled
 
@@ -87,9 +88,35 @@ async def deliver(db):
             logger.exception('Notification email pending; notification %s', storage_key(row))
 
 
+async def candidate_accounts(db, row):
+    """Narrow the lookup; inbox projection remains the authorization authority."""
+    recipient = row.get('user_id') or row.get('recipient_id')
+    if recipient is not None and recipient != '':
+        ids = [recipient]
+        if ObjectId.is_valid(str(recipient)):
+            ids.append(ObjectId(str(recipient)))
+        clauses = [{'_id': {'$in': ids}}]
+        if not row.get('user_id') and row.get('recipient_type') not in {'account', 'solver'}:
+            employee = await find_employee(db, recipient, tenant_of(row))
+            if employee:
+                clauses.append({'employee_id': {'$in': [employee_key(employee), str(employee['_id']), employee['_id']]}})
+                if employee.get('work_email'):
+                    clauses.append(email_query('email', employee['work_email'].strip().lower()))
+        if not row.get('user_id') and row.get('recipient_type') not in {'account', 'employee', 'solver'}:
+            clauses.append({'role': 'solver'})  # Legacy solver aliases still need the full inbox check.
+        routing = {'role': 'solver'} if not row.get('user_id') and row.get('recipient_type') == 'solver' else {'$or': clauses}
+    elif row.get('recipient_role') == 'all_active_fte':
+        routing = {'role': {'$ne': 'solver'}}
+    elif row.get('recipient_role') == 'all_active_solvers':
+        routing = {'role': 'solver'}
+    else:
+        routing = {'role': row.get('recipient_role')}
+    return await db.users.find({'$and': [tenant_query(tenant_of(row)), {'is_active': {'$ne': False}}, routing]}).to_list(None)
+
+
 async def deliver_item(db, row):
     complete = True
-    accounts = await db.users.find({'$and': [tenant_query(tenant_of(row)), {'is_active': {'$ne': False}}]}).to_list(None)
+    accounts = await candidate_accounts(db, row)
     for account in accounts:
         if not eligible(account) or not account.get('email'):
             continue

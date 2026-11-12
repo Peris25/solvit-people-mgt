@@ -306,7 +306,12 @@ async def read_runtime_state(db):
     """
     overrides, roles = {}, {}
     try:
-        async for doc in db.permission_overrides.find({"tenant_id": "solvit"}):
+        import asyncio
+        override_rows, role_rows = await asyncio.gather(
+            db.permission_overrides.find({"tenant_id": "solvit"}).to_list(None),
+            db.custom_roles.find({"tenant_id": "solvit"}).to_list(None),
+        )
+        for doc in override_rows:
             key = (doc.get("module_id"), doc.get("role"))
             if not all(isinstance(value, str) and value for value in key) or key in overrides:
                 raise ValueError("Ambiguous permission configuration")
@@ -317,7 +322,7 @@ async def read_runtime_state(db):
             entry = None if doc.get("removed") else {"level": doc["level"]}
             if entry is not None and doc.get("scope"): entry["scope"] = doc["scope"]
             overrides[key] = entry
-        async for doc in db.custom_roles.find({"tenant_id": "solvit"}):
+        for doc in role_rows:
             key, parent = doc.get("key"), doc.get("inherits_from", "employee")
             if not isinstance(key, str) or not key or key in roles or parent not in {*ROLES, "it_admin", "board"}:
                 raise ValueError("Invalid custom role configuration")

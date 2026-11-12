@@ -150,3 +150,26 @@ def test_v3_and_legacy_performance_use_existing_workflow_keys():
     row = {'_id': 'performance:solvit:review:created:employee:staff', 'tenant_id': 'solvit',
            'data': {'performance_review_id': 'review', 'performance_event': 'created'}}
     assert delivery.event_key(row) == 'performance:review:created'
+
+
+def test_targeted_notice_does_not_project_every_unrelated_account():
+    db, actors, row = setup()
+    with patch.object(delivery, 'list_inbox', wraps=delivery.list_inbox) as inbox, patch('utils.email_service.send_email', new=AsyncMock(return_value={'status': 'sent'})) as send:
+        run(delivery.deliver(db))
+    assert inbox.await_count == 1
+    assert send.await_count == 1
+    assert inbox.await_args.args[1]['id'] == actors['staff']['id']
+
+
+def test_candidate_lookup_preserves_legacy_storage_alias_and_email_link():
+    db, actors, row = setup()
+    row['recipient_id'] = str(db.employees.docs[0]['_id'])
+    db.users.docs[0].pop('employee_id')
+    result = run(delivery.candidate_accounts(db, row))
+    assert [str(account['_id']) for account in result] == [actors['staff']['id']]
+
+
+def test_account_target_is_not_expanded_to_staff_role_peers():
+    db, actors, row = setup()
+    row.update(recipient_type='account', recipient_id=actors['staff']['id'])
+    assert [str(account['_id']) for account in run(delivery.candidate_accounts(db, row))] == [actors['staff']['id']]

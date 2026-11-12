@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { lazy, Suspense, useState } from 'react';
 import { Outlet, Navigate, Link } from 'react-router-dom';
 import { useNotifications } from '../context/NotificationContext';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from './Sidebar';
-import AIAgent from './AIAgent';
+const AIAgent = lazy(() => import('./AIAgent'));
 import FirstLoginTour from './FirstLoginTour';
 import RequiredPasswordChange from './RequiredPasswordChange';
 import MfaSecurity from '../pages/MfaSecurity';
@@ -37,7 +37,7 @@ export default function Layout() {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#F5F5F5', fontFamily: 'Nunito Sans, sans-serif' }}>
         <nav style={{ padding: '12px', textAlign: 'right' }}><Link to="/account-security" style={{ marginRight: '16px' }}>Account security</Link><Link to="/notifications">Notifications{unreadCount > 0 ? ` (${unreadCount} unread)` : ''}</Link></nav>
-        <Outlet />
+        <Suspense fallback={<div role="status" style={{ padding: 24 }}>Loading page...</div>}><Outlet /></Suspense>
         <FirstLoginTour />
       </div>
     );
@@ -53,10 +53,10 @@ export default function Layout() {
         </header>
         <a href="#portal-page-content" className="portal-skip-link">Skip to page content</a>
         <main id="portal-page-content" tabIndex={-1} className="portal-main" style={{ flex: 1, overflowY: 'auto', padding: '24px', maxWidth: '1400px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
-          <Outlet />
+          <Suspense fallback={<div role="status" style={{ padding: 24 }}>Loading page...</div>}><Outlet /></Suspense>
         </main>
       </div>
-      {aiOpen && <AIAgent onClose={() => setAiOpen(false)} />}
+      {aiOpen && <Suspense fallback={<div role="status">Opening assistant...</div>}><AIAgent onClose={() => setAiOpen(false)} /></Suspense>}
       <FirstLoginTour />
     </div>
   );

@@ -69,6 +69,30 @@ test('an employee moved to Exited is removed immediately from the default active
   expect(api.getEmployees).toHaveBeenCalledTimes(1);
 });
 
+test('typing a name makes one debounced search request and keeps the current table visible', async () => {
+  jest.useFakeTimers();
+  try {
+    api.getEmployees.mockResolvedValue({ data: [{ id: 'example', full_name: 'Current employee', lifecycle_state: 'Active' }] });
+    api.getAllMastersSettings.mockResolvedValue({ data: {} });
+    await act(async () => root.render(<Employees />));
+    api.getEmployees.mockReturnValue(new Promise(() => {}));
+    const input = container.querySelector('[data-testid="employee-search"]') || container.querySelector('input[placeholder="Search name, email, role..."]');
+    for (const value of ['J', 'Je', 'Jessica']) {
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, value);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    }
+    expect(api.getEmployees).toHaveBeenCalledTimes(1);
+    await act(async () => jest.advanceTimersByTime(250));
+    expect(api.getEmployees).toHaveBeenCalledTimes(2);
+    expect(api.getEmployees).toHaveBeenLastCalledWith({ search: 'Jessica', lifecycle_state: undefined, department: undefined });
+    expect(container.querySelector('[data-testid="emp-row-example"]')).not.toBeNull();
+    expect(container.textContent).not.toContain('Loading...');
+    expect(container.textContent).toContain('Updating employee list...');
+  } finally { jest.useRealTimers(); }
+});
+
 test('existing employee mode allows unknown start date and role level', async () => {
   api.getEmployees.mockResolvedValue({ data: [] });
   api.getAllMastersSettings.mockResolvedValue({ data: {} });

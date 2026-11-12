@@ -6,6 +6,7 @@ from bson import ObjectId
 from database import get_db
 from utils.auth import get_current_user, require_roles, format_doc
 import uuid
+import asyncio
 from copy import deepcopy
 from pymongo.errors import DuplicateKeyError
 from utils.employee_access import authorize_employee, scoped_employee_query
@@ -469,33 +470,33 @@ async def get_employee_profile(employee_id: str, request: Request):
         if not (is_self or is_report):
             raise HTTPException(status_code=403, detail="Not allowed")
 
-    emp["line_manager_name"] = await _line_manager_name(db, emp.get("line_manager_id"), tenant_of(user))
-
     # Include canonical and legacy foreign keys, always within the tenant.
     from utils.employee_access import reference_ids
     aliases = [*reference_ids(emp), emp["_id"]]
     def related(field="employee_id"):
         return {"$and": [tenant_query(tenant_of(user)), {field: {"$in": aliases}}]}
-    reviews = await db.performance_reviews.find(related()).sort("created_at", -1).to_list(20)
-    from utils.performance_workflows import projection as review_projection
-    reviews = [review_projection(row, user, emp) for row in reviews]
-    leave = await db.leave_requests.find(related()).sort("created_at", -1).to_list(50)
-    recogs_received = await db.recognitions.find(related("nominee_id")).sort("created_at", -1).to_list(50)
-    recogs_given = await db.recognitions.find({"nominator_id": user.get("id")}).sort("created_at", -1).to_list(50) if user.get("id") == emp_id else []
-    trainings = await db.training_requests.find(related()).sort("created_at", -1).to_list(50)
     from utils import learning_workflows
     learning_allowed=True
     try:
         await learning_workflows.employee_access(db,user,employee_key(emp))
     except HTTPException as error:
         if error.status_code == 403:
-            trainings=[]
             learning_allowed=False
         else: raise
+    emp["line_manager_name"], reviews, leave, recogs_received, trainings, idp, cases, notifications = await asyncio.gather(
+        _line_manager_name(db, emp.get("line_manager_id"), tenant_of(user)),
+        db.performance_reviews.find(related()).sort("created_at", -1).to_list(20),
+        db.leave_requests.find(related()).sort("created_at", -1).to_list(50),
+        db.recognitions.find(related("nominee_id")).sort("created_at", -1).to_list(50),
+        db.training_requests.find(related()).sort("created_at", -1).to_list(50) if learning_allowed else asyncio.sleep(0, result=[]),
+        db.idps.find_one(related()) if learning_allowed else asyncio.sleep(0, result=None),
+        db.disciplinary_cases.find(related()).sort("created_at", -1).to_list(20) if user["role"] in ["hr_admin", "hr_manager", "general_manager"] else asyncio.sleep(0, result=[]),
+        db.notifications.find({"$and": [tenant_query(tenant_of(user)), {"recipient_id": emp_id}]}).sort("created_at", -1).to_list(20)
+        if user["role"] in ["hr_admin", "hr_manager", "general_manager"] or employee_key(emp) == user.get("employee_id") else asyncio.sleep(0, result=[]),
+    )
+    from utils.performance_workflows import projection as review_projection
+    reviews = [review_projection(row, user, emp) for row in reviews]
     trainings=[await learning_workflows.projection(db,user,row,emp) for row in trainings]
-    idp = await db.idps.find_one(related()) if learning_allowed else None
-    cases = await db.disciplinary_cases.find(related()).sort("created_at", -1).to_list(20) if user["role"] in ["hr_admin", "hr_manager", "general_manager"] else []
-    notifications = await db.notifications.find({"recipient_id": emp_id}).sort("created_at", -1).to_list(20) if user["role"] in ["hr_admin", "hr_manager", "general_manager"] or employee_key(emp) == user.get("employee_id") else []
 
     # Build timeline
     timeline = []

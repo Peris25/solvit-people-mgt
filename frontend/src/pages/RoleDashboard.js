@@ -6,12 +6,12 @@
  * - employee → personal action dashboard
  * - solver → mobile bottom-nav dashboard
  */
-import React, { useState } from 'react';
+import React, { lazy, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import HRDashboard from './Dashboard';
-import EmployeeDashboard from './EmployeeDashboard';
-import SolverDashboard from './SolverDashboard';
-import LineManagerDashboard from './LineManagerDashboard';
+const HRDashboard = lazy(() => import('./Dashboard'));
+const EmployeeDashboard = lazy(() => import('./EmployeeDashboard'));
+const SolverDashboard = lazy(() => import('./SolverDashboard'));
+const LineManagerDashboard = lazy(() => import('./LineManagerDashboard'));
 
 export default function RoleDashboard() {
   const { user } = useAuth();

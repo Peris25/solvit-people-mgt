@@ -5,7 +5,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import { ForgotPassword, ResetPassword } from './pages/PasswordRecovery';
-const Dashboard = lazy(() => import('./pages/RoleDashboard'));
+import Dashboard from './pages/RoleDashboard';
 const Employees = lazy(() => import('./pages/Employees'));
 const Organogram = lazy(() => import('./pages/Organogram'));
 const StaffDirectory = lazy(() => import('./pages/StaffDirectory'));
@@ -46,11 +46,11 @@ const Notifications = lazy(() => import('./pages/Notifications'));
 const Documents = lazy(() => import('./pages/Documents'));
 import MfaSecurity from './pages/MfaSecurity';
 import { NotificationProvider } from './context/NotificationContext';
-import PublicSolverAssessment from './pages/PublicSolverAssessment';
+const PublicSolverAssessment = lazy(() => import('./pages/PublicSolverAssessment'));
 
 export default function App() {
   return <BrowserRouter><Routes>
-    <Route path="/solver-assessments" element={<PublicSolverAssessment />} />
+    <Route path="/solver-assessments" element={<Suspense fallback={<div role="status">Loading assessment...</div>}><PublicSolverAssessment /></Suspense>} />
     <Route path="/*" element={<Portal />} />
   </Routes></BrowserRouter>;
 }

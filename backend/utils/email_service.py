@@ -114,7 +114,12 @@ async def _resolve_smtp(db, formal: bool) -> tuple:
 
 
 async def _attempt_send(host, port, encryption, user, pwd, from_addr, from_name, to, mime) -> None:
-    """Perform one SMTP transaction. Raises on failure."""
+    """Keep blocking SMTP I/O off the API event loop."""
+    require_outbound_email()
+    await asyncio.to_thread(_smtp_transaction, host, port, encryption, user, pwd, from_addr, to, mime)
+
+
+def _smtp_transaction(host, port, encryption, user, pwd, from_addr, to, mime):
     require_outbound_email()
     if encryption == "SSL":
         server = smtplib.SMTP_SSL(host, port, timeout=15)
@@ -127,6 +132,7 @@ async def _attempt_send(host, port, encryption, user, pwd, from_addr, from_name,
             server.login(user, pwd)
         elif pwd:
             server.login("", pwd)
+        require_outbound_email()
         server.sendmail(from_addr, [to], mime.as_string())
     finally:
         server.quit()
