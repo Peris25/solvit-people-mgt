@@ -7,6 +7,7 @@ import ProfileChanges from '../components/ProfileChanges';
 import RequiredPasswordChange from '../components/RequiredPasswordChange';
 import EmployeeDocuments from '../components/EmployeeDocuments';
 import ProfilePhoto from '../components/ProfilePhoto';
+import StatutoryEditor from '../components/StatutoryEditor';
 
 const fmtKES = (n) => n != null ? `KES ${Number(n).toLocaleString('en-KE')}` : '—';
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
@@ -94,7 +95,9 @@ export default function EmployeeProfile({ selfService = false }) {
 
       {selfService && <button onClick={() => navigate('/benefits')} style={{ padding: '10px 16px', marginBottom: '12px' }}>Benefits & payroll information</button>}
       {selfService && <button onClick={() => navigate('/onboarding')} style={{ padding: '10px 16px', marginBottom: '12px' }}>Onboarding & Offboarding</button>}
-      {tab === 'overview' && <Overview profile={profile} user={user} />}
+      {tab === 'overview' && <Overview key={key} profile={profile} user={user} onEmployeeSaved={employee => {
+        if (active.current === key) setProfile(current => ({ ...current, employee: { ...current.employee, ...employee } }));
+      }} />}
       {tab === 'timeline' && <Timeline events={profile.timeline} />}
       {tab === 'performance' && <PerformanceList items={profile.performance_history} />}
       {tab === 'leave' && <LeaveList items={profile.leave_history} />}
@@ -117,7 +120,7 @@ function Stat({ label, value }) {
   );
 }
 
-function Overview({ profile, user }) {
+function Overview({ profile, user, onEmployeeSaved }) {
   const e = profile.employee;
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '12px' }}>
@@ -128,6 +131,7 @@ function Overview({ profile, user }) {
         <Row k="SHA" v={e.sha_number || '—'} />
         <Row k="DOB" v={fmtDate(e.date_of_birth)} />
         <Row k="Gender" v={e.gender || '—'} />
+        {['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) && <StatutoryEditor employee={e} onSaved={onEmployeeSaved} />}
       </Card>
       <Card title="Employment">
         <Row k="Staff ID" v={e.staff_id || e.employee_number || 'Not recorded'} />

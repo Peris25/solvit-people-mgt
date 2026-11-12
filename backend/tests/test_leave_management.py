@@ -231,6 +231,7 @@ def test_medical_evidence_ownership_and_private_manager_projection():
 
 def test_maternity_is_calendar_months_not_a_fixed_90_day_bank():
     db, _ = fixture(); db.leave_evidence.docs = [{"_id": ObjectId(), "id": "doc", "tenant_id": "solvit", "employee_id": "staff", "document_type": "maternity_confirmation"}]
+    db.employees.docs[0]['gender'] = 'Female'
     with patch.object(policy, "today", return_value=date(2026, 1, 1)):
         result = run(policy.preview(db, db.employees.docs[0], payload(leave_type="Maternity", start_date="2026-03-01", end_date="2026-05-31", expected_delivery_date="2026-03-20", supporting_document_id="doc")))
     assert result["calendar_days"] == 92
@@ -238,6 +239,7 @@ def test_maternity_is_calendar_months_not_a_fixed_90_day_bank():
 
 def test_paternity_window_and_compassionate_family_rule():
     db, _ = fixture(); db.leave_evidence.docs = [{"_id": ObjectId(), "id": "birth", "tenant_id": "solvit", "employee_id": "staff", "document_type": "birth_notification"}]
+    db.employees.docs[0]['gender'] = 'Male'
     with pytest.raises(HTTPException): run(policy.preview(db, db.employees.docs[0], payload(leave_type="Paternity", birth_date="2026-01-01", supporting_document_id="birth")))
     with pytest.raises(HTTPException): run(policy.preview(db, db.employees.docs[0], payload(leave_type="Compassionate", family_relationship="cousin")))
     result = run(policy.preview(db, db.employees.docs[0], payload(leave_type="Compassionate", family_relationship="parent", end_date="2026-11-30")))

@@ -21,7 +21,8 @@ async def balances(db, employee):
     candidates = [row for row in snapshots if row.get("year") in (None, now.year, str(now.year))]
     if len(candidates) > 1:
         raise HTTPException(409, "Multiple balance snapshots need an approved HR reconciliation")
-    types = await _active_leave_types()
+    from utils.leave_eligibility import eligible_leave_types
+    types = eligible_leave_types(await _active_leave_types(), employee)
     result = {}
     if candidates:
         snapshot = candidates[0]

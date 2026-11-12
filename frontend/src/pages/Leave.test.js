@@ -28,6 +28,31 @@ afterEach(async () => { await act(async () => root.unmount()); container.remove(
 const render = async () => { await act(async () => root.render(<Leave />)); };
 const click = async text => { const button = [...container.querySelectorAll('button')].find(b => b.textContent === text); expect(button).toBeTruthy(); await act(async () => button.click()); };
 
+test.each([['Female', 'Maternity', 'Paternity'], [' male ', 'Paternity', 'Maternity']])('shows only applicable parental balances and choices for %s', async (gender, included, excluded) => {
+  api.getMyEmployee.mockResolvedValue({ data: { id: 'staff', gender, line_manager_id: 'boss' } });
+  api.getLeaveTypes.mockResolvedValue({ data: { Annual: {}, Maternity: {}, Paternity: {} } });
+  api.getLeaveBalances.mockResolvedValue({ data: { Annual: { remaining: 2.5 }, Maternity: { remaining: 90 }, Paternity: { remaining: 14 } } });
+  await render();
+  expect(container.querySelector(`[data-testid="balance-${included}"]`)).not.toBeNull();
+  expect(container.querySelector(`[data-testid="balance-${excluded}"]`)).toBeNull();
+  await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent.includes('Apply for Leave')).click());
+  const choices = [...container.querySelector('[aria-label="Leave type"]').options].map(option => option.value);
+  expect(choices).toContain(included);
+  expect(choices).not.toContain(excluded);
+  expect(choices).toContain('Annual');
+});
+
+test('missing gender hides both parental options and explains how to resolve it', async () => {
+  api.getLeaveTypes.mockResolvedValue({ data: { Annual: {}, Maternity: {}, Paternity: {} } });
+  api.getLeaveBalances.mockResolvedValue({ data: { Annual: { remaining: 2.5 }, Maternity: { remaining: 90 }, Paternity: { remaining: 14 } } });
+  await render();
+  expect(container.querySelector('[data-testid="balance-Maternity"]')).toBeNull();
+  expect(container.querySelector('[data-testid="balance-Paternity"]')).toBeNull();
+  await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent.includes('Apply for Leave')).click());
+  expect([...container.querySelector('[aria-label="Leave type"]').options].map(option => option.value)).toEqual(['Annual']);
+  expect(container.textContent).toContain('Ask HR to confirm your profile gender');
+});
+
 test('shows saved fractional balances, real zero availability and own history without approval controls', async () => {
   await render();
   expect(container.querySelector('[data-testid="balance-accrued"]').textContent).toContain('0');

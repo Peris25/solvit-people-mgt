@@ -61,7 +61,7 @@ def portal_link(path, reference=None):
     return base + path + (quote(str(reference), safe='') if reference is not None else '')
 
 
-async def action_email(db, tenant, event, to, subject, message, link, template_key=None):
+async def action_email(db, tenant, event, to, subject, message, link, template_key=None, *, retry_skipped=False):
     if not to or not outbound_email_enabled():
         return {'status': 'skipped'}
     address = normalize_email(to)
@@ -73,14 +73,22 @@ async def action_email(db, tenant, event, to, subject, message, link, template_k
     try:
         await db.email_log.insert_one(claim)
     except DuplicateKeyError:
+        if retry_skipped:
+            previous = await db.email_log.find_one({'_id': claim_id})
+            if previous and previous.get('status') == 'skipped':
+                await db.email_log.delete_one({'_id': claim_id, 'status': 'skipped'})
+                return await action_email(db, tenant, event, to, subject, message, link,
+                                          template_key, retry_skipped=True)
         return {'status': 'skipped', 'reason': 'duplicate_event'}
     except Exception:
         logger.warning('Action email claim unavailable for %s; no email dispatched', template_key)
-        return {'status': 'failed'}
+        return {'status': 'failed', 'reason': 'claim_unavailable'}
     try:
         from utils.email_service import send_email
         result = await send_email(db, to=address, subject=subject, html=html, template_key=template_key)
         await db.email_log.update_one({'_id': claim_id}, {'$set': {'status': result.get('status', 'failed')}})
+        if retry_skipped and result.get('status') == 'skipped':
+            await db.email_log.delete_one({'_id': claim_id})
         return result
     except Exception:
         logger.warning('Action email dispatch needs review for %s', template_key)

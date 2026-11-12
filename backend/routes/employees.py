@@ -54,6 +54,8 @@ class EmployeeCreate(BaseModel):
 
 
 class EmployeeUpdate(BaseModel):
+    date_of_birth: Optional[str] = None
+    gender: Optional[str] = None
     start_date: Optional[str] = None
     work_email: Optional[str] = None
     full_name: Optional[str] = None
@@ -666,11 +668,14 @@ async def update_employee(employee_id: str, upd: EmployeeUpdate, request: Reques
             if upd.model_fields_set & {"line_manager_id", "work_email", "is_md", "reports_to_md", "reports_to_finance_ops", "reports_to_board"}:
                 raise HTTPException(403, "HR must change identity or reporting relationships.")
             protected = {"role_title", "role_level", "department", "employment_type", "start_date", "lifecycle_state", "profile_photo_url",
-                         "current_salary_kes", "national_id_number", "kra_pin", "nssf_number", "sha_number"}
+                         "current_salary_kes", "national_id_number", "kra_pin", "nssf_number", "sha_number", "gender", "date_of_birth"}
             proposed = upd.model_dump(exclude_unset=True, exclude_none=True)
             if any(field in proposed and proposed[field] != current.get(field) for field in protected):
                 raise HTTPException(403, "HR must change role titles or restricted identity/pay fields.")
         update_data = {k: v for k, v in upd.model_dump(exclude_unset=True).items() if v is not None}
+        from utils.profile_self_service import validated
+        for field in {'national_id_number', 'kra_pin', 'nssf_number', 'sha_number', 'gender', 'date_of_birth'} & update_data.keys():
+            update_data[field] = validated(field, update_data[field])
         if "work_email" in upd.model_fields_set:
             if upd.work_email == current.get("work_email"):
                 update_data.pop("work_email", None)

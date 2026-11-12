@@ -5,6 +5,23 @@ from utils.employee_access import authorize_employee, saved_manager
 from utils.solver_access import authorize_solver, find_solver
 
 
+def can_view_form(user, schema):
+    role = user.get('role')
+    if role in {'hr_admin', 'hr_manager'}:
+        return True
+    if role == 'solver':
+        return schema.get('target_role') == 'solver'
+    allowed = {'employee'}
+    if role == 'line_manager':
+        allowed.add('line_manager')
+    return schema.get('target_role') in allowed
+
+
+def require_form_access(user, schema):
+    if not can_view_form(user, schema):
+        raise HTTPException(403, 'This form is not available for your role')
+
+
 async def form_subject(db, user, body, matrix):
     data = dict(body.get("data") or {})
     solver_reference = body.get("solver_id") or data.get("solver_id")

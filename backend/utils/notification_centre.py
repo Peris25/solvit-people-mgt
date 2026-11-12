@@ -262,7 +262,7 @@ async def leave_preview(db, user, row, action):
     return title, message
 
 
-async def list_inbox(db, user, *, category=None, kind=None, read_status="all", offset=0, limit=50, personal_only=False):
+async def list_inbox(db, user, *, category=None, kind=None, read_status="all", offset=0, limit=50, personal_only=False, source_rows=None):
     user = await inbox_user(db, user)
     refs = [user["id"], *(user_employee_aliases(user) if user.get("employee_id") else []), *user.get("solver_reference_ids", [])]
     roles = [user.get("role")]
@@ -270,7 +270,7 @@ async def list_inbox(db, user, *, category=None, kind=None, read_status="all", o
         roles.append("all_active_fte")
     if user.get("notification_active_solver"):
         roles.append("all_active_solvers")
-    rows = await db.notifications.find({"$and": [tenant_query(tenant_of(user)), {"$or": [
+    rows = source_rows if source_rows is not None else await db.notifications.find({"$and": [tenant_query(tenant_of(user)), {"$or": [
         {"recipient_id": {"$in": refs}}, {"user_id": user["id"]}, {"recipient_role": {"$in": roles}}
     ]}]}).to_list(None)
     receipts = await db.notification_receipts.find({"$and": [tenant_query(tenant_of(user)), {"user_id": user["id"]}]}).to_list(None)

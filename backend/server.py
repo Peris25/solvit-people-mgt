@@ -188,6 +188,7 @@ async def startup():
     await db.employees.create_index([("tenant_id", 1), ("work_email", 1)])
     await db.solvers.create_index([("tenant_id", 1), ("phone_number", 1)])
     await db.notifications.create_index([("tenant_id", 1), ("recipient_role", 1), ("is_read", 1)])
+    await db.notifications.create_index([("email_delivery_checked", 1), ("created_at", 1)])
     await db.tasks.create_index([("tenant_id", 1), ("status", 1)])
     # Security collections
     await db.audit_logs.create_index([("tenant_id", 1), ("timestamp", -1)])

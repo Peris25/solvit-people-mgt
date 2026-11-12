@@ -129,6 +129,13 @@ async def preview(db, employee, payload, *, exclude=None, enforce=True, submitte
     kind = payload.get("leave_type")
     if kind not in PLANNED_TYPES | {"Sick"}:
         raise HTTPException(422, "This leave category needs an explicit HR policy")
+    if kind in {'Maternity', 'Paternity'}:
+        from utils.leave_eligibility import parental_leave_type
+        applicable = parental_leave_type(employee)
+        if applicable is None:
+            raise HTTPException(422, "Ask HR to confirm your profile gender before applying for parental leave")
+        if kind != applicable:
+            raise HTTPException(422, "This parental leave category is not available for your profile")
     state = str(employee.get("lifecycle_state") or "").replace("_", "").lower()
     if state not in {"active", "probation", "onboarding", "onleave", "pip", "realignment", "exiting"}:
         raise HTTPException(403, "This employee is not eligible for a new leave request")

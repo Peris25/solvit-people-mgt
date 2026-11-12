@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 from database import get_db
-from utils.form_access import form_subject, authorize_signature
+from utils.form_access import form_subject, authorize_signature, can_view_form, require_form_access
 from utils.employee_access import authorize_employee, reference_ids
 from utils.employee_integrity import employee_key
 from utils.auth import get_current_user
@@ -358,7 +358,7 @@ async def list_forms(request: Request):
         "completing_users_sequence": FORM_WORKFLOW_MATRIX.get(k, {}).get("completing_users_sequence", []),
         "required_signatures": FORM_WORKFLOW_MATRIX.get(k, {}).get("required_signatures", []),
         "outcome_rule": FORM_WORKFLOW_MATRIX.get(k, {}).get("outcome_rule"),
-    } for k, v in FORM_SCHEMAS.items()]
+    } for k, v in FORM_SCHEMAS.items() if can_view_form(user, v)]
 
 
 @router.get("/my-tasks")
@@ -396,6 +396,9 @@ async def start_form_submission(form_id: str, request: Request):
     from routes.forms_workflow import FORM_WORKFLOW_MATRIX
     if form_id not in FORM_SCHEMAS:
         raise HTTPException(status_code=404, detail=f"Form {form_id} not found")
+    # The retired review endpoint retains its existing redirect/error contract.
+    if form_id != 'form-06':
+        require_form_access(user, FORM_SCHEMAS[form_id])
     matrix = FORM_WORKFLOW_MATRIX.get(form_id, {})
     sequence = matrix.get("completing_users_sequence", [])
     if not sequence:
@@ -542,6 +545,7 @@ async def get_form_schema(form_id: str, request: Request):
     schema = FORM_SCHEMAS.get(form_id)
     if not schema:
         raise HTTPException(status_code=404, detail=f"Form {form_id} not found")
+    require_form_access(user, schema)
     if form_id == 'form-26':
         return {**schema, 'description': 'Select an assigned colleague and complete the confidential 360 review using the approved 0–10 scale.',
                 'sections': [], 'submission_mode': 'assigned_peer_review', 'rating_scale': {'min': 0, 'max': 10}}
@@ -567,6 +571,9 @@ async def submit_form(form_id: str, request: Request):
     schema = FORM_SCHEMAS.get(form_id)
     if not schema:
         raise HTTPException(status_code=404, detail=f"Form {form_id} not found")
+
+    if form_id != 'form-06':
+        require_form_access(user, schema)
 
     # Enforce required signatures for single-step forms
     from routes.forms_workflow import FORM_WORKFLOW_MATRIX

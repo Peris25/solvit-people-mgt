@@ -171,6 +171,16 @@ async def notify(db, record, event):
             row["recipient_role"] = reference
         else:
             row.update(recipient_id=reference, recipient_type=kind)
+        email_key = f"leave:{record['id']}:{event}:{len(record.get('approval_history') or [])}"
+        if event == 'submitted':
+            row['email_event_key'] = email_key + (':employee' if kind == 'employee' and reference == record['employee_id'] else ':manager' if kind == 'employee' else '')
+        elif event == 'decision':
+            if kind == 'employee' and reference == record['employee_id'] and record['status'] in {'Approved', 'Rejected'}:
+                row['email_event_key'] = email_key + ':employee'
+            elif kind != 'employee' and record['status'] == 'Pending_HR':
+                row['email_event_key'] = email_key
+        elif event == 'withdrawn' and kind != 'employee':
+            row['email_event_key'] = email_key
         try:
             await db.notifications.insert_one(row)
         except DuplicateKeyError:

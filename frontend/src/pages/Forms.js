@@ -1,8 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import PeerReviewSelector from '../components/PeerReviewSelector';
+
+const canViewForm = (role, form) => ['hr_admin', 'hr_manager'].includes(role)
+  || (role === 'solver' ? form.target_role === 'solver'
+    : form.target_role === 'employee' || (role === 'line_manager' && form.target_role === 'line_manager'));
 
 export default function Forms() {
   const { user } = useAuth();
@@ -16,25 +20,33 @@ export default function Forms() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [error, setError] = useState('');
+  const accountKey = `${user?.id}:${user?.role}`;
+  const activeAccount = useRef(accountKey); activeAccount.current = accountKey;
+  const [loadedFor, setLoadedFor] = useState(null);
 
-  useEffect(() => { load(); }, []);
-
-  const load = async () => {
-    setLoading(true);
-    try { const r = await api.getForms(); setForms(r.data); }
-    finally { setLoading(false); }
-  };
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setForms([]); setSelected(null); setSchema(null); setResponses({}); setSignature(''); setResult(null); setFilter('all'); setError(''); setLoadedFor(null);
+    api.getForms().then(response => {
+      if (!cancelled) { setForms(response.data); setLoadedFor(accountKey); }
+    }).catch(() => { if (!cancelled) setError('Forms could not be loaded. Please refresh and try again.'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [accountKey]);
 
   const openForm = async (form) => {
+    if (!canViewForm(user?.role, form)) return;
     if (form.id === 'form-15') { navigate('/leave'); return; }
     setResult(null);
     setResponses({});
     setSignature('');
     setSelected(form);
+    setSchema(null);
     try {
       const r = await api.getFormSchema(form.id);
-      setSchema(r.data);
-    } catch { setSchema(null); }
+      if (activeAccount.current === accountKey) setSchema(r.data);
+    } catch { if (activeAccount.current === accountKey) setSchema(null); }
   };
 
   const submit = async (e) => {
@@ -53,7 +65,8 @@ export default function Forms() {
 
   const setField = (id, val) => setResponses(p => ({ ...p, [id]: val }));
 
-  const filtered = filter === 'all' ? forms : forms.filter(f => f.target_role === filter);
+  const visibleForms = loadedFor === accountKey ? forms.filter(form => canViewForm(user?.role, form)) : [];
+  const filtered = filter === 'all' ? visibleForms : visibleForms.filter(f => f.target_role === filter);
 
   const renderField = (field) => {
     const val = responses[field.id] || '';
@@ -99,22 +112,23 @@ export default function Forms() {
     return <input data-testid={`field-${field.id}`} type={field.type === 'phone' ? 'tel' : field.type} required={field.required} value={val} onChange={e => setField(field.id, field.type === 'number' ? parseFloat(e.target.value) || '' : e.target.value)} min={field.min} max={field.max} style={baseStyle} />;
   };
 
-  const roles = [...new Set(forms.map(f => f.target_role).filter(Boolean))];
+  const roles = [...new Set(visibleForms.map(f => f.target_role).filter(Boolean))];
 
   return (
     <div data-testid="forms-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', margin: 0 }}>Forms Library</h1>
-        <p style={{ color: '#525252', fontSize: '13px', margin: '4px 0 0' }}>{forms.length} form schemas — Intelligent Forms Engine</p>
+        <p style={{ color: '#525252', fontSize: '13px', margin: '4px 0 0' }}>{visibleForms.length} form schemas — Intelligent Forms Engine</p>
       </div>
 
       <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
-        <button onClick={() => setFilter('all')} style={{ padding: '4px 10px', backgroundColor: filter === 'all' ? '#FF353F' : 'transparent', color: filter === 'all' ? '#fff' : '#525252', border: '1px solid rgba(25,25,25,0.2)', cursor: 'pointer', fontSize: '11px', fontWeight: 700, fontFamily: 'Arial', textTransform: 'uppercase', letterSpacing: '0.05em' }}>All ({forms.length})</button>
+        {roles.length > 1 && <button onClick={() => setFilter('all')} style={{ padding: '4px 10px', backgroundColor: filter === 'all' ? '#FF353F' : 'transparent', color: filter === 'all' ? '#fff' : '#525252', border: '1px solid rgba(25,25,25,0.2)', cursor: 'pointer', fontSize: '11px', fontWeight: 700, fontFamily: 'Arial', textTransform: 'uppercase', letterSpacing: '0.05em' }}>All ({visibleForms.length})</button>}
         {roles.map(r => (
-          <button key={r} onClick={() => setFilter(r)} style={{ padding: '4px 10px', backgroundColor: filter === r ? '#191919' : 'transparent', color: filter === r ? '#fff' : '#525252', border: '1px solid rgba(25,25,25,0.2)', cursor: 'pointer', fontSize: '11px', fontWeight: 700, fontFamily: 'Arial', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{r} ({forms.filter(f => f.target_role === r).length})</button>
+          <button key={r} onClick={() => setFilter(r)} style={{ padding: '4px 10px', backgroundColor: filter === r || roles.length === 1 ? '#191919' : 'transparent', color: filter === r || roles.length === 1 ? '#fff' : '#525252', border: '1px solid rgba(25,25,25,0.2)', cursor: 'pointer', fontSize: '11px', fontWeight: 700, fontFamily: 'Arial', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{r.replaceAll('_', ' ')} ({visibleForms.filter(f => f.target_role === r).length})</button>
         ))}
       </div>
 
+      {error && <p role="alert">{error}</p>}
       {loading ? <div style={{ padding: '48px', textAlign: 'center' }}>Loading...</div> : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
           {filtered.map(f => (
@@ -144,7 +158,7 @@ export default function Forms() {
         </div>
       )}
 
-      {selected && (
+      {selected && loadedFor === accountKey && canViewForm(user?.role, selected) && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px' }}>
           <div style={{ backgroundColor: '#fff', width: '700px', maxHeight: '90vh', overflowY: 'auto', border: '1px solid rgba(25,25,25,0.15)' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'sticky', top: 0, backgroundColor: '#fff', zIndex: 1 }}>

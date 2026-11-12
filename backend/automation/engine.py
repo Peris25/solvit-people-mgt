@@ -113,10 +113,20 @@ class AutomationEngine:
         self.scheduler.add_job(self._check_anniversaries, "cron", hour=8, minute=30, id="anniversary_check")
         # Email retry queue — process pending retries every minute
         self.scheduler.add_job(self._process_email_retries, "interval", minutes=1, id="email_retry_queue")
+        from utils.notification_email import initialize
+        await initialize(db)
+        self.scheduler.add_job(self._process_notification_emails, "interval", seconds=30, id="notification_emails", max_instances=1)
         self.scheduler.add_job(self._process_approved_exits, "interval", seconds=60, id="approved_exit_deactivation")
         self.scheduler.start()
         self._started = True
         logger.info("✅ Automation Engine started")
+
+    async def _process_notification_emails(self):
+        try:
+            from utils.notification_email import deliver
+            await deliver(self.db)
+        except Exception:
+            logger.exception("Notification email delivery needs retry")
 
     async def _process_approved_exits(self):
         if not background_jobs_enabled():
@@ -349,6 +359,12 @@ class AutomationEngine:
                 notif.update(recipient_id=employee_key(recipient), recipient_type="employee")
             # Leave submission has a stable source event, so repeated/concurrent
             # dispatch must not create a second notification for that request.
+            if send_email_too:
+                import json
+                email_event = hashlib.sha256(json.dumps(data, sort_keys=True, default=str).encode()).hexdigest()
+                if rule.get('trigger_type') == 'cron':
+                    email_event += ':' + datetime.now(timezone.utc).date().isoformat()
+                notif['email_event_key'] = f"automation:{rule.get('rule_id')}:{email_event}"
             if rule.get("rule_id") == "AR-LV-01" and data.get("leave_request_id"):
                 fingerprint = f"solvit:AR-LV-01:{data['leave_request_id']}:{notif.get('recipient_id') or recipient_role}"
                 notif["_id"] = ObjectId(hashlib.sha256(fingerprint.encode()).hexdigest()[:24])

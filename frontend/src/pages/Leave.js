@@ -35,6 +35,9 @@ const fmtPeriod = (s, e) => {
   } catch { return `${s} → ${e}`; }
 };
 const freshForm = () => ({ leave_type: 'Annual', start_date: '', end_date: '', handover_contact: '', handover_contact_id: '', notes: '', short_notice_reason: '', supporting_document_id: '', expected_delivery_date: '', birth_date: '', family_relationship: '', emergency_sick: false, early_maternity_advice: false, request_token: globalThis.crypto?.randomUUID?.() || `leave-${Date.now()}-${Math.random()}` });
+const eligibleType = (type, gender) => !['Maternity', 'Paternity'].includes(type)
+  || (type === 'Maternity' && ['female', 'f'].includes(gender))
+  || (type === 'Paternity' && ['male', 'm'].includes(gender));
 const message = error => {
   const detail = error?.response?.data?.detail;
   return typeof detail === 'string' ? detail : detail?.message || error?.message || 'Leave information is unavailable. Please retry.';
@@ -62,6 +65,7 @@ export default function Leave() {
   // the users-collection id which can differ from employees.id (e.g. Finance,
   // HR Admin), so always prefer the resolved id when available.
   const [myEmpId, setMyEmpId] = useState(user?.employee_id || '');
+  const [myGender, setMyGender] = useState('');
   const isLM = ['line_manager', 'it_admin'].includes(user?.role);
   const isHR = ['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role);
   const canDecide = isLM || isHR || ['finance', 'executive', 'board'].includes(user?.role);
@@ -93,7 +97,7 @@ export default function Leave() {
     const generation = ++loadSequence.current;
     const valid = () => activeAccount.current === accountKey && generation === loadSequence.current;
     setLoading(true); setBalancesLoading(true); setError(''); setHistoryAvailable(false); setRequests([]); setBalances(null); setRollover(null); setTypes({});
-    setMyEmpId(user?.employee_id || ''); setMyLM({ id: '', name: '' });
+    setMyEmpId(user?.employee_id || ''); setMyGender(''); setMyLM({ id: '', name: '' });
     try {
       const details = Promise.allSettled([api.getLeaveTypes(), api.getMyEmployee()]);
       const r = await api.getLeaveRequests();
@@ -104,6 +108,7 @@ export default function Leave() {
       if (!valid()) return;
       setTypes(t.status === 'fulfilled' ? t.value.data || {} : {});
       const employee = me.status === 'fulfilled' ? me.value.data : null;
+      setMyGender(String(employee?.gender || '').trim().toLowerCase());
       const id = employee?.id || user?.employee_id || '';
       setMyEmpId(id); setMyLM({ id: employee?.line_manager_id || '', name: employee?.line_manager_name || '' });
       if (id) {
@@ -261,7 +266,7 @@ export default function Leave() {
               <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)' }}>Recorded balance: {annualBal.remaining ?? 'Needs HR review'}.</div>
             </div>
           )}
-          {Object.entries(balances).filter(([, value]) => value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, 'remaining')).map(([type, b]) => (
+          {Object.entries(balances).filter(([type, value]) => eligibleType(type, myGender) && value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, 'remaining')).map(([type, b]) => (
             <div key={type} data-testid={`balance-${type}`} style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '14px 18px' }}>
               <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#525252', marginBottom: '6px' }}>{type}</div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -325,8 +330,9 @@ export default function Leave() {
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={lbl}>Leave Type</label>
                   <select required aria-label="Leave type" value={form.leave_type} onChange={e => setForm(p => ({ ...p, leave_type: e.target.value }))} style={inp}>
-                    {Object.keys(types).map(t => <option key={t} value={t}>{LEAVE_TYPE_LABELS[t] || `${t} leave`}</option>)}
+                    {Object.keys(types).filter(t => eligibleType(t, myGender)).map(t => <option key={t} value={t}>{LEAVE_TYPE_LABELS[t] || `${t} leave`}</option>)}
                   </select>
+                  {!['female', 'f', 'male', 'm'].includes(myGender) && <p>Ask HR to confirm your profile gender to show the applicable parental leave option.</p>}
                   {types[form.leave_type]?.description && (
                     <div style={{ fontSize: '10px', color: '#525252', marginTop: '4px', fontStyle: 'italic' }}>{types[form.leave_type].description}</div>
                   )}

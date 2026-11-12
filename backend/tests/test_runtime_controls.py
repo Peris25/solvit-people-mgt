@@ -54,7 +54,8 @@ def test_both_engines_start_with_default_production_or_explicit_disabled(monkeyp
     assert auto.db is db and rem.db is db
     if enabled:
         auto_scheduler.return_value.start.assert_called_once();rem_scheduler.return_value.start.assert_called_once()
-        assert auto_scheduler.return_value.add_job.call_count==5
+        assert auto_scheduler.return_value.add_job.call_count==6
+        assert 'notification_emails' in {call.kwargs.get('id') for call in auto_scheduler.return_value.add_job.call_args_list}
         assert rem_scheduler.return_value.add_job.call_count==len(reminders.RULES)
     else:
         auto_scheduler.assert_not_called();rem_scheduler.assert_not_called()

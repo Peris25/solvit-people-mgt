@@ -78,8 +78,11 @@ def calculate_working_days(start: str, end: str) -> float:
 
 @router.get("/types")
 async def get_leave_types(request: Request):
-    await get_current_user(request)
-    return await _active_leave_types()
+    from utils.employee_integrity import resolve_user_employee
+    from utils.leave_eligibility import eligible_leave_types
+    user = await get_current_user(request)
+    employee = await resolve_user_employee(get_db(), user)
+    return eligible_leave_types(await _active_leave_types(), employee)
 
 
 @router.get("")
