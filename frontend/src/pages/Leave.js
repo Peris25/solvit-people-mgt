@@ -2,6 +2,7 @@ import EmployeeLeaveGroups from '../components/EmployeeLeaveGroups';
 import EmployeeLeaveBalances from '../components/EmployeeLeaveBalances';
 import LeaveActionButton from '../components/LeaveActionButton';
 import WorkspaceSkeleton from '../components/WorkspaceSkeleton';
+import FormDialog, { FieldError, FormNotice, fieldErrorsFrom } from '../components/FormDialog';
 import { leaveStatus } from '../utils/leaveDisplay';
 import LeaveHistory, { HistoricalLeaveDecision } from '../components/LeaveHistory';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -41,6 +42,7 @@ const eligibleType = (type, gender) => !['Maternity', 'Paternity'].includes(type
   || (type === 'Paternity' && ['male', 'm'].includes(gender));
 const message = error => {
   const detail = error?.response?.data?.detail;
+  if (Array.isArray(detail)) return detail.map(item => typeof item?.msg === 'string' ? item.msg : '').filter(Boolean).join('; ') || 'Please check the highlighted fields.';
   return typeof detail === 'string' ? detail : detail?.message || error?.message || 'Leave information is unavailable. Please retry.';
 };
 
@@ -53,6 +55,8 @@ export default function Leave() {
   const [loadedFor, setLoadedFor] = useState(null);
   const [historyAvailable, setHistoryAvailable] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [notice, setNotice] = useState('');
   const [quote, setQuote] = useState(null);
   const [quoteError, setQuoteError] = useState('');
   const [document, setDocument] = useState(null);
@@ -160,12 +164,12 @@ export default function Leave() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [showForm, previewBody, myEmpId, editing?.id]);
   const openForm = row => {
-    setEditing(row || null); setDocument(null); setError('');
+    setEditing(row || null); setDocument(null); setError(''); setFieldErrors({}); setNotice('');
     setForm(row ? { ...freshForm(), ...row } : freshForm()); setShowForm(true);
   };
   const submit = async event => {
-    event.preventDefault(); setError('');
-    if (!myEmpId || !myLM.id) { setError('HR must confirm your employee record and line manager.'); return; }
+    event.preventDefault(); setError(''); setFieldErrors({}); setNotice('');
+    if (!myEmpId || !myLM.id) { setError('HR must confirm your employee record and line manager.'); setFieldErrors({ line_manager_id: 'Ask HR to confirm the saved line manager before submitting.' }); return; }
     setSaving(true);
     try {
       let documentId = form.supporting_document_id;
@@ -180,8 +184,8 @@ export default function Leave() {
       const fields = ['start_date', 'end_date', 'leave_type', 'notes', 'short_notice_reason', 'handover_contact_id', 'supporting_document_id', 'expected_delivery_date', 'birth_date', 'family_relationship', 'emergency_sick', 'early_maternity_advice'];
       const response = editing ? await api.resubmitLeave(editing.id, Object.fromEntries(fields.filter(field => payload[field] !== undefined).map(field => [field, payload[field]]))) : await api.createLeaveRequest(payload);
       if (!response.data?.id) throw new Error('The leave request could not be confirmed. Refresh history before retrying.');
-      setShowForm(false); setForm(freshForm()); load(); notificationState?.refresh();
-    } catch (err) { setError(message(err)); } finally { setSaving(false); }
+      setShowForm(false); setForm(freshForm()); setNotice(editing ? 'Leave request resubmitted for approval.' : 'Leave request submitted for approval.'); load(); notificationState?.refresh();
+    } catch (err) { setError(message(err)); setFieldErrors(fieldErrorsFrom(err)); } finally { setSaving(false); }
   };
   const decide = async decision => {
     setSaving(true); setError('');
@@ -239,6 +243,7 @@ export default function Leave() {
 
   return (
     <div data-testid="leave-page" className="workspace-page" style={{ fontFamily: 'Nunito Sans, sans-serif' }}>
+      <FormNotice message={notice} onDismiss={setNotice} />
       <div className="workspace-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '24px' }}>
         <div>
           <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', margin: 0, fontFamily: 'Barlow' }}>Leave Management</h1>
@@ -297,7 +302,7 @@ export default function Leave() {
         <TabButton id="rollover" label="Rollover" Icon={RotateCcw} />
       </div>
 
-      {error && <div role="alert" style={{ padding: '16px', background: '#FEE2E2', marginBottom: '16px' }}>{error}</div>}
+      {error && !showForm && !review && <div role="alert" style={{ padding: '16px', background: '#FEE2E2', marginBottom: '16px' }}>{error}</div>}
       {!historyAvailable && !loading && loadedFor === accountKey ? <p>Leave history is unavailable. <button style={btnGhost} onClick={load}>Retry</button></p> : loading || loadedFor !== accountKey ? <WorkspaceSkeleton label="Loading leave..." /> : (
         <>
           {tab === 'my' && <RequestsTable rows={myRequests} withdraw={withdraw} edit={openForm} review={openReview} saving={saving} testId="my-applications" />}
@@ -318,39 +323,37 @@ export default function Leave() {
         </>
       )}
 
-      {showForm && loadedFor === accountKey && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ backgroundColor: '#fff', width: '560px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', border: '1px solid rgba(25,25,25,0.15)' }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between' }}>
-              <h3 style={{ margin: 0, fontWeight: 900, fontFamily: 'Barlow' }}>{editing ? 'Edit and resubmit leave' : 'Apply for Leave'}</h3>
-              <button onClick={() => setShowForm(false)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}>×</button>
-            </div>
-            <form onSubmit={submit} style={{ padding: '24px' }}>
+      {showForm && loadedFor === accountKey && <FormDialog id="leave-form" title={editing ? 'Edit and resubmit leave' : 'Apply for Leave'} description="Choose your dates and arrange a clear handover." busy={saving} onClose={() => setShowForm(false)}>
+            <form className="workspace-form-body" onSubmit={submit}
+              onInvalid={event => { if (event.target.name) setFieldErrors(previous => ({ ...previous, [event.target.name]: event.target.validationMessage })); }}
+              onChangeCapture={event => { if (event.target.name) setFieldErrors(previous => ({ ...previous, [event.target.name]: undefined })); }}>
+              <p className="workspace-form-hint">Fields marked <span className="workspace-form-required">*</span> are required. Your request follows the existing manager and HR approval process.</p>
+              <fieldset disabled={saving}>
               {editing && <p>Resubmitting restarts manager and HR review. Approved and denied requests cannot be edited.</p>}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '14px' }}>
+              <div className="workspace-form-grid"><div className="workspace-form-section"><h3>Leave details</h3></div>
                 <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={lbl}>Leave Type</label>
-                  <select required aria-label="Leave type" value={form.leave_type} onChange={e => setForm(p => ({ ...p, leave_type: e.target.value }))} style={inp}>
+                  <label htmlFor="leave-type" style={lbl}>Leave Type <span className="workspace-form-required" aria-hidden="true">*</span></label>
+                  <select id="leave-type" name="leave_type" required aria-label="Leave type" aria-invalid={!!fieldErrors.leave_type} aria-describedby={fieldErrors.leave_type ? 'form-error-leave_type' : undefined} value={form.leave_type} onChange={e => setForm(p => ({ ...p, leave_type: e.target.value }))} style={inp}>
                     {Object.keys(types).filter(t => eligibleType(t, myGender)).map(t => <option key={t} value={t}>{LEAVE_TYPE_LABELS[t] || `${t} leave`}</option>)}
                   </select>
+                  <FieldError field="leave_type" errors={fieldErrors} />
                   {!['female', 'f', 'male', 'm'].includes(myGender) && <p>Ask HR to confirm your profile gender to show the applicable parental leave option.</p>}
                   {types[form.leave_type]?.description && (
                     <div style={{ fontSize: '10px', color: '#525252', marginTop: '4px', fontStyle: 'italic' }}>{types[form.leave_type].description}</div>
                   )}
                 </div>
-                {form.leave_type === 'Annual' && <label style={{ gridColumn: '1 / -1' }}>Reason for short notice
-                  <textarea aria-label="Annual leave short-notice reason" maxLength={2000} minLength={10} required={quote?.short_notice === true} rows={2} style={inp} value={form.short_notice_reason || ''} onChange={event => setForm(previous => ({ ...previous, short_notice_reason: event.target.value }))} />
-                  <span style={{ fontSize: '12px', color: '#525252' }}>If you cannot give the required notice, explain why. Your request will still need manager and HR approval.</span>
-                </label>}
+
                 <div>
-                  <label style={lbl}>Start Date</label>
-                  <input type="date" required min={earliestDate} aria-label="Leave start date" value={form.start_date} onChange={e => setForm(p => ({ ...p, start_date: e.target.value }))} style={inp} />
+                  <label htmlFor="leave-start" style={lbl}>Start Date <span className="workspace-form-required" aria-hidden="true">*</span></label>
+                  <input id="leave-start" name="start_date" type="date" required min={earliestDate} aria-label="Leave start date" aria-invalid={!!fieldErrors.start_date} aria-describedby={fieldErrors.start_date ? 'form-error-start_date' : undefined} value={form.start_date} onChange={e => setForm(p => ({ ...p, start_date: e.target.value }))} style={inp} />
+                  <FieldError field="start_date" errors={fieldErrors} />
                 </div>
                 <div>
-                  <label style={lbl}>End Date</label>
-                  <input type="date" required min={form.start_date > earliestDate ? form.start_date : earliestDate} aria-label="Leave end date" value={form.end_date} onChange={e => setForm(p => ({ ...p, end_date: e.target.value }))} style={inp} />
+                  <label htmlFor="leave-end" style={lbl}>End Date <span className="workspace-form-required" aria-hidden="true">*</span></label>
+                  <input id="leave-end" name="end_date" type="date" required min={form.start_date > earliestDate ? form.start_date : earliestDate} aria-label="Leave end date" aria-invalid={!!fieldErrors.end_date} aria-describedby={fieldErrors.end_date ? 'form-error-end_date' : undefined} value={form.end_date} onChange={e => setForm(p => ({ ...p, end_date: e.target.value }))} style={inp} />
+                  <FieldError field="end_date" errors={fieldErrors} />
                 </div>
-                <div style={{ gridColumn: '1 / -1', backgroundColor: '#F5F5F5', padding: '8px 12px', fontSize: '12px' }}>
+                <div className="workspace-form-calculation" style={{ gridColumn: '1 / -1', backgroundColor: '#F5F5F5', padding: '12px 14px', fontSize: '12px' }}>
                   Working Days: <strong>{calcDays()}</strong>
                   {quoteError && <p role="alert">{quoteError}</p>}
                   {quote && <p>{quote.notice_days_required ? `${quote.notice_days_required} days advance notice. ` : ''}{quote.warning}</p>}
@@ -360,6 +363,12 @@ export default function Leave() {
                     </span>
                   )}
                 </div>
+                {form.leave_type === 'Annual' && <label style={{ gridColumn: '1 / -1' }}>Reason for short notice {quote?.short_notice === true ? <span className="workspace-form-required" aria-hidden="true">*</span> : <span className="workspace-form-optional">When applicable</span>}
+                  <textarea name="short_notice_reason" aria-label="Annual leave short-notice reason" aria-invalid={!!fieldErrors.short_notice_reason} aria-describedby={fieldErrors.short_notice_reason ? 'form-error-short_notice_reason' : undefined} maxLength={2000} minLength={10} required={quote?.short_notice === true} rows={2} style={inp} value={form.short_notice_reason || ''} onChange={event => setForm(previous => ({ ...previous, short_notice_reason: event.target.value }))} />
+                  <FieldError field="short_notice_reason" errors={fieldErrors} />
+                  <span style={{ fontSize: '12px', color: '#525252' }}>If you cannot give the required notice, explain why. Your request will still need manager and HR approval.</span>
+                </label>}
+                <div className="workspace-form-section"><h3>Approval &amp; handover</h3><p>Confirm who approves the request and who will cover your work.</p></div>
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={lbl}>Line Manager (auto-assigned — approval routes here)</label>
                   {myLM.id ? (
@@ -372,43 +381,50 @@ export default function Leave() {
                       No Line Manager on file. Contact HR — leave cannot be submitted without an approver.
                     </div>
                   )}
+                  <FieldError field="line_manager_id" errors={fieldErrors} />
                 </div>
                 <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={lbl}>Handover Contact</label>
+                  <label style={lbl}>Handover Contact <span className="workspace-form-optional">For planned leave</span></label>
                   <EmployeePicker
                     testId="leave-handover-picker"
+                    ariaLabel="Handover Contact" invalid={!!fieldErrors.handover_contact_id} describedBy={fieldErrors.handover_contact_id ? 'form-error-handover_contact_id' : undefined}
                     value={form.handover_contact_id}
                     excludeId={myEmpId}
                     placeholder="Select colleague covering for you..."
-                    onChange={(emp) => setForm(p => ({ ...p, handover_contact: emp.full_name, handover_contact_id: emp.id }))}
+                    onChange={(emp) => { setForm(p => ({ ...p, handover_contact: emp.full_name, handover_contact_id: emp.id })); setFieldErrors(previous => ({ ...previous, handover_contact_id: undefined })); }}
                   />
+                  <FieldError field="handover_contact_id" errors={fieldErrors} />
                 </div>
                 <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={lbl}>Handover Notes</label>
-                  <textarea rows={3} aria-label="Written handover notes" maxLength={8000} value={form.notes || ''} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} style={{ ...inp, resize: 'vertical' }} />
+                  <label htmlFor="leave-notes" style={lbl}>Handover Notes</label>
+                  <textarea id="leave-notes" name="notes" rows={3} aria-label="Written handover notes" aria-invalid={!!fieldErrors.notes} aria-describedby={fieldErrors.notes ? 'form-error-notes' : undefined} maxLength={8000} value={form.notes || ''} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} style={{ ...inp, resize: 'vertical' }} />
+                  <span className="workspace-form-help">For planned leave, describe the tasks, deadlines and instructions for your covering colleague.</span>
+                  <FieldError field="notes" errors={fieldErrors} />
                 </div>
-                {form.leave_type === 'Sick' && <label style={{ gridColumn: '1 / -1' }}><input type="checkbox" checked={form.emergency_sick} onChange={e => setForm(p => ({ ...p, emergency_sick: e.target.checked }))} /> Emergency sick leave (no advance handover for an immediate absence)</label>}
+                {['Sick', 'Maternity', 'Paternity', 'Compassionate'].includes(form.leave_type) && <div className="workspace-form-section"><h3>Supporting information</h3><p>Provide the details required for the selected leave type.</p></div>}
+                {form.leave_type === 'Sick' && <label className="workspace-form-check" style={{ gridColumn: '1 / -1' }}><input type="checkbox" checked={form.emergency_sick} onChange={e => setForm(p => ({ ...p, emergency_sick: e.target.checked }))} /> Emergency sick leave (no advance handover for an immediate absence)</label>}
                 {form.leave_type === 'Maternity' && <>
-                  <label>Expected delivery date<input aria-label="Expected delivery date" type="date" required style={inp} value={form.expected_delivery_date || ''} onChange={e => setForm(p => ({ ...p, expected_delivery_date: e.target.value }))} /></label>
-                  <label><input type="checkbox" checked={form.early_maternity_advice} onChange={e => setForm(p => ({ ...p, early_maternity_advice: e.target.checked }))} /> Medical advice supports an earlier start (HR verification required)</label>
+                  <label>Expected delivery date <span className="workspace-form-required" aria-hidden="true">*</span><input name="expected_delivery_date" aria-label="Expected delivery date" aria-invalid={!!fieldErrors.expected_delivery_date} aria-describedby={fieldErrors.expected_delivery_date ? 'form-error-expected_delivery_date' : undefined} type="date" required style={inp} value={form.expected_delivery_date || ''} onChange={e => setForm(p => ({ ...p, expected_delivery_date: e.target.value }))} /><FieldError field="expected_delivery_date" errors={fieldErrors} /></label>
+                  <label className="workspace-form-check"><input type="checkbox" checked={form.early_maternity_advice} onChange={e => setForm(p => ({ ...p, early_maternity_advice: e.target.checked }))} /> Medical advice supports an earlier start (HR verification required)</label>
                 </>}
-                {form.leave_type === 'Paternity' && <label>Date of birth<input type="date" aria-label="Child birth date" required style={inp} value={form.birth_date || ''} onChange={e => setForm(p => ({ ...p, birth_date: e.target.value }))} /></label>}
-                {form.leave_type === 'Compassionate' && <label>Immediate-family relationship<select required aria-label="Family relationship" style={inp} value={form.family_relationship || ''} onChange={e => setForm(p => ({ ...p, family_relationship: e.target.value }))}><option value="">Select</option>{['spouse', 'child', 'parent', 'sibling'].map(value => <option key={value}>{value}</option>)}</select></label>}
+                {form.leave_type === 'Paternity' && <label>Date of birth <span className="workspace-form-required" aria-hidden="true">*</span><input name="birth_date" type="date" aria-label="Child birth date" aria-invalid={!!fieldErrors.birth_date} aria-describedby={fieldErrors.birth_date ? 'form-error-birth_date' : undefined} required style={inp} value={form.birth_date || ''} onChange={e => setForm(p => ({ ...p, birth_date: e.target.value }))} /><FieldError field="birth_date" errors={fieldErrors} /></label>}
+                {form.leave_type === 'Compassionate' && <label>Immediate-family relationship <span className="workspace-form-required" aria-hidden="true">*</span><select name="family_relationship" required aria-label="Family relationship" aria-invalid={!!fieldErrors.family_relationship} aria-describedby={fieldErrors.family_relationship ? 'form-error-family_relationship' : undefined} style={inp} value={form.family_relationship || ''} onChange={e => setForm(p => ({ ...p, family_relationship: e.target.value }))}><option value="">Select</option>{['spouse', 'child', 'parent', 'sibling'].map(value => <option key={value}>{value}</option>)}</select><FieldError field="family_relationship" errors={fieldErrors} /></label>}
                 {['Sick', 'Maternity', 'Paternity'].includes(form.leave_type) && <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={lbl}>Supporting document (PDF, PNG or JPEG, up to 5 MB)</label>
-                  <input aria-label="Leave supporting document" type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={e => setDocument(e.target.files?.[0] || null)} />
+                  <label htmlFor="leave-evidence" style={lbl}>Supporting document (PDF, PNG or JPEG, up to 5 MB) <span className="workspace-form-optional">When required</span></label>
+                  <input id="leave-evidence" name="supporting_document_id" aria-label="Leave supporting document" aria-invalid={!!fieldErrors.supporting_document_id} aria-describedby={fieldErrors.supporting_document_id ? 'form-error-supporting_document_id' : undefined} type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={e => setDocument(e.target.files?.[0] || null)} />
+                  <FieldError field="supporting_document_id" errors={fieldErrors} />
                   <p>Restricted to you and HR. {quote?.supporting_document_required ? 'Required for this request.' : 'Sick certificates are required after 3 consecutive days or for half-pay absences.'}</p>
                   {form.supporting_document_id && <span>Supporting document already recorded.</span>}
                 </div>}
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '16px' }}>
-                <button type="button" onClick={() => setShowForm(false)} style={btnGhost}>Cancel</button>
+              </fieldset>
+              {error && <div className="workspace-form-error" role="alert">{error}</div>}
+              <footer className="workspace-form-footer">
+                <button type="button" disabled={saving} onClick={() => setShowForm(false)} style={btnGhost}>Cancel</button>
                 <button data-testid="leave-submit-btn" type="submit" disabled={saving} style={btnRed}>{saving ? 'Saving...' : editing ? 'Resubmit request' : 'Submit Request'}</button>
-              </div>
+              </footer>
             </form>
-          </div>
-        </div>
-      )}
+      </FormDialog>}
       {historicalReview && isHR && loadedFor === accountKey && <HistoricalLeaveDecision record={historicalReview} onClose={() => setHistoricalReview(null)} onSaved={load} />}
       {review && loadedFor === accountKey && <div role="dialog" aria-label="Review leave request" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100 }}>
         <div style={{ background: '#fff', width: '600px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', padding: '24px' }}>

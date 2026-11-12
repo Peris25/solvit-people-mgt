@@ -8,9 +8,11 @@ import EmployeeLoginReview from '../components/EmployeeLoginReview';
 import * as api from '../services/api';
 import { Search } from 'lucide-react';
 import WorkspaceSkeleton from '../components/WorkspaceSkeleton';
+import FormDialog, { FieldError, FormNotice, fieldErrorsFrom } from '../components/FormDialog';
 
 const LIFECYCLE_STATES = ['Active', 'Inactive', 'Onboarding', 'Probation', 'On_Leave', 'PIP', 'Realignment', 'Suspended', 'Notice_Period', 'Exiting', 'Exited'];
 const ROLE_LEVELS = ['L1', 'L2', 'L3', 'L4', 'L5', 'B1a', 'B1b'];
+const freshEmployee = () => ({ full_name: '', work_email: '', department: '', role_title: '', role_level: 'L2', start_date: '', employment_type: 'Full_Time', current_salary_kes: '', lifecycle_state: 'Onboarding', line_manager_id: '', gender: '' });
 
 const fmtKES = (n) => n ? `KES ${Number(n).toLocaleString('en-KE')}` : '—';
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
@@ -36,9 +38,11 @@ export default function Employees() {
   const [filterDept, setFilterDept] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [selected, setSelected] = useState(null);
-  const [form, setForm] = useState({ full_name: '', work_email: '', department: '', role_title: '', role_level: 'L2', start_date: '', employment_type: 'Full_Time', current_salary_kes: '', lifecycle_state: 'Onboarding', line_manager_id: '' });
+  const [form, setForm] = useState(freshEmployee);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [notice, setNotice] = useState('');
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [showBulkTraining, setShowBulkTraining] = useState(false);
   const [bulkTraining, setBulkTraining] = useState({ training_name: '', provider: 'Internal', delivery_method: 'Internal', cost_kes: '', duration_days: 1, business_justification: '' });
@@ -113,9 +117,10 @@ export default function Employees() {
 
   const saveEmployee = async (e) => {
     e.preventDefault();
-    setSaving(true); setError('');
+    setSaving(true); setError(''); setFieldErrors({}); setNotice('');
     if (!form.line_manager_id && !form.is_board_chair && !form.reports_to_board && (!selected || form.line_manager_id !== selected.line_manager_id)) {
       setError('Line Manager is required for approval routing. Please select one.');
+      setFieldErrors({ line_manager_id: 'Select the employee’s line manager.' });
       setSaving(false);
       return;
     }
@@ -133,6 +138,7 @@ export default function Employees() {
         if (form.employment_type === selected.employment_type) delete data.employment_type;
         if (form.lifecycle_state === (selected.lifecycle_state ?? selected.employment_status ?? selected.status ?? '')) delete data.lifecycle_state;
         const response = await api.updateEmployee(selected.id, data);
+        if (!response.data || response.status >= 400) throw new Error('Employee save could not be confirmed');
         const saved = { ...selected, ...data, ...response.data };
         // The save response is authoritative; avoid another full list request
         // that hides the table and delays the confirmation of a successful edit.
@@ -152,19 +158,22 @@ export default function Employees() {
           .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')));
         if (!visible) setSelectedIds(previous => { const next = new Set(previous); next.delete(selected.id); return next; });
       } else {
-        await api.createEmployee(data);
+        const response = await api.createEmployee(data);
+        if (!response.data?.id || response.status >= 400) throw new Error('Employee save could not be confirmed');
       }
       setShowForm(false);
       setSelected(null);
-      setForm({ full_name: '', work_email: '', department: '', role_title: '', role_level: 'L2', start_date: '', employment_type: 'Full_Time', current_salary_kes: '', lifecycle_state: 'Onboarding', line_manager_id: '' });
+      setForm(freshEmployee());
+      setNotice(selected ? 'Employee changes saved.' : 'Employee added.');
       if (!selected) loadEmployees();
     } catch (err) {
       setError(employeeError(err, 'Failed to save'));
+      setFieldErrors(fieldErrorsFrom(err));
     } finally { setSaving(false); }
   };
 
   const openEdit = (emp) => {
-    setError('');
+    setError(''); setFieldErrors({}); setNotice('');
     setSelected(emp);
     setForm({ ...emp, role_level: emp.role_level ?? emp.job_level ?? '',
       lifecycle_state: emp.lifecycle_state ?? emp.employment_status ?? emp.status ?? '',
@@ -183,7 +192,7 @@ export default function Employees() {
           <div className="workspace-page-actions" style={{ display: 'flex', gap: '8px' }}>
             {user?.role === 'hr_admin' && <button type="button" disabled={accountBusy} onClick={() => setShowLogins(value => !value)} aria-expanded={showLogins} style={{ padding: '10px 18px', backgroundColor: 'transparent', border: '1px solid #191919', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>Employee logins</button>}
             <button data-testid="export-employees-csv" onClick={() => api.downloadCSV('employees')} style={{ padding: '10px 18px', backgroundColor: 'transparent', color: '#191919', border: '1px solid #191919', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>↓ CSV</button>
-            <button data-testid="add-employee-btn" onClick={() => { setSelected(null); setShowForm(true); }} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>
+            <button data-testid="add-employee-btn" onClick={() => { setSelected(null); setForm(freshEmployee()); setFieldErrors({}); setError(''); setNotice(''); setShowForm(true); }} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>
               + Add Employee
             </button>
           </div>
@@ -273,91 +282,60 @@ export default function Employees() {
         )}
       </div>
 
-      {/* Add/Edit Modal */}
-      {showForm && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ backgroundColor: '#fff', width: '560px', maxHeight: '90vh', overflowY: 'auto', border: '1px solid rgba(25,25,25,0.15)' }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between' }}>
-              <h3 style={{ margin: 0, fontWeight: 900, fontSize: '18px', letterSpacing: '-0.03em' }}>{selected ? 'Edit Employee' : 'Add Employee'}</h3>
-              <button onClick={() => setShowForm(false)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#525252' }}>×</button>
-            </div>
-            <form onSubmit={saveEmployee} style={{ padding: '24px' }}>
-              {!selected && <label style={{ display: 'block', marginBottom: '16px', fontSize: '13px' }}>
-                <input type="checkbox" checked={!!form.existing_employee} onChange={e => setForm(p => ({ ...p, existing_employee: e.target.checked, role_level: e.target.checked ? '' : p.role_level }))} /> Existing employee — record missing details later; do not send onboarding notifications
-              </label>}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                {[
-                  { key: 'full_name', label: 'Full Name', type: 'text', required: true },
-                  { key: 'work_email', label: 'Work Email', type: 'email', required: true },
-                  { key: 'role_title', label: 'Role Title', type: 'text', required: true },
-                  { key: 'start_date', label: 'Start Date', type: 'date', required: !form.existing_employee && !selected },
-                ].map(f => (
-                  <div key={f.key}>
-                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>{f.label}</label>
-                    <input type={f.type} value={form[f.key] || ''} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))} required={f.required}
-                      style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', boxSizing: 'border-box', outline: 'none' }} />
-                    {f.key === 'work_email' && selected && <div style={{ fontSize: '10px', marginTop: '4px', color: '#525252' }}>Changing work email does not change the linked account's login email.</div>}
-                  </div>
-                ))}
-                {[
-                  { key: 'gender', label: 'Gender', options: ['Female', 'Male', 'Other', 'Prefer not to say'] },
-                  { key: 'department', label: 'Department', options: departmentOptions },
-                  { key: 'role_level', label: 'Role Level', options: ROLE_LEVELS },
-                  { key: 'employment_type', label: 'Employment Type', options: ['Full_Time', 'Part_Time', 'Fixed_Term'] },
-                  { key: 'lifecycle_state', label: 'Status', options: LIFECYCLE_STATES },
-                ].map(f => (
-                  <div key={f.key}>
-                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>{f.label}</label>
-                    <select aria-label={f.label} disabled={f.key === 'lifecycle_state' && !!selected && !['hr_admin', 'general_manager'].includes(user?.role)} required={f.key === 'department' && !selected} data-testid={`employee-${f.key}`} value={form[f.key] || ''} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
-                      style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', boxSizing: 'border-box', outline: 'none' }}>
-                      {f.key === 'department' && <option value="">Select department</option>}
-                      {f.key !== 'department' && (!form[f.key] || f.key === 'gender') && <option value="">Not specified</option>}
-                      {[...new Set([...f.options, ...(typeof form[f.key] === 'string' && form[f.key] ? [form[f.key]] : [])])].map(o => <option key={o} value={o}>{f.key === 'lifecycle_state' ? o.replaceAll('_', ' ') : o}</option>)}
-                    </select>
-                  </div>
-                ))}
+      <FormNotice message={notice} onDismiss={setNotice} />
+      {showForm && <FormDialog id="employee-form" title={selected ? 'Edit Employee' : 'Add Employee'} description="Keep employee details and approval routing up to date." busy={saving} onClose={() => setShowForm(false)}>
+        <form className="workspace-form-body" onSubmit={saveEmployee}
+          onInvalid={event => { if (event.target.name) setFieldErrors(previous => ({ ...previous, [event.target.name]: event.target.validationMessage })); }}
+          onChangeCapture={event => { if (event.target.name) setFieldErrors(previous => ({ ...previous, [event.target.name]: undefined })); }}>
+          <p className="workspace-form-hint">Fields marked <span className="workspace-form-required">*</span> are required. Other fields are optional.</p>
+          <fieldset disabled={saving}>
+            {!selected && <label className="workspace-form-check" style={{ marginBottom: 20 }}><input type="checkbox" checked={!!form.existing_employee} onChange={event => setForm(previous => ({ ...previous, existing_employee: event.target.checked, role_level: event.target.checked ? '' : previous.role_level }))} /> Existing employee ? record missing details later; do not send onboarding notifications</label>}
+            <div className="workspace-form-grid">
+              {[
+                { key: 'full_name', label: 'Full Name', type: 'text', required: true, section: 'Personal details' },
+                { key: 'work_email', label: 'Work Email', type: 'email', required: true },
+                { key: 'gender', label: 'Gender', options: ['Female', 'Male', 'Other', 'Prefer not to say'] },
+                { key: 'role_title', label: 'Role Title', type: 'text', required: true, section: 'Employment' },
+                { key: 'start_date', label: 'Start Date', type: 'date', required: !form.existing_employee && !selected },
+                { key: 'department', label: 'Department', options: departmentOptions, required: !selected },
+                { key: 'role_level', label: 'Role Level', options: ROLE_LEVELS },
+                { key: 'employment_type', label: 'Employment Type', options: ['Full_Time', 'Part_Time', 'Fixed_Term'] },
+                { key: 'lifecycle_state', label: 'Status', options: LIFECYCLE_STATES, disabled: !!selected && !['hr_admin', 'general_manager'].includes(user?.role) },
+                { key: 'current_salary_kes', label: 'Salary (KES)', type: 'number', placeholder: 'e.g. 75000' },
+              ].map(field => <React.Fragment key={field.key}>
+                {field.section && <div className="workspace-form-section"><h3>{field.section}</h3></div>}
                 <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Salary (KES)</label>
-                  <input type="number" value={form.current_salary_kes || ''} onChange={e => setForm(p => ({ ...p, current_salary_kes: e.target.value }))}
-                    placeholder="e.g. 75000"
-                    style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'Arial', boxSizing: 'border-box', outline: 'none' }} />
+                  <label htmlFor={`employee-input-${field.key}`}>{field.label}{field.required ? <span className="workspace-form-required" aria-hidden="true">*</span> : <span className="workspace-form-optional">Optional</span>}</label>
+                  {field.options ? <select id={`employee-input-${field.key}`} name={field.key} aria-label={field.label} data-testid={`employee-${field.key}`} required={field.required} disabled={field.disabled}
+                    aria-invalid={!!fieldErrors[field.key]} aria-describedby={fieldErrors[field.key] ? `form-error-${field.key}` : undefined} value={form[field.key] || ''} onChange={event => setForm(previous => ({ ...previous, [field.key]: event.target.value }))}>
+                    {(field.key === 'department' || !form[field.key] || field.key === 'gender') && <option value="">{field.key === 'department' ? 'Select department' : 'Not specified'}</option>}
+                    {[...new Set([...field.options, ...(typeof form[field.key] === 'string' && form[field.key] ? [form[field.key]] : [])])].map(value => <option key={value} value={value}>{value.replaceAll('_', ' ')}</option>)}
+                  </select> : <input id={`employee-input-${field.key}`} name={field.key} aria-label={field.label} type={field.type} placeholder={field.placeholder} required={field.required}
+                    aria-invalid={!!fieldErrors[field.key]} aria-describedby={fieldErrors[field.key] ? `form-error-${field.key}` : undefined} value={form[field.key] || ''} onChange={event => setForm(previous => ({ ...previous, [field.key]: event.target.value }))} />}
+                  <FieldError field={field.key} errors={fieldErrors} />
+                  {field.key === 'work_email' && selected && <span className="workspace-form-help">Changing work email does not change the linked account's login email.</span>}
+                  {field.disabled && <span className="workspace-form-help">Status changes require an HR admin.</span>}
                 </div>
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>
-                    Line Manager <span style={{ color: '#FF353F' }}>*</span>
-                  </label>
-                  <EmployeePicker
-                    testId="employee-lm-picker"
-                    value={form.line_manager_id}
-                    excludeId={selected?.id}
-                    placeholder="Select line manager (required for approval routing)..."
-                    onChange={(emp) => setForm(p => ({ ...p, line_manager_id: emp.id }))}
-                    required={!form.is_board_chair && !form.reports_to_board}
-                    disabled={!!form.reports_to_board}
-                  />
-                  <div style={{ fontSize: '10px', color: '#525252', marginTop: '4px', fontStyle: 'italic' }}>
-                    Every employee must have a Line Manager. This drives leave / training / performance approval routing.
-                  </div>
-                </div>
+              </React.Fragment>)}
+              <div className="workspace-form-section"><h3>Approval routing</h3><p>The saved reporting relationship routes leave, training and performance approvals.</p></div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label>Line Manager{!form.is_board_chair && !form.reports_to_board && <span className="workspace-form-required" aria-hidden="true">*</span>}</label>
+                <EmployeePicker testId="employee-lm-picker" ariaLabel="Line Manager" invalid={!!fieldErrors.line_manager_id} describedBy={fieldErrors.line_manager_id ? 'form-error-line_manager_id' : undefined}
+                  value={form.line_manager_id} excludeId={selected?.id} placeholder="Select line manager (required for approval routing)..."
+                  onChange={employee => { setForm(previous => ({ ...previous, line_manager_id: employee.id })); setFieldErrors(previous => ({ ...previous, line_manager_id: undefined })); }}
+                  required={!form.is_board_chair && !form.reports_to_board} disabled={!!form.reports_to_board} />
+                <FieldError field="line_manager_id" errors={fieldErrors} />
               </div>
-              {!selected && user?.role === 'hr_admin' && <label style={{ display: 'block', fontSize: '12px', marginTop: '12px' }}>
-                <input type="checkbox" checked={!!form.is_board_chair} onChange={e => setForm(p => ({ ...p, is_board_chair: e.target.checked, line_manager_id: e.target.checked ? '' : p.line_manager_id }))} /> Reporting apex (Board Chair; no line manager required)
-              </label>}
-              {canEdit && form.role_title?.trim().toLowerCase() === 'managing director' && <label style={{ display: 'block', fontSize: '12px', marginTop: '12px' }}>
-                <input type="checkbox" checked={!!form.reports_to_board} onChange={e => setForm(p => ({ ...p, reports_to_board: e.target.checked, line_manager_id: e.target.checked ? null : p.line_manager_id }))} /> Managing Director reports to Board of Directors (no FTE line manager)
-              </label>}
-              {departmentError && <div role="status" style={{ fontSize: '12px', marginTop: '12px' }}>{departmentError}</div>}
-              {error && <div data-testid="employee-lm-error" style={{ color: '#FF353F', fontSize: '12px', marginTop: '12px', padding: '8px', border: '1px solid #FF353F', backgroundColor: 'rgba(255,53,63,0.05)' }}>{error}</div>}
-              <div style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button type="button" onClick={() => setShowForm(false)} style={{ padding: '10px 20px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Arial' }}>Cancel</button>
-                <button data-testid="employee-save" type="submit" disabled={saving} style={{ padding: '10px 24px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Arial', opacity: saving ? 0.7 : 1 }}>
-                  {saving ? 'Saving...' : 'Save Employee'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            </div>
+            {!selected && user?.role === 'hr_admin' && <label className="workspace-form-check" style={{ marginTop: 16 }}><input type="checkbox" checked={!!form.is_board_chair} onChange={event => setForm(previous => ({ ...previous, is_board_chair: event.target.checked, line_manager_id: event.target.checked ? '' : previous.line_manager_id }))} /> Reporting apex (Board Chair; no line manager required)</label>}
+            {canEdit && form.role_title?.trim().toLowerCase() === 'managing director' && <label className="workspace-form-check" style={{ marginTop: 16 }}><input type="checkbox" checked={!!form.reports_to_board} onChange={event => setForm(previous => ({ ...previous, reports_to_board: event.target.checked, line_manager_id: event.target.checked ? null : previous.line_manager_id }))} /> Managing Director reports to Board of Directors (no FTE line manager)</label>}
+            {departmentError && <p role="status" className="workspace-form-help">{departmentError}</p>}
+          </fieldset>
+          {error && <div data-testid="employee-lm-error" className="workspace-form-error" role="alert">{error}</div>}
+          <footer className="workspace-form-footer"><button type="button" disabled={saving} onClick={() => setShowForm(false)} style={{ border: '1px solid #d0d5dd', background: 'transparent' }}>Cancel</button>
+            <button data-testid="employee-save" type="submit" disabled={saving} style={{ background: '#d92336', color: '#fff', border: 0 }}>{saving ? 'Saving...' : 'Save Employee'}</button></footer>
+        </form>
+      </FormDialog>}
 
       {/* Bulk training modal */}
       {showBulkTraining && (

@@ -56,6 +56,37 @@ test('saved edits update the visible row from the server response without waitin
   expect(container.querySelector('[data-testid="emp-row-example"]').textContent).toContain('Saved name');
   expect(container.querySelector('form')).toBeNull();
   expect(container.textContent).not.toContain('Loading...');
+  expect(container.querySelector('[role="status"]').textContent).toContain('Employee changes saved.');
+});
+
+test('employee validation is shown beside the field without exposing rejected input values', async () => {
+  api.getEmployees.mockResolvedValue({ data: [{ id: 'example', full_name: 'Synthetic employee', work_email: 'staff@example.com', line_manager_id: 'boss' }] });
+  api.getAllMastersSettings.mockResolvedValue({ data: {} });
+  api.updateEmployee.mockRejectedValue({ response: { data: { detail: [{ loc: ['body', 'work_email'], msg: 'Enter a valid work email', input: 'private-value' }] } } });
+  await act(async () => root.render(<Employees />));
+  await act(async () => container.querySelector('[data-testid="emp-row-example"] button').click());
+  await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  const input = container.querySelector('[aria-label="Work Email"]');
+  expect(input.getAttribute('aria-invalid')).toBe('true');
+  expect(container.querySelector('#form-error-work_email').textContent).toBe('Enter a valid work email');
+  expect(input.value).toBe('staff@example.com');
+  expect(container.textContent).not.toContain('private-value');
+});
+
+test('cancelling an unsaved new employee starts with fresh values when reopened', async () => {
+  api.getEmployees.mockResolvedValue({ data: [] });
+  api.getAllMastersSettings.mockResolvedValue({ data: {} });
+  await act(async () => root.render(<Employees />));
+  await act(async () => container.querySelector('[data-testid="add-employee-btn"]').click());
+  await act(async () => {
+    const input = container.querySelector('[aria-label="Full Name"]');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Unsaved name');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === 'Cancel').click());
+  await act(async () => container.querySelector('[data-testid="add-employee-btn"]').click());
+  expect(container.querySelector('[aria-label="Full Name"]').value).toBe('');
+  expect(api.createEmployee).not.toHaveBeenCalled();
 });
 
 test('an employee moved to Exited is removed immediately from the default active list', async () => {

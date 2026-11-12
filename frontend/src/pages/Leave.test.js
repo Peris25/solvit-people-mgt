@@ -82,6 +82,17 @@ test('withdrawal failure keeps the request visible', async () => {
   expect(container.querySelector('[data-testid="leave-request"]')).toBeTruthy();
 });
 
+test('leave submission errors appear inside the form and beside the relevant field', async () => {
+  api.createLeaveRequest.mockRejectedValue({ response: { data: { detail: [{ loc: ['body', 'end_date'], msg: 'Choose a valid end date', input: 'private-date' }] } } });
+  await render();
+  await act(async () => container.querySelector('[data-testid="apply-leave-btn"]').click());
+  await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(container.querySelector('dialog [role="alert"]')).not.toBeNull();
+  expect(container.querySelector('#form-error-end_date').textContent).toBe('Choose a valid end date');
+  expect(container.querySelector('[aria-label="Leave end date"]').getAttribute('aria-invalid')).toBe('true');
+  expect(container.textContent).not.toContain('private-date');
+});
+
 test('employee withdrawal is labelled Withdrawn rather than Denied and has no approval control', async () => {
   api.getLeaveRequests.mockResolvedValue({ data: [{ ...row, status: 'Cancelled', can_cancel: false }] });
   await render();

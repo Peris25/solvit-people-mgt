@@ -14,7 +14,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as api from '../services/api';
 
-export default function EmployeePicker({ value, onChange, excludeId, includeIds, placeholder = 'Select an employee...', testId = 'employee-picker', required, disabled }) {
+export default function EmployeePicker({ value, onChange, excludeId, includeIds, placeholder = 'Select an employee...', testId = 'employee-picker', required, disabled, ariaLabel, invalid, describedBy }) {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -55,6 +55,9 @@ export default function EmployeePicker({ value, onChange, excludeId, includeIds,
     <div ref={ref} data-testid={testId} style={{ position: 'relative', fontFamily: 'Arial' }}>
       <button
         type="button"
+        aria-label={ariaLabel}
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
         disabled={disabled}
         onClick={() => setOpen(o => !o)}
         style={{
