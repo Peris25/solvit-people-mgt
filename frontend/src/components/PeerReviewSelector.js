@@ -41,9 +41,16 @@ export default function PeerReviewSelector({ initialTaskId = '', onSubmitted }) 
         <option value="">Select a colleague…</option>{available.map(t => <option key={t.id} value={t.id}>{[t.employee_name, t.role_title, t.department].filter(Boolean).join(' — ')}</option>)}
       </select></label><p>Changing the colleague clears unsaved ratings.</p>
       {selected && <fieldset disabled={busy}><legend>Reviewing {selected.employee_name} · Due {selected.due_on}</legend>
-        {questions.map((question, index) => <label key={question}>{question}<select required aria-label={`Peer value ${index + 1}`} value={values.scores[index]} onChange={e => setValues(old => ({ ...old, scores: old.scores.map((score, i) => i === index ? (e.target.value === '' ? '' : Number(e.target.value)) : score) }))}>
-          <option value="">Select rating (0–10)</option>{Array.from({ length: 11 }, (_, i) => <option value={i} key={i}>{i}</option>)}
-        </select></label>)}
+        <p>Rate each value from 0 to 10. Select one card per question.</p>
+        {questions.map((question, index) => <fieldset className="peer-rating" key={question}>
+          <legend>{question} <span aria-hidden="true">*</span></legend>
+          <div className="peer-rating-options">
+            {Array.from({ length: 11 }, (_, score) => <label className="peer-rating-choice" key={score}>
+              <input type="radio" required name={`peer-value-${index}`} aria-label={`${question}: ${score} out of 10`} value={score} checked={values.scores[index] === score} onChange={() => setValues(old => ({ ...old, scores: old.scores.map((value, i) => i === index ? score : value) }))} />
+              <span className="peer-rating-card"><strong>{score}</strong><span>{values.scores[index] === score ? 'Selected' : 'out of 10'}</span></span>
+            </label>)}
+          </div>
+        </fieldset>)}
         <label>Working relationship<select value={values.relationship} onChange={e => setValues(old => ({ ...old, relationship: e.target.value }))}><option value="Peer">Peer</option><option value="Direct_Report">Direct report</option><option value="Cross_Functional">Cross-functional colleague</option></select></label>
         <label>Would you fight to keep this person? (HR only)<select required value={values.retain} onChange={e => setValues(old => ({ ...old, retain: e.target.value === '' ? '' : Number(e.target.value) }))}><option value="">Choose</option><option value={10}>Yes</option><option value={5}>Maybe</option><option value={0}>No</option></select></label>
         <label>Optional anonymous comment<textarea maxLength={4000} value={values.comment} onChange={e => setValues(old => ({ ...old, comment: e.target.value }))} /></label>
