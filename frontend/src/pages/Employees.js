@@ -225,19 +225,21 @@ export default function Employees() {
           <option value="">All Departments</option>
           {filterDepartments.map(d => <option key={d} value={d}>{d}</option>)}
         </select>
+        {(search || filterState || filterDept) && <button type="button" className="workspace-filter-reset" onClick={() => { setSearch(''); setFilterState(''); setFilterDept(''); }}>Clear filters</button>}
       </div>
 
       {/* Table */}
       {refreshing && !loading && <p role="status" style={{ fontSize: 12, color: '#667085' }}>Updating employee list...</p>}
       {listError && <p role="alert">{listError} <button onClick={loadEmployees}>Retry</button></p>}
-      <div className="workspace-table" aria-busy={refreshing} style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
+      {!loading && !refreshing && !listError && <p className="workspace-results-count" aria-live="polite">{employees.length} {employees.length === 1 ? 'employee' : 'employees'}{search || filterState || filterDept ? ' matching your filters' : ' shown'}</p>}
+      <div className={`workspace-table${!employees.length ? ' workspace-table-empty' : ''}`} aria-busy={refreshing} style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
         {loading ? <WorkspaceSkeleton label="Loading employees..." /> : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
               <tr style={{ backgroundColor: '#F5F5F5' }}>
                 {canEdit && (
                   <th style={{ padding: '10px 12px', textAlign: 'left', borderBottom: '1px solid rgba(25,25,25,0.08)', width: '32px' }}>
-                    <input type="checkbox" data-testid="bulk-select-all" checked={selectedIds.size === employees.length && employees.length > 0} onChange={toggleSelectAll} />
+                    <input type="checkbox" aria-label="Select all shown employees" data-testid="bulk-select-all" checked={selectedIds.size === employees.length && employees.length > 0} onChange={toggleSelectAll} />
                   </th>
                 )}
                 {['Name', 'Email', 'Role', 'Dept', 'Level', 'Start Date', 'Salary', 'Status', 'Actions'].map(h => (
@@ -250,7 +252,7 @@ export default function Employees() {
                 <tr key={emp.id} data-testid={`emp-row-${emp.id}`} data-selected={selectedIds.has(emp.id)} onClick={() => navigate(`/employees/${emp.id}`)} style={{ borderBottom: '1px solid rgba(25,25,25,0.05)', backgroundColor: selectedIds.has(emp.id) ? '#FEF2F2' : (i % 2 === 0 ? '#fff' : '#FAFAFA'), cursor: 'pointer' }} onMouseEnter={e => { if (!selectedIds.has(emp.id)) e.currentTarget.style.backgroundColor = '#FEF2F2'; }} onMouseLeave={e => { if (!selectedIds.has(emp.id)) e.currentTarget.style.backgroundColor = i % 2 === 0 ? '#fff' : '#FAFAFA'; }}>
                   {canEdit && (
                     <td style={{ padding: '10px 12px', width: '32px' }} onClick={e => e.stopPropagation()}>
-                      <input type="checkbox" data-testid={`bulk-select-${emp.id}`} checked={selectedIds.has(emp.id)} onChange={() => toggleSelect(emp.id)} />
+                      <input type="checkbox" aria-label={`Select ${emp.full_name}`} data-testid={`bulk-select-${emp.id}`} checked={selectedIds.has(emp.id)} onChange={() => toggleSelect(emp.id)} />
                     </td>
                   )}
                   <td style={{ padding: '10px 16px', fontWeight: 700, color: '#191919' }}><span className="workspace-employee-name"><span className="workspace-employee-avatar" aria-hidden="true">{(emp.full_name || '?').split(' ').filter(Boolean).map(part => part[0]).slice(0,2).join('')}</span><span>{emp.full_name}</span></span></td>
@@ -275,7 +277,7 @@ export default function Employees() {
                 </tr>
               ))}
               {employees.length === 0 && (
-                <tr><td colSpan={canEdit ? 10 : 9} style={{ padding: '32px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>No employees found</td></tr>
+                <tr><td colSpan={canEdit ? 10 : 9} className="workspace-empty-state"><strong>{listError ? 'Employee list unavailable' : 'No employees found'}</strong><p>{listError ? 'Use Retry above to load the list again.' : search || filterState || filterDept ? 'Try a different name or clear your filters to see more employees.' : 'Employee records will appear here once they are added.'}</p></td></tr>
               )}
             </tbody>
           </table>

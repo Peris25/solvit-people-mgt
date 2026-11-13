@@ -12,6 +12,21 @@ let container, root;
 beforeEach(() => { container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container); });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); jest.clearAllMocks(); });
 
+test('clear filters restores the employee status filter and reloads the unfiltered list', async () => {
+  api.getEmployees.mockResolvedValue({ data: [] });
+  api.getAllMastersSettings.mockResolvedValue({ data: {} });
+  await act(async () => root.render(<Employees />));
+  const status = container.querySelector('[aria-label="Employee status"]');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(status, 'Inactive');
+    status.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  expect(container.textContent).toContain('Try a different name or clear your filters');
+  await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === 'Clear filters').click());
+  expect(status.value).toBe('');
+  expect(api.getEmployees).toHaveBeenLastCalledWith(expect.objectContaining({ lifecycle_state: undefined }));
+});
+
 test('HR account setup reuses the dedicated form without exposing role administration', async () => {
   api.getEmployees.mockResolvedValue({ data: [] });
   api.getAllMastersSettings.mockResolvedValue({ data: {} });

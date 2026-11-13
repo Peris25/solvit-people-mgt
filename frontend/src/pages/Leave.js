@@ -13,7 +13,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSearchParams } from 'react-router-dom';
 import { relatedRecordRows } from '../utils/relatedRecordFilter';
 import { useNotifications } from '../context/NotificationContext';
-import { Calendar as CalendarIcon, ClipboardList, Users as UsersIcon, RotateCcw, Plus, ClipboardCheck, Pencil, Undo2, Check, X } from 'lucide-react';
+import { Calendar as CalendarIcon, ClipboardList, Users as UsersIcon, RotateCcw, Plus, ClipboardCheck, Pencil, Undo2, Check, X, Search } from 'lucide-react';
 
 const LEAVE_TYPE_LABELS = {
   Annual: 'Annual leave',
@@ -307,14 +307,15 @@ export default function Leave() {
         <>
           {tab === 'my' && <RequestsTable rows={myRequests} withdraw={withdraw} edit={openForm} review={openReview} saving={saving} testId="my-applications" />}
           {tab === 'team' && hasTeam && <>
-            <p>All matching applications are listed below with their review actions. This queue refreshes every 30 seconds and when you return to this window. Workbook corrections remain under Imported leave history.</p>
+            <p className="workspace-table-help">Review team applications below. Updates automatically every 30 seconds. Workbook corrections are under Imported leave history.</p>
             <div className="workspace-toolbar" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
-              <input aria-label="Search team leave" placeholder="Search employee, leave type or date" value={teamSearch} onChange={event => setTeamSearch(event.target.value)} style={{ ...inp, maxWidth: '360px' }} />
+              <label className="workspace-search"><Search size={17} aria-hidden="true" /><input className="workspace-search-input" aria-label="Search team leave" placeholder="Search employee, leave type or date" value={teamSearch} onChange={event => setTeamSearch(event.target.value)} style={inp} /></label>
               <select aria-label="Team leave status" value={teamStatus} onChange={event => setTeamStatus(event.target.value)} style={{ ...inp, maxWidth: '200px' }}>{['All', 'Pending', 'Approved', 'Denied', 'Withdrawn'].map(status => <option key={status}>{status}</option>)}</select>
               <button style={btnGhost} onClick={load}>Refresh requests</button>
+              {!linkedRequest && (teamSearch || teamStatus !== 'All') && <button type="button" className="workspace-filter-reset" onClick={() => { setTeamSearch(''); setTeamStatus('All'); }}>Clear filters</button>}
             </div>
-            <p>{visibleTeamRequests.length} matching applications</p>
-            <RequestsTable flat rows={visibleTeamRequests} historicalReview={isHR ? setHistoricalReview : undefined} withdraw={withdraw} review={openReview} saving={saving} testId="team-leave" />
+            <p className="workspace-results-count" aria-live="polite">{visibleTeamRequests.length} matching {visibleTeamRequests.length === 1 ? 'application' : 'applications'}</p>
+            <RequestsTable flat rows={visibleTeamRequests} filtered={!!(teamSearch || teamStatus !== 'All' || linkedRequest)} historicalReview={isHR ? setHistoricalReview : undefined} withdraw={withdraw} review={openReview} saving={saving} testId="team-leave" />
           </>}
           {tab === 'balances' && isHR && <EmployeeLeaveBalances key={accountKey} />}
           {tab === 'history' && isHR && <LeaveHistory key={accountKey} rows={requests.filter(row => row.historical_import)} onSaved={load} />}
@@ -463,9 +464,9 @@ function RequestsTable(props) {
   return <EmployeeLeaveGroups rows={props.rows} renderRecords={rows => <LeaveRecordsTable {...props} rows={rows} />} />;
 }
 
-function LeaveRecordsTable({ rows, withdraw, review, historicalReview, edit, saving, testId }) {
+function LeaveRecordsTable({ rows, withdraw, review, historicalReview, edit, saving, testId, filtered }) {
   return (
-    <div className="workspace-table" data-testid={testId} style={{ overflowX: 'auto', backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
+    <div className={`workspace-table${!rows.length ? ' workspace-table-empty' : ''}`} data-testid={testId} style={{ overflowX: 'auto', backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
         <thead>
           <tr style={{ backgroundColor: '#F5F5F5' }}>
@@ -477,7 +478,7 @@ function LeaveRecordsTable({ rows, withdraw, review, historicalReview, edit, sav
         <tbody>
           {rows.map((r, i) => (
             <tr key={r.id} data-testid={`leave-${r.id}`} style={{ borderBottom: '1px solid rgba(25,25,25,0.05)', backgroundColor: i % 2 === 0 ? '#fff' : '#FAFAFA' }}>
-              <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: '11px' }}>{r.employee_name || 'Employee name unavailable'}</td>
+              <td className="workspace-leave-employee" style={{ padding: '10px 14px' }}>{r.employee_name || 'Employee name unavailable'}</td>
               <td style={{ padding: '10px 14px', fontWeight: 700 }}>{LEAVE_TYPE_LABELS[r.leave_type] || r.leave_type}</td>
               <td style={{ padding: '10px 14px', color: '#525252' }}>{fmtPeriod(r.start_date, r.end_date)}</td>
               <td style={{ padding: '10px 14px', fontWeight: 700 }}>{r.working_days}</td>
@@ -493,7 +494,7 @@ function LeaveRecordsTable({ rows, withdraw, review, historicalReview, edit, sav
               </td>
             </tr>
           ))}
-          {rows.length === 0 && <tr><td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: '#9CA3AF' }}>No requests</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={7} className="workspace-empty-state"><strong>{filtered ? 'No matching applications' : 'No requests'}</strong><p>{filtered ? 'Try another search or clear your filters to see all applications.' : 'Leave applications will appear here once submitted.'}</p></td></tr>}
         </tbody>
       </table>
     </div>

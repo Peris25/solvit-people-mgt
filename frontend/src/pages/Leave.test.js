@@ -28,6 +28,17 @@ afterEach(async () => { await act(async () => root.unmount()); container.remove(
 const render = async () => { await act(async () => root.render(<Leave />)); };
 const click = async text => { const button = [...container.querySelectorAll('button')].find(b => b.textContent === text); expect(button).toBeTruthy(); await act(async () => button.click()); };
 
+test('clear filters restores all team applications and their count', async () => {
+  useAuth.mockReturnValue({ user: { ...user, role: 'hr_admin' } });
+  api.getLeaveRequests.mockResolvedValue({ data: [{ ...row, employee_id: 'report', status: 'Approved' }] });
+  await render();
+  expect(container.textContent).toContain('No matching applications');
+  await click('Clear filters');
+  expect(container.querySelector('[aria-label="Team leave status"]').value).toBe('All');
+  expect(container.querySelector('[data-testid="leave-request"]')).not.toBeNull();
+  expect(container.querySelector('.workspace-results-count').textContent).toBe('1 matching application');
+});
+
 test.each([['Female', 'Maternity', 'Paternity'], [' male ', 'Paternity', 'Maternity']])('shows only applicable parental balances and choices for %s', async (gender, included, excluded) => {
   api.getMyEmployee.mockResolvedValue({ data: { id: 'staff', gender, line_manager_id: 'boss' } });
   api.getLeaveTypes.mockResolvedValue({ data: { Annual: {}, Maternity: {}, Paternity: {} } });

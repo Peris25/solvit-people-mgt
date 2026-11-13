@@ -15,6 +15,23 @@
 .workspace-page table { font-variant-numeric:tabular-nums; }
 .workspace-page table th { font-size:11px; font-weight:600; }
 .workspace-page table td { font-size:13px; }
+.workspace-table :is(th,td) { padding-top:15px !important; padding-bottom:15px !important; vertical-align:middle; }
+.workspace-table th { text-transform:none !important; letter-spacing:0 !important; font-family:var(--solvit-font-body,Arial,sans-serif) !important; font-size:12px !important; }
+.workspace-table .portal-status-badge { text-transform:none !important; letter-spacing:0 !important; font-size:12px !important; font-weight:600 !important; border-radius:999px; padding:5px 10px !important; }
+.workspace-toolbar select { min-height:42px; border-radius:8px; background:var(--portal-surface,#fff); color:var(--portal-ink,#20252f); }
+.workspace-filter-reset { min-height:42px; padding:9px 13px; border:1px solid var(--portal-line,#e6e8ed); border-radius:8px; background:var(--portal-surface,#fff); color:var(--portal-ink,#20252f); font:600 12px var(--solvit-font-body,Arial,sans-serif); cursor:pointer; }
+.workspace-toolbar :focus-visible { outline:2px solid var(--portal-accent,#d92336) !important; outline-offset:3px; }
+.workspace-results-count,.workspace-table-help { color:var(--portal-muted,#667080); font-size:13px; line-height:1.6; margin:0 0 14px; }
+.workspace-table .workspace-empty-state { padding:40px 24px !important; text-align:center; color:var(--portal-ink,#20252f); }
+.workspace-empty-state strong { font-size:15px; }
+.workspace-empty-state p { color:var(--portal-muted,#667080); font-size:13px; line-height:1.6; margin:8px auto 0; max-width:420px; }
+.workspace-table-empty table { min-width:0; }
+.workspace-table-empty thead { display:none; }
+.workspace-leave-employee { font-family:var(--solvit-font-body,Arial,sans-serif); font-weight:600; }
+.portal-main .workspace-page .workspace-search input { padding-left:40px !important; }
+.portal-main .workspace-page .workspace-toolbar select { flex:0 1 auto; width:auto !important; min-width:155px; max-width:100%; }
+.workspace-table { color:var(--portal-ink,#20252f); }
+.workspace-table table { color:inherit; }
 .workspace-employee-name { display:flex; align-items:center; gap:12px; min-width:180px; font-weight:700; }
 .workspace-employee-avatar { display:grid; place-items:center; width:34px; height:34px; flex-shrink:0; border-radius:11px; color:var(--portal-accent,#d92336); background:var(--portal-soft,#fff0f1); font-size:11px; font-weight:700; }
 .workspace-table tbody tr:hover { background:var(--workspace-soft) !important; }
