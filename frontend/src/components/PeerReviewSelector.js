@@ -34,7 +34,7 @@ export default function PeerReviewSelector({ initialTaskId = '', onSubmitted }) 
     <p>Choose a colleague from your open review assignments. Answers are confidential and use the approved 0–10 values scale. HR must assign colleagues outside your eligible review group.</p>
     {error && <p role="alert">{error} <button type="button" disabled={busy} onClick={() => setAttempt(n => n + 1)}>Refresh eligible colleagues</button></p>}
     {message && <p role="status">{message}</p>}
-    {!tasks && !error && <p role="status">Loading eligible colleagues…</p>}
+    {!tasks && !error && <p role="status" aria-live="polite">Loading peer review…</p>}
     {tasks && !available.length && <p>No peer reviews are currently open for you. Contact HR to confirm the cycle dates and reviewer assignments.</p>}
     {!!available.length && <form onSubmit={submit}>
       <label>Colleague to review<select required aria-label="Colleague to review" disabled={busy} value={selected ? taskId : ''} onChange={e => { setTaskId(e.target.value); setValues(blank()); setError(''); setMessage(''); }}>

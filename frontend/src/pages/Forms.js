@@ -15,6 +15,9 @@ export default function Forms() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [schema, setSchema] = useState(null);
+  const [schemaLoading, setSchemaLoading] = useState(false);
+  const [schemaError, setSchemaError] = useState('');
+  const schemaRequest = useRef(0);
   const [responses, setResponses] = useState({});
   const [signature, setSignature] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -27,6 +30,7 @@ export default function Forms() {
 
   useEffect(() => {
     let cancelled = false;
+    ++schemaRequest.current; setSchemaLoading(false); setSchemaError('');
     setLoading(true); setForms([]); setSelected(null); setSchema(null); setResponses({}); setSignature(''); setResult(null); setFilter('all'); setError(''); setLoadedFor(null);
     api.getForms().then(response => {
       if (!cancelled) { setForms(response.data); setLoadedFor(accountKey); }
@@ -43,14 +47,26 @@ export default function Forms() {
     setSignature('');
     setSelected(form);
     setSchema(null);
+    setSchemaError('');
+    const request = ++schemaRequest.current;
+    // Peer reviews load their assignments directly; they do not use generic schemas.
+    if (form.id === 'form-26') { setSchemaLoading(false); return; }
+    setSchemaLoading(true);
     try {
       const r = await api.getFormSchema(form.id);
-      if (activeAccount.current === accountKey) setSchema(r.data);
-    } catch { if (activeAccount.current === accountKey) setSchema(null); }
+      if (activeAccount.current === accountKey && request === schemaRequest.current) setSchema(r.data);
+    } catch {
+      if (activeAccount.current === accountKey && request === schemaRequest.current) setSchemaError('This form could not be loaded. Please try again.');
+    } finally {
+      if (activeAccount.current === accountKey && request === schemaRequest.current) setSchemaLoading(false);
+    }
   };
+
+  const schemaReady = !schemaLoading && !schemaError && schema?.sections?.some(section => section.fields?.length);
 
   const submit = async (e) => {
     e.preventDefault();
+    if (!schemaReady || submitting) return;
     setSubmitting(true);
     try {
       const res = await api.submitForm(selected.id, {
@@ -178,9 +194,9 @@ export default function Forms() {
               </div>
             ) : selected.id === 'form-26' ? <div style={{ padding: 24 }}><PeerReviewSelector /></div> : (
               <form onSubmit={submit} style={{ padding: '24px' }}>
-                {!schema || !(schema.sections || []).length || (schema.sections || []).every(s => !(s.fields || []).length) ? (
+                {schemaLoading ? <p role="status" aria-live="polite">Loading form…</p> : schemaError ? <p role="alert">{schemaError} <button type="button" onClick={() => openForm(selected)}>Retry</button></p> : !schemaReady ? (
                   <div style={{ padding: '24px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px', backgroundColor: '#FAFAFA', border: '1px solid rgba(25,25,25,0.05)' }}>
-                    Form schema not yet implemented — placeholder ready (FRD Section 7).
+                    This form is not available yet. Please contact HR for assistance.
                   </div>
                 ) : (schema.sections || []).map(section => (
                   <div key={section.id} style={{ marginBottom: '24px' }}>
@@ -201,7 +217,7 @@ export default function Forms() {
                 )}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                   <button type="button" onClick={() => { setSelected(null); setSchema(null); }} style={{ padding: '10px 20px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '12px' }}>Cancel</button>
-                  <button data-testid="submit-form-btn" type="submit" disabled={submitting} style={{ padding: '10px 24px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{submitting ? 'Submitting...' : 'Submit Form'}</button>
+                  <button data-testid="submit-form-btn" type="submit" disabled={submitting || !schemaReady} style={{ padding: '10px 24px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: submitting || !schemaReady ? 0.55 : 1 }}>{submitting ? 'Submitting...' : 'Submit Form'}</button>
                 </div>
               </form>
             )}
