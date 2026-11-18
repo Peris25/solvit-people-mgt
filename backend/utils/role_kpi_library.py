@@ -100,7 +100,6 @@ def issues(values):
             if sum(Decimal(str(g['weight'] or 0)) for g in rows if g['group'] == group) != 100: problems.append(f'{group} KPI weights must total 100%.')
     elif any(goal['group'] for goal in rows): problems.append('Define the group weights or remove the KPI group names.')
     elif sum(Decimal(str(g['weight'] or 0)) for g in rows) != 100: problems.append('KPI weights must total 100%.')
-    if not values['approval_reference']: problems.append('Enter the MD/line-manager approval reference for these targets and weights.')
     return problems
 
 

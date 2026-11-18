@@ -5,7 +5,7 @@ import * as api from '../services/api';
 jest.mock('../services/api');
 global.IS_REACT_ACT_ENVIRONMENT=true;
 let root,container;
-const row=()=>({role_id:'synthetic-role',name:'Synthetic role',scope:'Annual',goals:[{id:'one',objective:'Objective',metric:'Measure',target:'95%',target_value:95,weight:100,direction:'Higher',unit:'%',data_source:'Verified report',owner:'Synthetic role',group:'',notes:''}],group_weights:{},notes:'',approval_reference:'',source_reference:'Synthetic reference',status:'Draft',version:null,updated_at:null,issues:['Enter approval reference'],has_published_version:false});
+const row=()=>({role_id:'synthetic-role',name:'Synthetic role',scope:'Annual',goals:[{id:'one',objective:'Objective',metric:'Measure',target:'95%',target_value:95,weight:100,direction:'Higher',unit:'%',data_source:'Verified report',owner:'Synthetic role',group:'',notes:''}],group_weights:{},notes:'',approval_reference:'',source_reference:'Synthetic reference',status:'Draft',version:null,updated_at:null,issues:[],has_published_version:false});
 beforeEach(()=>{jest.useFakeTimers();container=document.createElement('div');document.body.appendChild(container);root=createRoot(container);api.getRoleKpiLibrary.mockResolvedValue({data:{roles:[row()]}});});
 afterEach(async()=>{await act(async()=>root.unmount());container.remove();jest.clearAllTimers();jest.useRealTimers();jest.resetAllMocks();});
 const render=async()=>{await act(async()=>root.render(<RoleKpiLibrary />));};
@@ -34,13 +34,16 @@ test('changes automatically save as drafts after typing stops',async()=>{
  expect(container.textContent).toContain('Draft saved.');
 });
 
-test('approval reference is editable and publication failures retain input',async()=>{
- await render();await change(container.querySelector('[aria-label="KPI approval reference"]'),'MD approval reference');
+test('HR publishes without manager approval and publication failures retain input',async()=>{
+ await render();
+ expect(container.querySelector('[aria-label="KPI approval reference"]')).toBeNull();
+ await change(container.querySelector('[aria-label="Role name"]'),'HR-set role');
  api.saveRoleKpis.mockRejectedValue({response:{status:422,data:{detail:'Cannot publish: weights must total 100%.'}}});
  await click('Publish approved KPIs');
  expect(api.saveRoleKpis.mock.calls[0][1].action).toBe('publish');
  expect(container.textContent).toContain('Cannot publish: weights must total 100%.');
- expect(container.querySelector('[aria-label="KPI approval reference"]').value).toBe('MD approval reference');
+ expect(api.saveRoleKpis.mock.calls[0][1].entry.approval_reference).toBe('');
+ expect(container.querySelector('[aria-label="Role name"]').value).toBe('HR-set role');
 });
 
 test('concurrent edits are kept and require explicit discard before reload',async()=>{

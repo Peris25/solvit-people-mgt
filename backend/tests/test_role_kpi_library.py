@@ -24,7 +24,7 @@ def test_reference_catalogue_is_read_only_and_does_not_modify_employees():
     db,users=fixture(); before=deepcopy(db.employees.docs)
     rows=run(service.listing(db,users['hr']))['roles']
     assert len(rows)==13 and sum(len(r['goals']) for r in rows)==110
-    assert all(row['status']=='Draft' and row['version'] is None and row['issues'] for row in rows)
+    assert all(row['status']=='Draft' and row['version'] is None for row in rows)
     assert db.employees.docs==before and not db.system_settings.docs
 
 
@@ -45,10 +45,9 @@ def test_incomplete_drafts_persist_across_requests_and_tenants_are_isolated():
     assert foreign['version'] is None and foreign['goals'][0]['target']
 
 
-def test_publish_requires_approval_reference_and_exact_weights():
+def test_hr_can_publish_without_manager_approval_but_weights_must_be_exact():
     db,users=fixture();entry=draft(db,users['hr'])
-    with pytest.raises(HTTPException): save(db,users['hr'],entry,action='publish')
-    entry['approval_reference']='MD and line manager approval'
+    entry['approval_reference']=''
     entry['goals'][0]['weight']=24
     with pytest.raises(HTTPException): save(db,users['hr'],entry,action='publish')
     assert not db.system_settings.docs

@@ -28,7 +28,7 @@ export default function EmployeeAccountForm({ onSaved, selectedEmployees = [], o
               setResults([...outcomes]);
               break;
             }
-            outcomes.push({ id: employee.id, name: employee.full_name, status: response.data.created ? 'Created' : 'Linked', detail: response.data.created ? 'Change password at first sign-in' : 'Existing password and role preserved' });
+            outcomes.push({ id: employee.id, name: employee.full_name, status: response.data.created ? 'Created' : 'Linked', detail: response.data.warning || (response.data.created ? 'Change password at first sign-in' : 'Existing password and role preserved') });
           } catch (error) {
             const detail = error.response?.data?.detail;
             outcomes.push({ id: employee.id, name: employee.full_name, status: 'Needs review', detail: typeof detail === 'string' ? detail : 'Recheck the employee link before retrying.' });
@@ -45,6 +45,7 @@ export default function EmployeeAccountForm({ onSaved, selectedEmployees = [], o
       if (!result.data?.id) throw new Error('Account could not be provisioned.');
       setPassword('');
       setMessage(result.data.created ? 'Account created. Share initial credentials through an approved secure channel.' : 'Existing account linked. Password and role preserved.');
+      if (result.data.warning) setMessage(current => `${current} ${result.data.warning}`);
       onSaved?.();
     } catch (error) {
       setPassword('');

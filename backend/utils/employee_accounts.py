@@ -1,6 +1,9 @@
 """Explicit, idempotent provisioning; existing passwords and roles are retained."""
 from datetime import datetime, timezone
 from collections import Counter
+import logging
+
+logger = logging.getLogger(__name__)
 
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
@@ -145,11 +148,17 @@ async def provision_employee_account(db, employee_id, password, actor):
             "metadata": {"employee_id": key, "created": created},
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
-        # Approved exact-role KPIs become available immediately; missing or
-        # ambiguous role configuration remains for HR and is never guessed.
-        from utils.performance_v3 import auto_assignment
+    # Account writes are complete. Optional KPI preparation must not turn a
+    # successful account creation into an error or strand the identity lock.
+    from utils.performance_v3 import auto_assignment
+    result = {"id": user_id, "employee_id": key, "created": created}
+    try:
         await auto_assignment(db, employee, actor)
-        return {"id": user_id, "employee_id": key, "created": created}
+    except Exception:
+        logger.exception("KPI setup failed after employee account provisioning")
+        result["warning"] = "Account saved. HR must check KPI assignment separately."
+    return result
+
 
 
 async def preserve_employee_account_link(db, employee, new_email, actor):

@@ -32,7 +32,7 @@ export default function RoleKpiLibrary() {
     try {
       const response=await api.saveRoleKpis(selected,{entry:copy(values),action,expected_version:saved?.version || null,reason});
       if(!response.data?.version || response.data.role_id!==selected) throw new Error('Save could not be confirmed. Your edits are still here.');
-      if(live.current) {setSaved(response.data);setValues(current=>JSON.stringify(current)===JSON.stringify(values)?copy(editable(response.data)):current);setRoles(list=>list.map(row=>row.role_id===selected?response.data:row));setMessage(action==='publish'?'Published with approval.':'Draft saved. You can return to it next time you sign in.');}
+      if(live.current) {setSaved(response.data);setValues(current=>JSON.stringify(current)===JSON.stringify(values)?copy(editable(response.data)):current);setRoles(list=>list.map(row=>row.role_id===selected?response.data:row));setMessage(action==='publish'?'KPIs published.':'Draft saved. You can return to it next time you sign in.');}
       return true;
     } catch(e) {if(live.current){if(e.response?.status===409)setConflict(true);setError(errorText(e));setMessage('Not saved. Your typed changes are still here.');}return false;}
     finally {saving.current=false;if(live.current)setBusy(false);}
@@ -76,7 +76,7 @@ export default function RoleKpiLibrary() {
   const sum=rows=>rows.reduce((total,g)=>total+Number(g.weight||0),0);
   return <section data-testid="role-kpi-library" style={{background:'#fff',padding:20,borderRadius:12,marginBottom:20}}>
     <h2 style={{marginTop:0}}>Role KPI library</h2>
-    <p>Choose a role, edit its KPIs and save. Drafts can be incomplete. Publishing requires confirmed targets, weights and an approval reference.</p>
+    <p>Choose a role, edit its KPIs and save. Drafts can be incomplete. HR can publish directly once targets and weights are complete.</p>
     <div style={{...grid,alignItems:'end'}}><label style={field}>Role<select aria-label="KPI role" style={control} value={selected} disabled={busy} onChange={choose}>{roles.map(row=><option key={row.role_id} value={row.role_id}>{row.name} - {row.status}</option>)}</select></label><LeaveActionButton disabled={busy} onClick={newRole}>Add role</LeaveActionButton></div>
     <p><strong>{saved?.status || 'Draft'}</strong>{saved?.updated_at ? ' - Last saved '+new Date(saved.updated_at).toLocaleString() : ' - Reference draft, not yet saved'}</p>
     <p role="note">This library prepares the approved KPIs for the V3 review process. Publishing here does not change existing employee reviews or scores.</p>
@@ -108,7 +108,6 @@ export default function RoleKpiLibrary() {
       </fieldset></details>)}
       <LeaveActionButton disabled={busy || values.goals.length>=100} onClick={()=>change('goals',[...values.goals,{id:crypto.randomUUID(),objective:'',metric:'',target:'',target_value:null,weight:null,direction:'Unconfirmed',unit:'',data_source:'',owner:values.name,group:'',notes:''}])}>Add KPI</LeaveActionButton>
       <div style={{...grid,marginTop:16}}>
-        <label style={field}>MD / line-manager approval reference<input aria-label="KPI approval reference" style={control} maxLength={1500} value={values.approval_reference} onChange={e=>change('approval_reference',e.target.value)} /></label>
         <label style={field}>Reason for changes to an approved role<textarea aria-label="KPI change reason" style={control} maxLength={1500} value={reason} onChange={e=>{setReason(e.target.value);setError('');}} /></label>
       </div>
       {saved?.issues?.length>0 && <details style={{marginTop:14}}><summary>What needs completing before publishing ({saved.issues.length})</summary><ul>{saved.issues.map((issue,i)=><li key={i}>{issue}</li>)}</ul></details>}
