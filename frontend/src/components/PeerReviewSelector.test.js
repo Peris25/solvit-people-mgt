@@ -15,13 +15,17 @@ const change = async (element, value) => { await act(async () => { Object.getOwn
 test('colleague dropdown shows only eligible assigned colleagues', async () => {
   await render(); const select = container.querySelector('[aria-label="Colleague to review"]');
   expect(select.textContent).toContain('First colleague'); expect(select.textContent).toContain('Second colleague');
-  expect(select.textContent).not.toContain('Expired colleague'); expect(container.querySelectorAll('[aria-label^="Peer value"]')).toHaveLength(0);
+  expect(select.textContent).not.toContain('Expired colleague'); expect(container.querySelectorAll('input[type="radio"]')).toHaveLength(0);
 });
 
 test('submits selected task using V3 scale and removes it after success', async () => {
   api.performanceV3Action.mockResolvedValue({ data: { status: 'Submitted' } }); await render();
   await change(container.querySelector('[aria-label="Colleague to review"]'), 'two');
-  for (const select of container.querySelectorAll('[aria-label^="Peer value"]')) await change(select, '8');
+  expect(container.querySelectorAll('input[type="radio"]')).toHaveLength(55);
+  for (const radio of container.querySelectorAll('input[type="radio"][value="8"]')) {
+    await act(async () => radio.click());
+    expect(radio.checked).toBe(true);
+  }
   const selects = [...container.querySelectorAll('select')]; await change(selects[selects.length - 1], '10');
   await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
   expect(api.performanceV3Action).toHaveBeenCalledWith('peers', 'two', 'submit', { scores: [8, 8, 8, 8, 8], retain: 10, relationship: 'Peer', comment: '' });
@@ -32,8 +36,12 @@ test('submits selected task using V3 scale and removes it after success', async 
 
 test('changing colleague clears unsaved ratings to prevent accidental attribution', async () => {
   await render(); const select = container.querySelector('[aria-label="Colleague to review"]');
-  await change(select, 'one'); await change(container.querySelector('[aria-label="Peer value 1"]'), '9');
-  await change(select, 'two'); expect(container.querySelector('[aria-label="Peer value 1"]').value).toBe('');
+  await change(select, 'one');
+  await act(async () => container.querySelector('[aria-label="Integrity: 9 out of 10"]').click());
+  expect(container.querySelector('[aria-label="Integrity: 9 out of 10"]').checked).toBe(true);
+  await change(select, 'two');
+  expect(container.querySelectorAll('input[type="radio"]:checked')).toHaveLength(0);
+  expect(container.querySelector('form').checkValidity()).toBe(false);
 });
 
 test('empty and failed loading states are explicit', async () => {
