@@ -84,3 +84,6 @@
 .performance-v3 .peer-rating-choice input:focus-visible + .peer-rating-card { outline: 3px solid #2563eb; outline-offset: 2px; }
 .performance-v3 .peer-rating-choice input:disabled + .peer-rating-card { opacity: .5; cursor: not-allowed; }
 @media(max-width:600px) { .performance-v3 .peer-rating-options { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+.performance-v3 .pv-score-gap { display:block; margin-top:5px; font-size:12px; color:#92400e; }
+[data-theme="dark"] .performance-v3 .pv-score-gap { color:#fcd34d; }
