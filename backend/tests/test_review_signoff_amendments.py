@@ -64,3 +64,12 @@ def test_obsolete_kpi_note_is_removed_from_saved_library_view_without_rewriting_
     before=deepcopy(row)
     assert view(row)['source_reference']=='Approved source.'
     assert row==before
+
+
+@pytest.mark.parametrize('saturday,expected', [(0, '2026-12-22'), (0.5, '2026-12-21')])
+def test_acknowledgement_counts_a_scheduled_half_day_as_one_working_date(saturday, expected):
+    db, users, _, row = configured()
+    row.update(status='HR_Reviewed', meeting_completed_at='2026-12-18T10:00:00+00:00', overall_score=1.5, nine_box_placement='Core_Contributor')
+    async def save(db, user, row, update, event): return {**row, **update}
+    with patch.object(process, 'record', AsyncMock(return_value=(row, db.employees.docs[0]))), patch.object(process, 'today', return_value=date(2026, 12, 18)), patch.object(process, 'instant', return_value=datetime(2026, 12, 18, 12, tzinfo=timezone.utc)), patch.object(process, 'save', side_effect=save), patch.object(process, 'notice', AsyncMock()), patch.object(process, 'hr_notice', AsyncMock()), patch('utils.leave_policy.contract_policy', AsyncMock(return_value={'saturday_weight': saturday})):
+        assert run(reviews.release(db, users['hr'], row['id'], {'expected_version': row['version']}))['ack_due_on'] == expected

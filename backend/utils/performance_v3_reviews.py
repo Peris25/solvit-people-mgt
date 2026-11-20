@@ -215,7 +215,8 @@ async def release(db, user, reference, body):
     holiday_dates = {h.get('date') for h in holidays}
     while units < 2:
         due += timedelta(days=1)
-        units += working_units(due.isoformat(), due.isoformat(), holiday_dates, policy.get('saturday_weight', .5), policy.get('workday_weights'))
+        # An acknowledgement deadline counts scheduled dates, not leave-day units.
+        units += int(working_units(due.isoformat(), due.isoformat(), holiday_dates, policy.get('saturday_weight', .5), policy.get('workday_weights')) > 0)
         if due > process.today() + timedelta(days=60): flow.fail('Working schedule needs HR correction', 409)
     previous_type = 'Mid_Year' if row['cycle_type'] == 'Year_End' else 'Year_End'
     previous_year = row['cycle_year'] if row['cycle_type'] == 'Year_End' else row['cycle_year'] - 1
