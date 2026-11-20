@@ -8,6 +8,7 @@ from utils import performance_v3_admin as admin, performance_v3_peers as peers, 
 from .integrity_fakes import Collection
 from .test_profile_self_service import fixture, run
 from .test_role_kpi_library import approved, save
+from .integrity_fakes import employee
 
 
 class MongoCollection(Collection):
@@ -44,12 +45,18 @@ def ready_for_hr():
     db, users, cycle, row = configured()
     with patch.object(process, 'today', return_value=date(2026, 11, 30)):
         run(reviews.self_assessment(db, users['staff'], row['id'], {'expected_version': row['version'], 'assessment': assessment(row), 'submit': True}))
+        for index in range(4):
+            subject = employee(f'peer-subject-{index}', f'peer-subject-{index}@example.com', department='Other department')
+            db.employees.docs.append(subject)
+            db.performance_reviews.docs.append({**deepcopy(row),'_id':process.key('synthetic-subject',index),'id':f'subject-review-{index}','employee_id':subject['id'],'self_assessment':None,'status':'Self_Draft'})
         for actor in ('other', 'hr', 'finance'):
-            task = next(t for t in db.performance_peer_tasks.docs if t['reviewer_employee_id'] == actor)
+            for reference in [row['id'], *[f'subject-review-{index}' for index in range(4)]]:
+                run(peers.choose(db, users[actor], reference, {}))
+            task = next(t for t in db.performance_peer_tasks.docs if t['reviewer_employee_id'] == actor and t['review_id']==row['id'])
             run(peers.submit(db, users[actor], task['id'], {'scores': [8] * 5, 'retain': 10, 'relationship': 'Peer', 'comment': 'Anonymous example'}))
     row = db.performance_reviews.docs[0]
     with patch.object(process, 'today', return_value=date(2026, 12, 7)):
-        run(reviews.manager_assessment(db, users['manager'], row['id'], {'expected_version': row['version'], 'actuals': {k: {'actual': v['actual']} for k, v in row['self_assessment']['actuals'].items()}, 'summary': 'Verified manager review'}))
+        run(reviews.manager_assessment(db, users['manager'], row['id'], {'expected_version': row['version'], 'actuals': {k: {'score': 1, 'comment':''} for k in row['self_assessment']['actuals']}, 'summary': 'Verified manager review'}))
         run(admin.company_feedback(db, users['hr'], cycle['id'], {'nps': 50, 'csat': 4.7, 'source_reference': 'Synthetic verified company survey'}))
     return db, users, cycle, db.performance_reviews.docs[0]
 

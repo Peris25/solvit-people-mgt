@@ -48,9 +48,12 @@ async def daily(db):
             if distance in (3, 1) or distance < 0:
                 await process.notice(db, row, 'deadline:' + deadline + ':' + process.today().isoformat(), 'employee', recipient, label if distance >= 0 else 'Performance action overdue — contact HR')
                 if distance < 0: await process.hr_notice(db, row, 'overdue:' + process.today().isoformat(), 'A performance action is overdue')
-        if not row.get('released_at') and process.today() >= date.fromisoformat(row['peer_due_on']):
+        if not row.get('released_at') and process.today() > date.fromisoformat(row['self_due_on']):
             responses = await db.performance_peer_responses.find(process.scoped(row, {'review_id': row['id']})).to_list(3)
-            if len(responses) < 3: await process.hr_notice(db, row, 'peer-shortfall:' + process.today().isoformat(), 'Peer assessment has fewer than three responses')
+            if len(responses) < 3:
+                employee = await process.find_employee(db, row['employee_id'], process.tenant_of(row))
+                name = (employee or {}).get('full_name') or 'Employee'
+                await process.hr_notice(db, row, 'peer-shortfall:' + process.today().isoformat(), f'Week 1 peer review shortfall: {name} has {len(responses)} of 3 required responses')
         if row.get('meeting_completed_at') and not row.get('released_at') and process.instant() > datetime.fromisoformat(row['meeting_completed_at']) + timedelta(hours=48):
             await process.hr_notice(db, row, 'release-overdue:' + process.today().isoformat(), 'Completed performance review is overdue for HR release')
         meeting = row.get('review_meeting') or {}

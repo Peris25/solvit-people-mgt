@@ -5,9 +5,9 @@ import * as api from '../services/api';
 jest.mock('../services/api');
 global.IS_REACT_ACT_ENVIRONMENT = true;
 let root, container;
-const task = (id, name, can_submit = true) => ({ id, employee_name: name, role_title: 'Synthetic role', department: 'Synthetic department', status: 'Assigned', due_on: '2099-11-07', can_submit });
+const task = (id, name, can_submit = true) => ({ id, cycle_id:'cycle', employee_id:id, employee_name: name, role_title: 'Synthetic role', department: 'Synthetic department', status: 'Assigned', due_on: '2099-11-07', can_submit });
 const data = peers => ({ data: { peers, peer_questions: ['Integrity', 'Ownership', 'Teamwork', 'Solutions', 'Timeliness'] } });
-beforeEach(() => { container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container); api.getPerformanceV3Tasks.mockResolvedValue(data([task('one', 'First colleague'), task('two', 'Second colleague'), task('closed', 'Expired colleague', false)])); });
+beforeEach(() => { container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container); api.getPerformanceV3Tasks.mockResolvedValue(data([task('one', 'First colleague'), task('two', 'Second colleague'), task('three','Third colleague'), task('four','Fourth colleague'), task('five','Fifth colleague'), task('closed', 'Expired colleague', false)])); api.performanceV3Action.mockImplementation(async (kind,id,action) => ({data:{status:action==='start'?'Started':action==='draft'?'Draft saved':'Submitted'}})); });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); jest.resetAllMocks(); });
 const render = async () => { await act(async () => root.render(<PeerReviewSelector />)); };
 const change = async (element, value) => { await act(async () => { Object.getOwnPropertyDescriptor(element.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLSelectElement.prototype, 'value').set.call(element, value); element.dispatchEvent(new Event('change', { bubbles: true })); element.dispatchEvent(new Event('input', { bubbles: true })); }); };
@@ -19,7 +19,7 @@ test('colleague dropdown shows only eligible assigned colleagues', async () => {
 });
 
 test('submits selected task using V3 scale and removes it after success', async () => {
-  api.performanceV3Action.mockResolvedValue({ data: { status: 'Submitted' } }); await render();
+  await render();
   await change(container.querySelector('[aria-label="Colleague to review"]'), 'two');
   expect(container.querySelectorAll('input[type="radio"]')).toHaveLength(55);
   for (const radio of container.querySelectorAll('input[type="radio"][value="8"]')) {
@@ -28,7 +28,7 @@ test('submits selected task using V3 scale and removes it after success', async 
   }
   const selects = [...container.querySelectorAll('select')]; await change(selects[selects.length - 1], '10');
   await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
-  expect(api.performanceV3Action).toHaveBeenCalledWith('peers', 'two', 'submit', { scores: [8, 8, 8, 8, 8], retain: 10, relationship: 'Peer', comment: '' });
+  expect(api.performanceV3Action).toHaveBeenCalledWith('peers', 'two', 'submit', { scores: [8, 8, 8, 8, 8], retain: 10, relationship: 'Peer', strengthens_team: '', more_effective: '' });
   expect(api.submitForm).not.toHaveBeenCalled();
   expect(container.textContent).toContain('Second colleague submitted successfully');
   expect([...container.querySelector('[aria-label="Colleague to review"]').options].some(o => o.value === 'two')).toBe(false);
@@ -48,4 +48,22 @@ test('empty and failed loading states are explicit', async () => {
   api.getPerformanceV3Tasks.mockResolvedValue(data([])); await render(); expect(container.textContent).toContain('No peer reviews are currently open');
   await act(async () => root.unmount()); root = createRoot(container); api.getPerformanceV3Tasks.mockRejectedValue(new Error('Unavailable')); await render();
   expect(container.querySelector('[role="alert"]').textContent).toContain('Unable to load eligible colleagues');
+});
+
+test('fewer than five chosen colleagues blocks submission but allows a private draft', async () => {
+  api.getPerformanceV3Tasks.mockResolvedValue(data([task('one','First colleague')]));await render();
+  await change(container.querySelector('[aria-label="Colleague to review"]'),'one');
+  expect([...container.querySelectorAll('button')].find(button=>button.textContent==='Submit peer review').disabled).toBe(true);
+  await act(async()=>[...container.querySelectorAll('button')].find(button=>button.textContent==='Save draft').click());
+  expect(api.performanceV3Action).toHaveBeenCalledWith('peers','one','draft',expect.objectContaining({scores:['','','','',''],strengthens_team:'',more_effective:''}));
+  expect(container.textContent).toContain('Peer review draft saved.');
+});
+
+test('a server response without submission confirmation keeps the review open', async () => {
+  await render();await change(container.querySelector('[aria-label="Colleague to review"]'),'one');
+  api.performanceV3Action.mockResolvedValue({data:null,status:500});
+  await act(async()=>container.querySelector('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+  expect(container.querySelector('[role="alert"]').textContent).toContain('Submission was not confirmed');
+  expect(container.querySelector('[role="status"]')).toBeNull();
+  expect(container.querySelector('[aria-label="Colleague to review"]').value).toBe('one');
 });

@@ -13,7 +13,6 @@ from utils.profile_self_service import self_employee
 from utils.runtime_controls import outbound_email_enabled
 
 ASSIGNMENT = 'performance_employee_kpis_v3'
-MANAGER_MEETING_PEER_ACCESS = True
 
 
 def instant(): return datetime.now(timezone.utc)
@@ -224,9 +223,7 @@ async def open_cycle(db, user, reference, employee_ids=None):
                 'starts_on': window['starts_on'], 'self_due_on': window['self_due_on'], 'peer_due_on': window['peer_due_on'], 'manager_due_on': window['manager_due_on'], 'review_due_on': window['ends_on'],
                 'scoring_policy': deepcopy(window['scoring_policy']), 'version': str(uuid.uuid4()), 'created_at': flow.now()}
             await db.performance_reviews.insert_one(row)
-        for colleague in employees:
-            if colleague.get('department') and colleague.get('department') == employee.get('department'): await peer_task(db, user, row, colleague, window['peer_due_on'])
-        if md(manager): await peer_task(db, user, row, manager, window['peer_due_on'])
+        # Employees choose their own company-wide colleague list during Week 1.
         await notice(db, row, 'opened', 'employee', employee_key(employee), 'Complete your performance self-review')
         await notice(db, row, 'manager-week2', 'employee', employee_key(manager), 'Your team performance cycle is open')
         await notice(db, {**row, 'alignment': True}, 'alignment:' + employee_key(employee), 'employee', employee_key(employee), 'Complete the Alignment Survey')
@@ -267,14 +264,16 @@ def projection(row, user, employee):
         peers_closed = False
     count = summary.get('response_count')
     enough_peers = isinstance(count, int) and not isinstance(count, bool) and count >= 3
-    may_see_peers = flow.released(row) or hr or (manager and MANAGER_MEETING_PEER_ACCESS)
+    may_see_peers = flow.released(row) or hr
     if may_see_peers and peers_closed and enough_peers:
         summary = {field: deepcopy(summary[field]) for field in (
             'score', 'response_count', 'averages', 'dimension_scores', 'gaps',
-            'flagged', 'comments', 'retention_average') if field in summary}
+            'flagged', 'comments', 'strengthens_team', 'more_effective', 'retention_average') if field in summary}
         if summary:
             if not hr: summary.pop('retention_average', None)
             secrets.SystemRandom().shuffle(summary.get('comments', []))
+            secrets.SystemRandom().shuffle(summary.get('strengthens_team', []))
+            secrets.SystemRandom().shuffle(summary.get('more_effective', []))
         result['peer_summary'] = summary
     return result
 

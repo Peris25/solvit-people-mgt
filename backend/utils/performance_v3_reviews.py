@@ -40,8 +40,11 @@ async def self_assessment(db, user, reference, body):
         process.fields(entry, {'actual', 'self_score', 'evidence', 'documents'})
         item = deepcopy(entry)
         if 'actual' in item: scoring.kpi_score(goals[identifier], item['actual'])
-        if 'self_score' in item: item['self_score'] = float(scoring.number(item['self_score'], 1, 3))
-        item['evidence'] = text(item.get('evidence'), 'KPI evidence', required=submit)
+        if 'self_score' in item:
+            item['self_score'] = float(scoring.number(item['self_score'], 1, 3))
+            if item['self_score'] not in {1.0, 1.5, 2.0, 2.5, 3.0}:
+                flow.fail('Choose a KPI self-score of 1.0, 1.5, 2.0, 2.5 or 3.0')
+        item['evidence'] = text(item.get('evidence'), 'KPI evidence', required=False)
         item['documents'] = await process.evidence(db, user, item.get('documents', []))
         if submit and not {'actual', 'self_score'} <= set(item): flow.fail('Complete every KPI actual and self-rating')
         validated[identifier] = item
@@ -72,7 +75,7 @@ async def self_assessment(db, user, reference, body):
 
 
 async def manager_assessment(db, user, reference, body):
-    process.fields(body, {'expected_version', 'actuals', 'summary'})
+    process.fields(body, {'expected_version', 'actuals', 'summary', 'submit'})
     row, employee = await process.record(db, user, reference)
     version(row, body.get('expected_version'))
     if user.get('employee_id') in process.reference_ids(employee) or not is_direct_report(employee, user) or row['line_manager_id'] not in process.user_employee_aliases(user) or not personal_grant(user, 'M05', write=True):
@@ -81,22 +84,30 @@ async def manager_assessment(db, user, reference, body):
     process.check_window(row, 'manager_due_on')
     # Manager assessment begins after the employee/peer assessment week.
     if process.today() <= date.fromisoformat(row['self_due_on']): flow.fail('Manager assessment opens in Week 2', 409)
+    submit = body.get('submit', True)
+    if not isinstance(submit, bool): flow.fail('Invalid submission action')
     actuals = body.get('actuals')
-    if not isinstance(actuals, dict) or set(actuals) != {g['id'] for g in row['section_a_kpis']}:
-        flow.fail('Confirm every KPI actual')
+    goals = {g['id']: g for g in row['section_a_kpis']}
+    if not isinstance(actuals, dict) or set(actuals) - set(goals): flow.fail('Provide manager scores by KPI identifier')
+    if submit and set(actuals) != set(goals): flow.fail('Score every KPI before submitting')
     confirmed = {}
     for identifier, entry in actuals.items():
-        process.fields(entry, {'actual', 'comment'})
-        original = row['self_assessment']['actuals'][identifier]['actual']
-        comment = text(entry.get('comment'), 'manager comment', required=entry.get('actual') != original)
-        confirmed[identifier] = {'actual': entry.get('actual'), 'comment': comment}
-    result = scoring.section_a(row['section_a_kpis'], {k: v['actual'] for k, v in confirmed.items()}, row.get('group_weights'))
-    saved = await process.save(db, user, row, {
-        'manager_assessment': {'actuals': confirmed, 'summary': text(body.get('summary'), 'manager summary')},
-        'section_a_score': result['score'], 'section_a_kpi_scores': result['kpi_scores'],
-        'status': 'Manager_Submitted', 'manager_submitted_at': flow.now(),
-    }, 'manager.submitted')
-    await process.hr_notice(db, saved, 'manager-submitted', 'Performance assessment ready for HR review')
+        process.fields(entry, {'score', 'comment'})
+        original = row['self_assessment']['actuals'][identifier]
+        score = entry.get('score')
+        if score is not None:
+            score = float(scoring.number(score, 1, 3))
+            if score not in {1.0, 1.5, 2.0, 2.5, 3.0}: flow.fail('Choose a manager score of 1.0, 1.5, 2.0, 2.5 or 3.0')
+        elif submit: flow.fail('Score every KPI before submitting')
+        comment = text(entry.get('comment'), 'manager comment', required=submit and score != original.get('self_score'))
+        confirmed[identifier] = {'actual': original['actual'], 'score': score, 'comment': comment}
+    complete = set(confirmed) == set(goals) and all(v['score'] is not None for v in confirmed.values())
+    result = scoring.weighted_kpi_scores(row['section_a_kpis'], {k: v['score'] for k, v in confirmed.items()}, row.get('group_weights')) if complete else None
+    update = {'manager_assessment': {'actuals': confirmed, 'summary': text(body.get('summary'), 'manager summary', required=False), 'scoring_method': 'manager_scores'},
+              'section_a_score': result['score'] if result else None, 'section_a_kpi_scores': result['kpi_scores'] if result else {}}
+    if submit: update.update(status='Manager_Submitted', manager_submitted_at=flow.now())
+    saved = await process.save(db, user, row, update, 'manager.submitted' if submit else 'manager.saved')
+    if submit: await process.hr_notice(db, saved, 'manager-submitted', 'Performance assessment ready for HR review')
     return process.projection(saved, user, employee)
 
 
@@ -113,6 +124,8 @@ async def compile_review(db, user, reference, body):
     peer['response_count'] = len(responses)
     # Never include respondent identities, response IDs or submission times.
     peer['comments'] = [text(r.get('comment'), 'peer comment', required=False) for r in responses if r.get('comment')]
+    for field in ('strengthens_team', 'more_effective'):
+        peer[field] = [text(response.get(field), 'peer comment', required=False) for response in responses if response.get(field)]
     window = await process.cycle(db, user, row['cycle_id'])
     feedback = window.get('company_feedback')
     if not feedback: flow.fail('HR must record the company NPS and CSAT first', 409)
@@ -173,8 +186,10 @@ async def correct_actuals(db, user, reference, body):
     reason = text(body.get('reason'), 'HR correction reason')
     if len(reason) < 10: flow.fail('Explain the correction in at least ten characters')
     result = scoring.section_a(row['section_a_kpis'], body.get('actuals', {}), row.get('group_weights'))
+    if row['manager_assessment'].get('scoring_method') == 'manager_scores':
+        result = scoring.weighted_kpi_scores(row['section_a_kpis'], {k: v['score'] for k, v in row['manager_assessment']['actuals'].items()}, row.get('group_weights'))
     assessment = deepcopy(row['manager_assessment'])
-    assessment['actuals'] = {identifier: {'actual': value, 'comment': reason, 'corrected_by_hr': True} for identifier, value in body['actuals'].items()}
+    assessment['actuals'] = {identifier: {**assessment['actuals'].get(identifier, {}), 'actual': value, 'comment': reason, 'corrected_by_hr': True} for identifier, value in body['actuals'].items()}
     # Keep the original manager submission as history. Recompile before another
     # meeting can be scheduled; never retain an obsolete released result.
     history = row.get('actual_corrections', []) + [{'before': row['manager_assessment'], 'reason': reason, 'by': user['id'], 'at': flow.now()}]

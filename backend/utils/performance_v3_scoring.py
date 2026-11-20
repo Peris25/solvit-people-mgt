@@ -48,6 +48,13 @@ def section_a(goals, actuals, group_weights=None):
     if not isinstance(actuals, dict): fail('Provide KPI actuals by identifier')
     if set(actuals)!={g['id'] for g in goals}: fail('Provide an actual for every KPI, exactly once')
     scores={g['id']:kpi_score(g,actuals[g['id']]) for g in goals}
+    return weighted_kpi_scores(goals, scores, group_weights)
+
+
+def weighted_kpi_scores(goals, scores, group_weights=None):
+    if not goals or len({g['id'] for g in goals}) != len(goals): fail('KPIs require unique identifiers')
+    if not isinstance(scores, dict) or set(scores) != {g['id'] for g in goals}: fail('Provide a manager score for every KPI')
+    scores = {identifier: float(number(value, 1, 3)) for identifier, value in scores.items()}
     groups=group_weights or {}
     def weighted(rows):
         total=sum(number(g['weight'],0,100) for g in rows)

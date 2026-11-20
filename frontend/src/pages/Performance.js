@@ -1,3 +1,4 @@
+import TalentDensityCard from '../components/TalentDensityCard';
 import React, { useState, useEffect, useCallback } from 'react';
 import StatusBadge from '../components/StatusBadge';
 import DeleteReviewDialog from '../components/DeleteReviewDialog';
@@ -211,34 +212,7 @@ export default function Performance() {
       </section>}
       <p style={{ fontSize: '12px', color: '#525252' }}>Talent-density component weights below describe the aggregate dashboard metric, not an individual review score. Each review uses its approved cycle policy.</p>
       {/* Talent Density Score banner (correction §3) */}
-      {talentDensity && (
-        <div data-testid="talent-density-card" style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '18px 22px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap' }}>
-          <div style={{ flex: '0 0 auto' }}>
-            <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.18em', color: '#525252' }}>Talent Density</div>
-            <div style={{ fontSize: '40px', fontWeight: 900, letterSpacing: '-0.04em', color: talentDensity.status === 'Healthy' ? '#22C55E' : talentDensity.status === 'Below Target' ? '#F97316' : '#FF353F' }}>
-              {talentDensity.score_pct == null ? 'Awaiting data' : `${talentDensity.score_pct}%`}
-            </div>
-            <div style={{ fontSize: '11px', color: '#525252' }}>Target: {talentDensity.target_pct}% · <strong style={{ color: talentDensity.status === 'Healthy' ? '#22C55E' : talentDensity.status === 'Below Target' ? '#F97316' : '#FF353F' }}>{talentDensity.status}</strong></div>
-          </div>
-          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px' }}>
-            <div style={{ padding: '10px 12px', backgroundColor: '#F9FAFB', border: '1px solid rgba(25,25,25,0.06)' }}>
-              <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252' }}>Stars + Core %</div>
-              <div style={{ fontSize: '20px', fontWeight: 900, color: '#191919' }}>{talentDensity.components.primary_stars_core_pct}%</div>
-              <div style={{ fontSize: '10px', color: '#9CA3AF' }}>weight {talentDensity.weights?.[0] ?? 60}%</div>
-            </div>
-            <div style={{ padding: '10px 12px', backgroundColor: '#F9FAFB', border: '1px solid rgba(25,25,25,0.06)' }}>
-              <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252' }}>Section B Values</div>
-              <div style={{ fontSize: '20px', fontWeight: 900, color: '#191919' }}>{talentDensity.components.secondary_values_avg_pct}%</div>
-              <div style={{ fontSize: '10px', color: '#9CA3AF' }}>weight {talentDensity.weights?.[1] ?? 25}%</div>
-            </div>
-            <div style={{ padding: '10px 12px', backgroundColor: '#F9FAFB', border: '1px solid rgba(25,25,25,0.06)' }}>
-              <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252' }}>Alignment Survey</div>
-              <div style={{ fontSize: '20px', fontWeight: 900, color: '#191919' }}>{talentDensity.components.tertiary_alignment_pct == null ? 'Awaiting data' : `${talentDensity.components.tertiary_alignment_pct}%`}</div>
-              <div style={{ fontSize: '10px', color: '#9CA3AF' }}>weight {talentDensity.weights?.[2] ?? 15}%</div>
-            </div>
-          </div>
-        </div>
-      )}
+      <TalentDensityCard data={talentDensity} />
 
       {isHR && <div style={{display:'flex',gap:12,alignItems:'center',marginBottom:16,flexWrap:'wrap'}}>
         <button type="button" onClick={()=>setSelected(reviews.filter(r=>r.can_delete).slice(0,100).map(r=>r.id))}>Select unsubmitted drafts</button>

@@ -4,6 +4,7 @@ import pytest
 from fastapi import HTTPException
 from utils import performance_v3 as process, performance_v3_reviews as reviews, performance_v3_admin as admin
 from utils import performance_v3_reminders as reminders, performance_v3_scoring as scoring
+from utils import performance_v3_peers as peers
 from utils.notification_centre import related_link
 from .test_profile_self_service import run
 from .test_performance_v3_end_to_end import configured, ready_for_hr
@@ -11,6 +12,8 @@ from .test_performance_v3_end_to_end import configured, ready_for_hr
 
 def test_peer_notification_deep_link_is_assigned_reviewer_only():
     db, users, cycle, row = configured()
+    with patch.object(process,'today',return_value=date(2026,11,30)):
+        run(peers.choose(db,users['other'],row['id'],{}))
     notification = next(n for n in db.notifications.docs if n.get('data', {}).get('performance_peer_task_id') and n.get('recipient_id') == 'other')
     link, _ = run(related_link(db, users['other'], notification, 'Performance'))
     assert link.startswith('/performance?peer=')
@@ -96,6 +99,7 @@ def test_daily_reminders_are_idempotent_and_keep_existing_delivery_controls(monk
 
 def test_email_delivery_targets_saved_manager_and_never_another_employee(monkeypatch):
     db, users, cycle, row = configured()
+    db.notifications.docs.clear()
     monkeypatch.setenv('OUTBOUND_EMAIL_ENABLED', 'true')
     run(process.notice(db, row, 'synthetic-manager-action', 'employee', 'manager', 'Review submitted assessment'))
     send = AsyncMock(return_value={'status': 'sent'})

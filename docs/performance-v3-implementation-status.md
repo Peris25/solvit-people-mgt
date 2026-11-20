@@ -2,6 +2,20 @@
 
 12 November 2026. Supersedes the earlier work-in-progress status.
 
+## 19 November 2026 review updates
+
+- Employee KPI measurement, target and weight are read-only. Actuals and five permitted self-score choices remain editable; evidence is optional for historical compatibility and removed from the current form. Five values self-scores and examples precede reflections.
+- Managers enter independent KPI scores and comments beside the employee responses. Differences require a comment on submission. Drafts do not advance the workflow or notify HR. Section A uses the weighted manager scores, including configured group blends.
+- Employees select at least five colleagues from the company directory, with no maximum. Only colleagues with an open eligible review can be added. Private drafts and two optional comment categories are supported. Submitted responses remain final.
+- Peer averages require at least three responses and closed collection. Managers and employees receive them only after release; retention stays HR-only. Comments have no attribution and are shuffled. Week 1 shortfalls use the existing daily notification/email pipeline.
+- Talent density uses 50% Stars/Core share, 30% converted Section B average and 20% company Alignment score. Complete released coverage for all eligible FTE is required; incomplete coverage displays awaiting data.
+- Configuring a cycle sends nothing. Opening it through Create and send reviews queues notifications immediately. A future start date does not defer delivery. No live cycle was opened during this update.
+- The approved Solvit Alignment Survey framework is still required: four questions each for Environment, Values Alignment and Rewards & Recognition, on a 1?5 scale. Existing wording remains unchanged pending that document.
+- Peris's duplicate was consolidated under podhiambo@solvit.co.ke using an explicit reviewed transaction, retaining IT Lead and reporting links. Reporting-line corrections were applied separately and verified. No automatic startup migration was introduced.
+- Five screenshots in Downloads show the real components with labelled example data for sign-off; they do not expose staff assessment responses.
+
+Release checks for this update: 425 frontend tests in 62 suites passed; strict production build passed. Backend full run: 1,814 passed, 321 skipped, one MFA session test interrupted by a seven-hour machine pause; the MFA rerun passed (51 passed, one skipped). Workflow visibility and selection regressions passed after updating the earlier expectations. Tests used synthetic repositories with mail and background jobs disabled.
+
 ## Implemented flow
 
 1. HR edits and publishes role KPIs with an MD/line-manager approval reference. Drafts and historical versions remain in the existing library/audit records. Publishing assigns approved exact-role defaults to currently unassigned employees; it never overwrites an existing assignment.
@@ -18,7 +32,7 @@
 
 ## Privacy and integration
 
-- HR and the assigned current manager can see anonymous peer averages after collection closes and three or more responses exist. Employees see results only after HR release. Retention answers remain HR-only. Respondent identities/response IDs are never returned alongside answers.
+- HR can see anonymous peer averages after collection closes and three or more responses exist. The assigned manager and employee see results only after HR release. Retention answers remain HR-only. Respondent identities/response IDs are never returned alongside answers.
 - HR can extend insufficient peer collection by up to three days after the original deadline. Compiled results cannot be reopened for additional responses. Response submission claims and deterministic MongoDB IDs prevent duplicate concurrent submissions.
 - Existing Survey collections are reused for Alignment. V3 responses omit employee/account identity fields and timestamps; manager tags support team aggregates only after at least three responses. The alternate existing survey submission endpoint delegates V3 windows to the same checks.
 - Alignment is separate from individual scores. V3 talent density is 50% Stars/Core share, 30% normalized Section B and 20% Alignment. It waits for released reviews covering all eligible staff; a partial selected-employee cycle is never presented as a company score.
@@ -31,7 +45,7 @@
 
 HR must publish approved role scopes, targets, weights/group blends, data sources, owners and approval references. Several supplied role profiles are probation/reference profiles: they are not silently converted into Annual KPIs. HR must explicitly approve an Annual configuration before using it for an annual review. Missing or ambiguous role matches require HR mapping.
 
-HR supplies reviewer nominations for small departments, verified company NPS/CSAT, meeting arrangements and review follow-up decisions. The application does not invent these inputs. MD reviews remain Board-administered outside this annual employee workflow. No automatic production backfill, migration or index installation was performed.
+Employees choose their colleagues for peer reviews. HR supplies verified company NPS/CSAT, meeting arrangements and review follow-up decisions. The application does not invent these inputs. MD reviews remain Board-administered outside this annual employee workflow. No automatic production backfill, migration or index installation was performed.
 
 The documented Year-end 2026 example is 30 November to 27 December: self/peer deadline 6 December, manager deadline 13 December, meetings in Weeks 3–4. No live cycle was created automatically.
 

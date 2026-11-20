@@ -11,7 +11,7 @@ beforeEach(() => {
   api.getPerformanceV3Tasks.mockResolvedValue({ data: { peers: [], alignment: [], questions: [], peer_questions: [] } });
   api.getPerformanceV3Setup.mockResolvedValue({ data: { employees: [], roles: [], reviewers: [], reviews: [], cycles: [] } });
   api.getPerformanceV3Evidence.mockResolvedValue({ data: [] });
-  api.performanceV3Action.mockResolvedValue({ data: { id: 'cycle' } });
+  api.performanceV3Action.mockResolvedValue({ data: { id: 'review' } });
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); jest.resetAllMocks(); });
 const render = async element => { await act(async () => root.render(element)); };
@@ -53,10 +53,11 @@ test('failed submission retains input and never reports success', async () => {
   expect(input.value).toBe('My preserved work'); expect(container.querySelector('[role="status"]')).toBeNull();
 });
 
-test('manager gets confirmation inputs while final scores remain calculated', async () => {
+test('manager scores sit beside the read-only employee results and flag a differing score', async () => {
   await render(<PerformanceV3Review review={review({ can_manage: true, status: 'Self_Submitted', self_assessment: { actuals: { quality: { actual: 1, evidence: 'Verified report' } }, values: [], accomplishments: [], challenge: '', do_differently: '', support: '' } })} onUpdated={jest.fn()} />);
-  expect(container.textContent).toContain('Line manager assessment');
-  expect(container.textContent).toContain('Confirmed actual');
+  expect(container.textContent).toContain('Manager score');
+  expect(container.textContent).toContain('Employee’s actual');
+  expect(container.querySelector('[aria-label="Manager score for Quality"]')).not.toBeNull();
   expect(container.textContent).not.toContain('Release review to employee');
 });
 
@@ -64,6 +65,29 @@ test('HR cannot release from the interface before the meeting is completed', asy
   await render(<PerformanceV3Review review={review({ can_hr_review: true, status: 'HR_Reviewed' })} onUpdated={jest.fn()} />);
   expect(container.textContent).toContain('HR: meeting arranged');
   expect(container.textContent).not.toContain('Release review to employee');
+});
+
+test('employee KPI fields have the five scores and no evidence input or fetch', async () => {
+  await render(<PerformanceV3Review review={review({can_self_assess:true})} onUpdated={jest.fn()} />);
+  const score=container.querySelector('.pv-self-kpi-table select');
+  expect([...score.options].map(option=>option.textContent)).toEqual(['Choose','1.0','1.5','2.0','2.5','3.0']);
+  expect(container.textContent).not.toContain('Evidence / result explanation');
+  expect(api.getPerformanceV3Evidence).not.toHaveBeenCalled();
+});
+
+test('manager score differences are flagged and contribute to the weighted average', async () => {
+  await render(<PerformanceV3Review review={review({can_manage:true,status:'Self_Submitted',self_assessment:{actuals:{quality:{actual:1,self_score:1}},values:[],accomplishments:[]}})} onUpdated={jest.fn()} />);
+  await change(container.querySelector('[aria-label="Manager score for Quality"]'),'2');
+  expect(container.textContent).toContain('Differs from self-score');
+  expect(container.querySelector('.pv-section-a-total strong').textContent).toBe('2.00');
+  expect(container.querySelector('[aria-label="Comment for Quality"]').required).toBe(true);
+});
+
+test('released values show signed gaps and HR-only retention stays hidden', async () => {
+  await render(<PerformanceV3Review review={review({scores_released:true,status:'Completed',peer_summary:{response_count:3,averages:[7.5,8,8,8,8],gaps:[2.5,0,0,0,0],dimension_scores:[2.25,2,2,2,2],score:2.05,retention_average:10}})} onUpdated={jest.fn()} />);
+  expect(container.querySelector('.pv-gap-flagged').textContent).toBe('+2.5');
+  expect(container.textContent).toContain('2.25');
+  expect(container.textContent).not.toContain('HR-only retention signal');
 });
 
 test('released employee review offers acknowledgement and written dispute', async () => {

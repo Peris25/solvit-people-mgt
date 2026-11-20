@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from bson import ObjectId
 from database import get_db
 from utils.employee_access import authorize_employee, scoped_employee_query, reference_ids, find_linked_record, reject_identity_changes
-from utils.employee_integrity import user_employee_aliases, find_employee, tenant_of, tenant_query, integrity_write
+from utils.employee_integrity import user_employee_aliases, find_employee, tenant_of, tenant_query, integrity_write, employee_key
 from utils import performance_workflows as workflow
 from utils.auth import get_current_user
 import uuid
@@ -395,35 +395,43 @@ async def get_talent_density_kpi(request: Request, cycle_year: Optional[int] = N
                     'status': 'Awaiting data' if score is None else 'Healthy' if score >= 85 else 'Below Target',
                     'components': aggregate.get('components') or {'primary_stars_core_pct': None, 'secondary_values_avg_pct': None, 'alignment_survey_pct': aggregate.get('score')}}
 
-    active_count = await db.employees.count_documents({"tenant_id": tenant_of(user), "lifecycle_state": "Active"})
-    reviews = await db.performance_reviews.find({"tenant_id": tenant_of(user), "cycle_year": year}).to_list(500)
+    from utils import performance_v3 as workforce_policy
+    workforce = await db.employees.find(tenant_query(tenant_of(user))).to_list(None)
+    eligible = [employee for employee in workforce if workforce_policy.enabled(employee) and workforce_policy.fte(employee)]
+    aliases = {str(ref): employee_key(employee) for employee in eligible for ref in (employee_key(employee), employee['_id'])}
+    active_count = len(eligible)
+    candidates = await db.performance_reviews.find({'$and': [tenant_query(tenant_of(user)), {'cycle_year': year}]}).to_list(None)
+    reviews = [review for review in candidates if str(review.get('employee_id')) in aliases and workflow.released(review)]
+    complete = bool(active_count and len(reviews) == active_count and len({aliases[str(review['employee_id'])] for review in reviews}) == active_count)
     in_target = sum(1 for r in reviews if r.get("nine_box_placement") in ["Stars", "Core_Contributor"])
     primary_pct = (in_target / max(active_count, 1)) * 100 if active_count else 0
 
     section_b_scores = [r.get("section_b_score") for r in reviews if r.get("section_b_score") is not None]
+    section_b_scores = [score for score in section_b_scores if isinstance(score, (int, float)) and not isinstance(score, bool) and 1 <= score <= 3]
     sec_b_avg = sum(section_b_scores) / len(section_b_scores) if section_b_scores else 0
     section_b_pct = max(0, min(100, (3 - sec_b_avg) / 2 * 100)) if sec_b_avg else 0
 
     survey_pct = None
-    latest_survey = await db.survey_responses.find({"tenant_id": tenant_of(user)}).sort("created_at", -1).limit(50).to_list(50)
-    if latest_survey:
-        scores = []
-        for s in latest_survey:
-            scores.extend([v for v in (s.get("scores") or {}).values() if isinstance(v, (int, float))])
-        if scores:
-            survey_pct = sum(scores) / len(scores) * 20
+    windows = await db.survey_windows.find({'$and': [tenant_query(tenant_of(user)), {'survey_type': 'alignment_fte', 'open_date': {'$gte': f'{year}-01-01', '$lte': f'{year}-12-31'}, 'close_date': {'$lt': datetime.now(timezone.utc).date().isoformat()}}]}).sort('close_date', -1).to_list(1)
+    if windows:
+        window = windows[0]
+        latest_survey = await db.survey_responses.find({'$and': [tenant_query(tenant_of(user)), {'respondent_type': 'FTE', 'survey_window_id': {'$in': [str(window.get('id') or window['_id']), str(window['_id'])]}}]}).to_list(None)
+        scores = [row['overall_alignment_score'] for row in latest_survey if isinstance(row.get('overall_alignment_score'), (int, float)) and not isinstance(row.get('overall_alignment_score'), bool) and 0 <= row['overall_alignment_score'] <= 100]
+        if len(scores) >= 3 and len(scores) == len(latest_survey): survey_pct = sum(scores) / len(scores)
 
-    composite = round(primary_pct * 0.6 + section_b_pct * 0.25 + survey_pct * 0.15, 1) if survey_pct is not None and section_b_scores else None
+    composite = round(primary_pct * 0.5 + section_b_pct * 0.3 + survey_pct * 0.2, 2) if complete and survey_pct is not None and len(section_b_scores) == active_count else None
     from routes.masters_settings import get_setting
     target = int(await get_setting("performance", "talent_density_target_pct", 85) or 85)
     return {
         "score_pct": composite,
         "target_pct": target,
+        "weights": [50, 30, 20],
         "status": "Insufficient data" if composite is None else "Healthy" if composite >= target else "Below Target" if composite >= max(target - 15, 50) else "Critical",
         "components": {
-            "primary_stars_core_pct": round(primary_pct, 1),
-            "secondary_values_avg_pct": round(section_b_pct, 1),
+            "primary_stars_core_pct": round(primary_pct, 1) if complete else None,
+            "secondary_values_avg_pct": round(section_b_pct, 1) if complete and len(section_b_scores) == active_count else None,
             "tertiary_alignment_pct": round(survey_pct, 1) if survey_pct is not None else None,
+            "alignment_survey_pct": round(survey_pct, 1) if survey_pct is not None else None,
         },
         "active_employees": active_count,
         "in_target_quadrant": in_target,

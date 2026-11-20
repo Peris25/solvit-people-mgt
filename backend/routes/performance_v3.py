@@ -26,7 +26,7 @@ async def learning(request: Request):
         for identifier in sorted({r['cycle_id'] for r in team_rows}):
             cycle = await process.cycle(db, user, identifier)
             team_cycles.append({'id': cycle['id'], 'title': f"{cycle['cycle_type']} {cycle['cycle_year']}"})
-    return {'peers': await peers.listing(db, user), 'alignment': await alignment.windows(db, user), 'team_cycles': team_cycles, 'questions': FTE_ALIGNMENT_QUESTIONS, 'values': VALUES, 'peer_questions': QUESTIONS}
+    return {'peers': await peers.listing(db, user), 'peer_choices': await peers.choices(db, user), 'alignment': await alignment.windows(db, user), 'team_cycles': team_cycles, 'questions': FTE_ALIGNMENT_QUESTIONS, 'values': VALUES, 'peer_questions': QUESTIONS}
 
 
 @router.get('/evidence')
@@ -53,6 +53,10 @@ async def mutate(kind: str, reference: str, action: str, request: Request, backg
         elif kind == 'cycles' and action == 'alignment':
             process.fields(body, {'answers'}); result = await alignment.submit(db, user, reference, body.get('answers'))
         elif kind == 'peers' and action == 'submit': result = await peers.submit(db, user, reference, body)
+        elif kind == 'peers' and action == 'choose': result = await peers.choose(db, user, reference, body)
+        elif kind == 'peers' and action == 'remove': result = await peers.remove(db, user, reference, body)
+        elif kind == 'peers' and action == 'draft': result = await peers.draft(db, user, reference, body)
+        elif kind == 'peers' and action == 'start': result = await peers.start(db, user, reference, body)
         elif kind == 'reviews' and action == 'peers': result = await admin.peers(db, user, reference, body)
         elif kind == 'reviews' and action == 'self': result = await reviews.self_assessment(db, user, reference, body)
         elif kind == 'reviews' and action == 'manager': result = await reviews.manager_assessment(db, user, reference, body)

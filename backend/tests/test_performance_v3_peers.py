@@ -16,6 +16,9 @@ def configured():
         'reviewer_employee_id': 'other', 'employee_id': 'staff', 'review_id': 'review',
         'cycle_id': 'cycle', 'status': 'Assigned', 'due_on': '2026-11-07'}])
     db.performance_peer_responses = Collection()
+    db.performance_reviews = Collection([{'id':'review','tenant_id':'solvit','status':'Self_Draft'}])
+    for index in range(4):
+        db.performance_peer_tasks.docs.append({'_id':ObjectId(),'id':f'other-task-{index}','tenant_id':'solvit','reviewer_employee_id':'other','employee_id':f'colleague-{index}','review_id':f'other-review-{index}','cycle_id':'cycle','status':'Assigned','due_on':'2026-11-07'})
     return db, users
 
 

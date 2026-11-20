@@ -18,12 +18,15 @@ def summary_review():
 
 
 @pytest.mark.parametrize('actor', ['hr', 'manager'])
-def test_hr_and_current_manager_see_anonymous_averages_before_meeting(actor):
+def test_only_hr_sees_anonymous_averages_before_release(actor):
     db, users = fixture()
     with patch.object(service, 'today', return_value=date(2026, 11, 8)):
         result = workflow.projection(summary_review(), users[actor], db.employees.docs[0])
-    assert result['peer_summary']['averages'] == [8] * 5
-    assert ('retention_average' in result['peer_summary']) == (actor == 'hr')
+    if actor == 'manager':
+        assert 'peer_summary' not in result
+    else:
+        assert result['peer_summary']['averages'] == [8] * 5
+        assert result['peer_summary']['retention_average'] == 10
 
 
 def test_peer_projection_never_forwards_unexpected_respondent_metadata():

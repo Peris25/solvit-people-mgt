@@ -27,9 +27,9 @@ const ALERT_COLORS = {
 };
 
 const TalentDensityGauge = ({ data }) => {
-  const score = data?.score_pct || 0;
+  const score = data?.score_pct;
   const target = data?.target_pct || 85;
-  const pct = Math.max(0, Math.min(100, score));
+  const pct = score == null ? 0 : Math.max(0, Math.min(100, score));
   const stroke = score >= target ? '#22C55E' : score >= 70 ? '#EAB308' : '#FF353F';
   return (
     <div data-testid="talent-density-gauge" style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '14px', textAlign: 'center' }}>
@@ -39,8 +39,9 @@ const TalentDensityGauge = ({ data }) => {
         <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke={stroke} strokeWidth="8"
           strokeDasharray={`${(pct / 100) * 125.6} 125.6`} strokeLinecap="round" />
       </svg>
-      <div style={{ fontSize: '20px', fontWeight: 900, color: '#191919', marginTop: '-4px' }}>{score.toFixed(0)}%</div>
+      <div style={{ fontSize: '20px', fontWeight: 900, color: '#191919', marginTop: '-4px' }}>{score == null ? 'Awaiting data' : `${score.toFixed(0)}%`}</div>
       <div style={{ fontSize: '10px', color: '#525252' }}>Target {target}%</div>
+      <div style={{ fontSize: '11px', color: '#525252', marginTop:8 }}>50% placement · 30% values · 20% Alignment</div>
     </div>
   );
 };
@@ -161,7 +162,7 @@ export default function Dashboard() {
             <KPI_TILE testId="stat-onboarding" label="Onboarding" value={stats?.onboarding} onClick={() => navigate('/onboarding')} />
             <KPI_TILE testId="stat-overdue-tasks" label="Open Tasks" value={stats?.open_tasks} onClick={() => navigate('/my-tasks')} />
             <KPI_TILE testId="stat-attrition" label="Attrition" value={attrition ? `${attrition.pct}%` : '—'} sub={`Target ≤${attrition?.target_pct ?? 10}%`} onClick={() => navigate('/retention')} />
-            <KPI_TILE testId="stat-talent-density" label="Talent Density" value={talent ? `${(talent.score_pct || 0).toFixed(0)}%` : '—'} sub={`Target ${talent?.target_pct ?? 85}%`} onClick={() => navigate('/performance')} />
+            <KPI_TILE testId="stat-talent-density" label="Talent Density" value={talent?.score_pct == null ? 'Awaiting data' : `${talent.score_pct.toFixed(0)}%`} sub={`Target ${talent?.target_pct ?? 85}% · 50/30/20`} onClick={() => navigate('/performance')} />
           </div>
           <DashboardAttention description="Operational updates and work to review." items={[
             { key: 'approvals', label: 'Approval alerts', count: alertsAvailable ? visibleAlerts.filter(item => item.kind === 'Approvals' || item.action?.kind === 'leave_review').length : null, detail: 'Open notifications to review assigned approvals', Icon: CheckSquare, onClick: () => navigate('/notifications') },

@@ -59,13 +59,19 @@ async def report(db, user, reference):
         all_reviews = await db.performance_reviews.find(process.scoped(user, {'cycle_id': window['id'], 'workflow_version': 3, 'status': {'$nin': ['Archived', 'Cancelled']}})).to_list(None)
         reviews = [r for r in all_reviews if flow.released(r)]
         workforce = await db.employees.find(process.tenant_query(process.tenant_of(user))).to_list(None)
-        expected = {process.employee_key(e) for e in workforce if process.enabled(e) and process.fte(e) and not process.md(e)}
+        expected = {process.employee_key(e) for e in workforce if process.enabled(e) and process.fte(e)}
+        eligible_reviews = [r for r in all_reviews if r['employee_id'] in expected]
+        reviews = [r for r in eligible_reviews if flow.released(r)]
         covered = {r['employee_id'] for r in reviews}
-        if reviews and len(reviews) == len(all_reviews) and expected <= covered:
+        complete_values = all(isinstance(r.get('section_b_score'), (int, float)) and not isinstance(r.get('section_b_score'), bool) and 1 <= r['section_b_score'] <= 3 for r in reviews)
+        if expected and complete_values and len(reviews) == len(expected) and len(reviews) == len(eligible_reviews) and expected == covered:
             primary = sum(r.get('nine_box_placement') in {'Stars', 'Core_Contributor'} for r in reviews) / len(reviews) * 100
             values = sum((3 - r['section_b_score']) / 2 * 100 for r in reviews) / len(reviews)
             result['talent_density'] = round(primary * .5 + values * .3 + result['score'] * .2, 2)
             result['target'] = 85
             result['components'] = {'primary_stars_core_pct': round(primary, 2), 'secondary_values_avg_pct': round(values, 2), 'alignment_survey_pct': result['score']}
+            result['weights'] = [50, 30, 20]
+            result['section_b_average'] = round(sum(r['section_b_score'] for r in reviews) / len(reviews), 2)
+            result['fte_count'] = len(expected)
         else: result['message'] = 'Company talent density awaits released reviews for all eligible staff'
     return result

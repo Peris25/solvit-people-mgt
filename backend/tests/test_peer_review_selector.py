@@ -10,8 +10,15 @@ from .test_profile_self_service import run
 from .integrity_fakes import Collection
 
 
-def test_selector_only_lists_current_reviewers_assignments_and_business_fields():
+def selected():
     db, users, cycle, review = configured()
+    with patch.object(process, "today", return_value=date(2026, 11, 30)):
+        run(peers.choose(db, users["other"], review["id"], {}))
+    return db, users, cycle, review
+
+
+def test_selector_only_lists_current_reviewers_assignments_and_business_fields():
+    db, users, cycle, review = selected()
     with patch.object(process, 'today', return_value=date(2026, 11, 30)):
         choices = run(peers.listing(db, users['other']))
     assert len(choices) == 1 and choices[0]['employee_name'] == 'staff' and choices[0]['can_submit']
@@ -21,7 +28,7 @@ def test_selector_only_lists_current_reviewers_assignments_and_business_fields()
 
 
 def test_future_and_submitted_tasks_cannot_be_selected():
-    db, users, cycle, review = configured()
+    db, users, cycle, review = selected()
     with patch.object(process, 'today', return_value=date(2026, 11, 29)):
         assert not run(peers.listing(db, users['other']))[0]['can_submit']
     task = next(t for t in db.performance_peer_tasks.docs if t['reviewer_employee_id'] == 'other')
@@ -30,7 +37,7 @@ def test_future_and_submitted_tasks_cannot_be_selected():
 
 
 def test_self_and_inactive_subjects_are_not_available_and_stale_submission_fails():
-    db, users, cycle, review = configured()
+    db, users, cycle, review = selected()
     task = next(t for t in db.performance_peer_tasks.docs if t['reviewer_employee_id'] == 'other')
     task['employee_id'] = 'other'
     assert run(peers.listing(db, users['other'])) == []
@@ -42,7 +49,7 @@ def test_self_and_inactive_subjects_are_not_available_and_stale_submission_fails
 
 
 def test_legacy_form_26_cannot_create_parallel_identified_submissions():
-    db, users, cycle, review = configured(); db.form_submissions = Collection()
+    db, users, cycle, review = selected(); db.form_submissions = Collection()
     request = SimpleNamespace(json=AsyncMock(return_value={'data': {'integrity': 5}, 'employee_id': 'staff'}))
     with patch.object(forms, 'get_current_user', AsyncMock(return_value=users['other'])), patch.object(forms, 'get_db', return_value=db):
         for action in (forms.submit_form, forms.start_form_submission):
