@@ -5,6 +5,8 @@ import PeerReviewSelector from './PeerReviewSelector';
 import TalentDensityCard from './TalentDensityCard';
 
 export const errorText = error => typeof error?.response?.data?.detail === 'string' ? error.response.data.detail : 'Unable to complete the action. Your input has been kept; please retry.';
+const ALIGNMENT_PILLARS = ['Environment', 'Values Alignment', 'Rewards & Recognition'];
+const ALIGNMENT_SCALE = ['Strongly Disagree', 'Disagree', 'Neutral', 'Agree', 'Strongly Agree'];
 const dateAfter = (start, days) => start ? new Date(new Date(`${start}T12:00:00Z`).getTime() + days * 86400000).toISOString().slice(0, 10) : 'Select a start date';
 
 export function V3CycleDialog({ employees, cycles = [], questions = [], onClose, onCreated }) {
@@ -43,7 +45,7 @@ export function V3CycleDialog({ employees, cycles = [], questions = [], onClose,
       {!existing && <><div className="pv-grid"><label>Review type<select value={form.cycle_type} onChange={e => set('cycle_type', e.target.value)}><option value="Year_End">Year-end</option><option value="Mid_Year">Mid-year</option></select></label><label>Year<input required type="number" min="2000" max="2100" value={form.cycle_year} onChange={e => set('cycle_year', Number(e.target.value))} /></label><label>Start date<input required type="date" value={form.starts_on} onChange={e => set('starts_on', e.target.value)} /></label></div>
         <p className="pv-note">Self and peer deadline: {dateAfter(form.starts_on, 6)}<br />Manager deadline: {dateAfter(form.starts_on, 13)}<br />Meetings and HR release by: {dateAfter(form.starts_on, 27)}<br />Scoring: KPIs 50% · Values 30% · Company NPS/CSAT 20%.</p>
         <label>MD/HR policy approval reference<input required value={form.approval_reference} onChange={e => set('approval_reference', e.target.value)} /></label>
-        <details><summary>Alignment Survey questions</summary><ol>{questions.map(q => <li key={q.id}>{q.text}</li>)}</ol></details>
+        <details><summary>Alignment Survey questions</summary><p>1 = Strongly Disagree; 2 = Disagree; 3 = Neutral; 4 = Agree; 5 = Strongly Agree.</p>{ALIGNMENT_PILLARS.map((title, index) => <section key={title} aria-label={title}><h3>{title}</h3><ol>{questions.filter(q => q.pillar === index + 1).map(q => <li key={q.id}>{q.text}</li>)}</ol></section>)}</details>
         <label><span><input type="checkbox" required checked={form.alignment_confirmed} onChange={e => set('alignment_confirmed', e.target.checked)} /> HR confirms the fixed scoring policy and the displayed Alignment Survey questions.</span></label></>}
       <label>Employees<select aria-label="Review employee" multiple required size={Math.min(8, Math.max(3, employees.length))} value={selected} onChange={e => setSelected([...e.target.selectedOptions].map(o => o.value))}>{employees.map(e => <option key={e.id} value={e.id}>{e.name || e.full_name} — {e.role || e.role_title}</option>)}</select></label>
       <p>Use Ctrl/Cmd to select several employees. MD reviews remain Board-administered. Probation reviews remain separate.</p>
@@ -112,7 +114,7 @@ export default function PerformanceV3Panel({ user, onUpdated, createOpen, onClos
       {tasks.peers.map(t => <p key={t.id}>{t.employee_name} · Due {t.due_on} · {t.status}<button disabled={!t.can_submit} onClick={() => setPeerId(t.id)}>Complete peer review</button></p>)}
       {(tasks.peer_choices?.length > 0 || tasks.peers.length > 0) && <PeerReviewSelector key={peerId} initialTaskId={peerId} onSubmitted={async () => { await load(); await onUpdated(); }} />}
       {tasks.alignment.map(w => <p key={w.id}>{w.title} Alignment · Due {w.due_on}<button disabled={w.submitted} onClick={() => { setAlignmentId(w.id); setAnswers({}); }}>{w.submitted ? 'Submitted' : 'Complete Alignment Survey'}</button></p>)}
-      {tasks.alignment.some(w => w.id === alignmentId && !w.submitted) && <form onSubmit={e => { e.preventDefault(); perform(async () => { await api.performanceV3Action('cycles', alignmentId, 'alignment', { answers }); setAlignmentId(''); }); }}>{tasks.questions.map(q => <label key={q.id}>{q.text}<select required value={answers[q.id] || ''} onChange={e => setAnswers(old => ({ ...old, [q.id]: Number(e.target.value) }))}><option value="">Choose score</option>{[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}</select></label>)}<button className="primary" disabled={busy}>Submit Alignment Survey</button></form>}
+      {tasks.alignment.some(w => w.id === alignmentId && !w.submitted) && <form onSubmit={e => { e.preventDefault(); perform(async () => { await api.performanceV3Action('cycles', alignmentId, 'alignment', { answers }); setAlignmentId(''); }); }}>{ALIGNMENT_PILLARS.map((title, index) => <fieldset key={title}><legend>{title}</legend>{tasks.questions.filter(q => q.pillar === index + 1).map(q => <label key={q.id}>{q.text}<select required value={answers[q.id] || ''} onChange={e => setAnswers(old => ({ ...old, [q.id]: Number(e.target.value) }))}><option value="">Choose score</option>{ALIGNMENT_SCALE.map((label, i) => <option key={label} value={i + 1}>{i + 1} - {label}</option>)}</select></label>)}</fieldset>)}<button className="primary" disabled={busy}>Submit Alignment Survey</button></form>}
     </section>}
   </section>;
 }

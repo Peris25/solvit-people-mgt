@@ -96,3 +96,15 @@ test('released employee review offers acknowledgement and written dispute', asyn
   expect(api.performanceV3Action).toHaveBeenCalledWith('reviews', 'review', 'acknowledge', { expected_version: 'v1', confirmed: true });
   expect(container.textContent).toContain('Written dispute to HR');
 });
+
+
+test('Create Review groups four Alignment questions under each approved pillar', async () => {
+  const questions = Array.from({ length: 12 }, (_, i) => ({ id: `q${i + 1}`, pillar: Math.floor(i / 4) + 1, text: `Approved question ${i + 1}` }));
+  await render(<V3CycleDialog employees={[]} questions={questions} onClose={jest.fn()} onCreated={jest.fn()} />);
+  for (const title of ['Environment', 'Values Alignment', 'Rewards & Recognition']) {
+    const section = container.querySelector(`section[aria-label="${title}"]`);
+    expect(section.querySelectorAll('li')).toHaveLength(4);
+  }
+  expect(container.textContent).toContain('1 = Strongly Disagree');
+  expect(container.textContent).toContain('5 = Strongly Agree');
+});

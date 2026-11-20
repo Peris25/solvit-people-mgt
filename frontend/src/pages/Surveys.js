@@ -50,7 +50,7 @@ export default function Surveys() {
     setResults(r.data);
   };
 
-  const pillars = ['Environment', 'Values', 'Rewards'];
+  const pillars = ['Environment', 'Values Alignment', 'Rewards & Recognition'];
 
   return (
     <div data-testid="surveys-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>

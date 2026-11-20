@@ -10,7 +10,7 @@
 - Peer averages require at least three responses and closed collection. Managers and employees receive them only after release; retention stays HR-only. Comments have no attribution and are shuffled. Week 1 shortfalls use the existing daily notification/email pipeline.
 - Talent density uses 50% Stars/Core share, 30% converted Section B average and 20% company Alignment score. Complete released coverage for all eligible FTE is required; incomplete coverage displays awaiting data.
 - Configuring a cycle sends nothing. Opening it through Create and send reviews queues notifications immediately. A future start date does not defer delivery. No live cycle was opened during this update.
-- The approved Solvit Alignment Survey framework is still required: four questions each for Environment, Values Alignment and Rewards & Recognition, on a 1?5 scale. Existing wording remains unchanged pending that document.
+- The approved Solvit Alignment Survey framework was received on 20 November 2026. All 12 FTE question texts now match it exactly, with four questions each for Environment, Values Alignment and Rewards & Recognition. Create Review and the employee form display the three pillars and the labelled 1-5 scale. New windows snapshot the approved wording; historical stored survey windows are not rewritten.
 - Peris's duplicate was consolidated under podhiambo@solvit.co.ke using an explicit reviewed transaction, retaining IT Lead and reporting links. Reporting-line corrections were applied separately and verified. No automatic startup migration was introduced.
 - Five screenshots in Downloads show the real components with labelled example data for sign-off; they do not expose staff assessment responses.
 

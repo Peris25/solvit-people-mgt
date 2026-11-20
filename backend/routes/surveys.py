@@ -31,19 +31,68 @@ async def eligible(db, user, window):
 
 router = APIRouter(prefix="/surveys", tags=["surveys"])
 
+# Approved Solvit Alignment Survey framework supplied on 20 November 2026.
 FTE_ALIGNMENT_QUESTIONS = [
-    {"id": "q1", "pillar": 1, "text": "I feel challenged and engaged in my current role."},
-    {"id": "q2", "pillar": 1, "text": "I have the tools and resources I need to do my job effectively."},
-    {"id": "q3", "pillar": 1, "text": "My line manager provides me with clear direction and support."},
-    {"id": "q4", "pillar": 1, "text": "I feel my contributions are recognised at Solvit."},
-    {"id": "q5", "pillar": 2, "text": "I understand and live the Solvit values in my work."},
-    {"id": "q6", "pillar": 2, "text": "Solvit is a fair and consistent place to work."},
-    {"id": "q7", "pillar": 2, "text": "I trust the leadership of Solvit."},
-    {"id": "q8", "pillar": 2, "text": "I am proud to work at Solvit."},
-    {"id": "q9", "pillar": 3, "text": "My compensation is fair for the work I do."},
-    {"id": "q10", "pillar": 3, "text": "I see clear opportunities for career growth at Solvit."},
-    {"id": "q11", "pillar": 3, "text": "I would recommend Solvit as a great place to work."},
-    {"id": "q12", "pillar": 3, "text": "I see myself still working at Solvit in 12 months."},
+    {
+        "id": "q1",
+        "pillar": 1,
+        "text": "My work at Solvit regularly challenges me to grow and develop my skills."
+    },
+    {
+        "id": "q2",
+        "pillar": 1,
+        "text": "I am trusted to make decisions and take action without unnecessary oversight."
+    },
+    {
+        "id": "q3",
+        "pillar": 1,
+        "text": "I feel genuinely appreciated for the contribution I make to this team."
+    },
+    {
+        "id": "q4",
+        "pillar": 1,
+        "text": "Solvit provides a professional, effective, and growth-oriented environment."
+    },
+    {
+        "id": "q5",
+        "pillar": 2,
+        "text": "I consistently demonstrate Solvit's five non-negotiables in my day-to-day work."
+    },
+    {
+        "id": "q6",
+        "pillar": 2,
+        "text": "My colleagues consistently demonstrate Solvit's five non-negotiables."
+    },
+    {
+        "id": "q7",
+        "pillar": 2,
+        "text": "Solvit holds people accountable when the non-negotiables are not upheld."
+    },
+    {
+        "id": "q8",
+        "pillar": 2,
+        "text": "The values Solvit states publicly are the values Solvit actually lives internally."
+    },
+    {
+        "id": "q9",
+        "pillar": 3,
+        "text": "My compensation is fair relative to the work I do and the results I deliver."
+    },
+    {
+        "id": "q10",
+        "pillar": 3,
+        "text": "When I perform well, I am recognised for it in a meaningful and specific way."
+    },
+    {
+        "id": "q11",
+        "pillar": 3,
+        "text": "The bonus and incentive structure at Solvit motivates me to perform at my best."
+    },
+    {
+        "id": "q12",
+        "pillar": 3,
+        "text": "Overall, I feel valued and rewarded for my contribution to Solvit."
+    }
 ]
 
 SOLVER_ALIGNMENT_QUESTIONS = [
