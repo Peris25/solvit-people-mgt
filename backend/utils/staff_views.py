@@ -10,7 +10,7 @@ from utils.staff_directory import visible_state, business_email, approved_work_p
 PUBLIC_SOURCE_FIELDS = {
     key: 1 for key in ("_id", "id", "tenant_id", "full_name", "preferred_name", "role_title", "department",
                       "work_email", "lifecycle_state", "status", "employment_status", "work_phone", "work_phone_directory_approved",
-                      "role_level", "job_level", "employment_type", "line_manager_id", "board_only")
+                      "role_level", "job_level", "employment_type", "line_manager_id", "board_only", "reports_to_board")
 }
 MAX_TREE_DEPTH = 32
 
@@ -88,6 +88,11 @@ def build_staff_views(records, user, department_names=()):
     parents = {}
     for index, node in visible.items():
         reference = records[index].get("line_manager_id")
+        if (records[index].get("reports_to_board") is True and not reference
+                and text(records[index].get("role_title")).casefold() == "managing director"
+                and node["identity_status"] == "resolved"):
+            node.update(line_manager_name="Board of Directors", reporting_status="resolved")
+            continue
         if reference is None or reference == "":
             continue
         matches = resolve(reference)

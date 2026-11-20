@@ -16,13 +16,35 @@ async def dashboard(db, user):
     for row in await db.performance_reviews.find(process.scoped(user, {'workflow_version': 3})).to_list(None):
         employee = await flow.employee_access(db, user, row['employee_id'])
         visible = process.projection(row, user, employee)
-        tasks = await db.performance_peer_tasks.find(process.scoped(user, {'review_id': row['id']})).to_list(None)
-        visible['peer_tasks'] = []
-        for task in tasks:
-            reviewer = await process.find_employee(db, task['reviewer_employee_id'], process.tenant_of(user))
-            visible['peer_tasks'].append({'id': task['id'], 'name': (reviewer or {}).get('full_name', 'Unavailable employee'), 'status': task['status'], 'due_on': task['due_on']})
         result['reviews'].append(visible)
+    result['peer_progress'] = await peer_progress(db, user, result['cycles'], result['employees'])
     return result
+
+
+async def peer_progress(db, user, cycles, employees):
+    """Counts only: never return reviewer/subject pairings or response content."""
+    flow.require_hr(user)
+    cycle_ids = [c['id'] for c in cycles if c.get('status') not in {'Archived', 'Cancelled'}]
+    if not cycle_ids: return []
+    tasks = await db.performance_peer_tasks.find(process.scoped(user, {'cycle_id': {'$in': cycle_ids}}), {'cycle_id': 1, 'reviewer_employee_id': 1, 'status': 1}).to_list(None)
+    responses = await db.performance_peer_responses.find(process.scoped(user, {'cycle_id': {'$in': cycle_ids}}), {'cycle_id': 1, 'review_id': 1}).to_list(None)
+    reviews = await db.performance_reviews.find(process.scoped(user, {'cycle_id': {'$in': cycle_ids}, 'workflow_version': 3, 'status': {'$nin': ['Archived', 'Cancelled']}}), {'id': 1, 'cycle_id': 1, 'employee_id': 1}).to_list(None)
+    rows = []
+    for employee in employees:
+        record = await process.find_employee(db, employee['id'], process.tenant_of(user))
+        if not record: continue
+        aliases = process.reference_ids(record)
+        for cycle in cycles:
+            if cycle.get('status') in {'Archived', 'Cancelled'}: continue
+            review_ids = {r['id'] for r in reviews if r['cycle_id'] == cycle['id'] and r['employee_id'] in aliases}
+            chosen = [t for t in tasks if t['cycle_id'] == cycle['id'] and t['reviewer_employee_id'] in aliases and t['status'] in {'Assigned', 'Submitting', 'Submitted'}]
+            received = sum(r['cycle_id'] == cycle['id'] and r['review_id'] in review_ids for r in responses)
+            submitted = sum(t['status'] == 'Submitted' for t in chosen)
+            rows.append({'employee_id': employee['id'], 'employee_name': employee['name'], 'cycle_id': cycle['id'],
+                         'received': received, 'chosen': len(chosen), 'submitted': submitted,
+                         'below_received_minimum': bool(review_ids) and received < 3,
+                         'below_chosen_minimum': len(chosen) < 5, 'below_submitted_minimum': submitted < 5})
+    return rows
 
 
 async def peers(db, user, reference, body):

@@ -213,7 +213,7 @@ async def release(db, user, reference, body):
     policy = await contract_policy(db, employee)
     holidays = await db.public_holidays.find(process.tenant_query(process.tenant_of(user))).to_list(None)
     holiday_dates = {h.get('date') for h in holidays}
-    while units < 5:
+    while units < 2:
         due += timedelta(days=1)
         units += working_units(due.isoformat(), due.isoformat(), holiday_dates, policy.get('saturday_weight', .5), policy.get('workday_weights'))
         if due > process.today() + timedelta(days=60): flow.fail('Working schedule needs HR correction', 409)

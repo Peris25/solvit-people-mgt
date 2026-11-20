@@ -16,6 +16,14 @@
 
 Release checks for this update: 425 frontend tests in 62 suites passed; strict production build passed. Backend full run: 1,814 passed, 321 skipped, one MFA session test interrupted by a seven-hour machine pause; the MFA rerun passed (51 passed, one skipped). Workflow visibility and selection regressions passed after updating the earlier expectations. Tests used synthetic repositories with mail and background jobs disabled.
 
+## Jessica sign-off amendments on 20 November 2026
+
+A 23 November start calculates self/peer deadlines of 29 November, manager scores by 6 December and meetings/release by 20 December. Acknowledgement now allows two recorded working days after actual release, respecting the employee schedule and recorded holidays. No cycle was opened.
+
+The self-review displays the full five-step KPI guide. HR peer progress displays received, chosen and submitted counts with minimum shortfalls; the tracker no longer returns named reviewer/task pairings. Scores and anonymous comments remain in the separate authorized assessment workflow.
+
+Martin Munene's title was updated live to Acting Technical Manager, Motor Inspection and Valuation. Martin Kiarie was already recorded as Managing Director reporting to the Board; the public directory now resolves that explicit reporting root. The outdated supplied-weights approval note was removed from references and saved-library display without changing approved targets or weights.
+
 ## Implemented flow
 
 1. HR edits and publishes role KPIs with an MD/line-manager approval reference. Drafts and historical versions remain in the existing library/audit records. Publishing assigns approved exact-role defaults to currently unassigned employees; it never overwrites an existing assignment.
@@ -26,7 +34,7 @@ Release checks for this update: 425 frontend tests in 62 suites passed; strict p
 6. Managers confirm actuals in Week 2; changes require explanations. HR receives an actionable notification and email through the existing delivery infrastructure. HR can correct verified actuals with a reason and preserved history, requiring reassessment before release.
 7. HR records verified company NPS/CSAT from Week 2. HR compilation requires manager completion, a closed peer window and at least three responses. Section A, B, C, final rating and placement are derived, not manually entered.
 8. The manager proposes a date using the portal calendar and recorded availability suggestions. HR arranges the meeting manually, confirms it and records completion. Employee and manager receive portal notifications; no Outlook integration is introduced.
-9. HR releases the review after the meeting. Late releases require a reason after 48 hours. Employees acknowledge within five recorded working days or submit a written dispute. HR can record a written resolution. Disputes remain employee/HR-only.
+9. HR releases the review after the meeting. Late releases require a reason after 48 hours. Employees acknowledge within two recorded working days or submit a written dispute. HR can record a written resolution. Disputes remain employee/HR-only.
 10. Released outcomes appear in HR's tracker: development, mentoring/recognition, values/realignment discussions and applicable 30/60-day PIP checkpoints. These are tracked actions, not automatic employment-status changes or termination.
 11. Compensation provides an authorized Finance handoff with released final scores. Multiplier interpolation follows the V3 bands, requires an entered company scorecard of at least 80%, and respects values holds. It does not calculate or execute payments or overwrite salary/bonus records.
 

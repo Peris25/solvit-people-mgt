@@ -105,6 +105,7 @@ def issues(values):
 
 def view(row):
     entry = deepcopy(row['values'])
+    entry['source_reference'] = entry.get('source_reference', '').replace('; supplied weights are proposals pending approval.', '.')
     return {**entry, 'status':row['status'], 'version':row['version'], 'updated_at':row['updated_at'],
             'issues':issues(entry), 'has_published_version':bool(row.get('published_values'))}
 

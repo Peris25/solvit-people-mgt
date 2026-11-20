@@ -100,7 +100,7 @@
     "notes": "Weekday/Saturday volume targets need schedule-aware measurement before scoring.",
     "approval_reference": "",
     "status": "Draft",
-    "source_reference": "Solvit KPIs by Role.pdf, pages 1-2; supplied weights are proposals pending approval."
+    "source_reference": "Solvit KPIs by Role.pdf, pages 1-2."
   },
   {
     "role_id": "customer-support-team-b",
@@ -203,7 +203,7 @@
     "notes": "The Operations Coordinator must confirm the pending-inspection target and weight, then rebalance all weights. Use the pending-submissions platform once adopted.",
     "approval_reference": "",
     "status": "Draft",
-    "source_reference": "Solvit KPIs by Role.pdf, pages 2-3; supplied weights are proposals pending approval."
+    "source_reference": "Solvit KPIs by Role.pdf, pages 2-3."
   },
   {
     "role_id": "customer-support-team-c",
@@ -306,7 +306,7 @@
     "notes": "These replace the previously assumed 20-jobs-a-day target.",
     "approval_reference": "",
     "status": "Draft",
-    "source_reference": "Solvit KPIs by Role.pdf, pages 3; supplied weights are proposals pending approval."
+    "source_reference": "Solvit KPIs by Role.pdf, pages 3."
   },
   {
     "role_id": "customer-support",
@@ -422,7 +422,7 @@
     "notes": "Working hours in source: Mon-Fri 8am-5pm; Sat 9am-1pm. Confirm schedule-aware volume measurement.",
     "approval_reference": "",
     "status": "Draft",
-    "source_reference": "Solvit KPIs by Role.pdf, pages 4; supplied weights are proposals pending approval."
+    "source_reference": "Solvit KPIs by Role.pdf, pages 4."
   },
   {
     "role_id": "account-manager",
@@ -551,7 +551,7 @@
     "notes": "Confirm weekday/Saturday volume measurement and how visit count and return on transport cost combine.",
     "approval_reference": "",
     "status": "Draft",
-    "source_reference": "Solvit KPIs by Role.pdf, pages 4-5; supplied weights are proposals pending approval."
+    "source_reference": "Solvit KPIs by Role.pdf, pages 4-5."
   },
   {
     "role_id": "managing-director",
@@ -667,7 +667,7 @@
     "notes": "Reference only: V3 places the MD review with the Board Chair outside the employee review module. Weights not supplied.",
     "approval_reference": "",
     "status": "Draft",
-    "source_reference": "Solvit KPIs by Role.pdf, pages 5; supplied weights are proposals pending approval."
+    "source_reference": "Solvit KPIs by Role.pdf, pages 5."
   },
   {
     "role_id": "finance-operations-manager",
@@ -942,7 +942,7 @@
     "notes": "Finance and Operations each have 100% internal weights. HR must confirm the split between the two groups. Behavioural competencies remain separate.",
     "approval_reference": "",
     "status": "Draft",
-    "source_reference": "Solvit KPIs by Role.pdf, pages 6-7; supplied weights are proposals pending approval."
+    "source_reference": "Solvit KPIs by Role.pdf, pages 6-7."
   },
   {
     "role_id": "technical-services-manager",
@@ -1058,7 +1058,7 @@
     "notes": "Weights not supplied in the JD.",
     "approval_reference": "",
     "status": "Draft",
-    "source_reference": "Solvit KPIs by Role.pdf, pages 7; supplied weights are proposals pending approval."
+    "source_reference": "Solvit KPIs by Role.pdf, pages 7."
   },
   {
     "role_id": "operations-coordinator",
@@ -1265,7 +1265,7 @@
     "notes": "JD has seven areas and 15 measures; weights not supplied. Reporting line wording needs HR reconciliation, not an automatic record change.",
     "approval_reference": "",
     "status": "Draft",
-    "source_reference": "Solvit KPIs by Role.pdf, pages 7-8; supplied weights are proposals pending approval."
+    "source_reference": "Solvit KPIs by Role.pdf, pages 7-8."
   },
   {
     "role_id": "growth-captain",
@@ -1316,7 +1316,7 @@
     "notes": "Recruitment scorecard, not annual output KPIs. HR must provide annual performance measures and an approved scoring approach; do not convert these to the V3 1-3 scale automatically.",
     "approval_reference": "",
     "status": "Draft",
-    "source_reference": "Solvit KPIs by Role.pdf, pages 8-9; supplied weights are proposals pending approval."
+    "source_reference": "Solvit KPIs by Role.pdf, pages 8-9."
   },
   {
     "role_id": "hr-administration-manager",
@@ -1406,7 +1406,7 @@
     "notes": "Weights and measurable SLA/trend definitions require confirmation.",
     "approval_reference": "",
     "status": "Draft",
-    "source_reference": "Solvit KPIs by Role.pdf, pages 9; supplied weights are proposals pending approval."
+    "source_reference": "Solvit KPIs by Role.pdf, pages 9."
   },
   {
     "role_id": "it-lead",
@@ -1509,7 +1509,7 @@
     "notes": "Weights not supplied. Compound measures and integration-plan criteria require HR confirmation.",
     "approval_reference": "",
     "status": "Draft",
-    "source_reference": "Solvit KPIs by Role.pdf, pages 9-10; supplied weights are proposals pending approval."
+    "source_reference": "Solvit KPIs by Role.pdf, pages 9-10."
   },
   {
     "role_id": "it-support",
@@ -1586,6 +1586,6 @@
     "notes": "Explicitly identified as probation KPIs. Confirm annual applicability before reusing in annual reviews.",
     "approval_reference": "",
     "status": "Draft",
-    "source_reference": "Solvit KPIs by Role.pdf, pages 10; supplied weights are proposals pending approval."
+    "source_reference": "Solvit KPIs by Role.pdf, pages 10."
   }
 ]

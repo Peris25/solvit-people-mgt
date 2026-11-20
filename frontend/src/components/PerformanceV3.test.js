@@ -108,3 +108,22 @@ test('Create Review groups four Alignment questions under each approved pillar',
   expect(container.textContent).toContain('1 = Strongly Disagree');
   expect(container.textContent).toContain('5 = Strongly Agree');
 });
+
+
+test('employee self-score guide is linked to the score control', async () => {
+  await render(<PerformanceV3Review review={review({ can_self_assess: true })} onUpdated={jest.fn()} />);
+  const guide = container.querySelector('#self-kpi-score-guide');
+  expect(guide.textContent).toContain('1.0 = met or beat target');
+  expect(guide.textContent).toContain('3.0 = 60% or less');
+  expect(container.querySelector('select[aria-describedby="self-kpi-score-guide"]')).not.toBeNull();
+});
+
+test('HR peer progress shows counts and shortfalls without reviewer pairings', async () => {
+  api.getPerformanceV3Setup.mockResolvedValue({ data: { employees: [], roles: [], reviewers: [], reviews: [], cycles: [{ id: 'cycle', cycle_type: 'Year_End', cycle_year: 2026, status: 'Open' }], peer_progress: [{ employee_id: 'staff', employee_name: 'Synthetic staff', cycle_id: 'cycle', received: 2, chosen: 5, submitted: 1, below_received_minimum: true, below_chosen_minimum: false, below_submitted_minimum: true }] } });
+  await render(<PerformanceV3Panel user={{ role: 'hr_admin', employee_id: 'hr' }} onUpdated={jest.fn()} />);
+  const section = container.querySelector('[aria-label="Anonymous peer review progress"]');
+  expect(section.textContent).toContain('Synthetic staff');
+  expect(section.querySelectorAll('tbody tr')).toHaveLength(1);
+  expect(section.querySelectorAll('.pv-score-gap')).toHaveLength(2);
+  expect([...section.querySelectorAll('th')].map(e => e.textContent)).toEqual(['Employee','Cycle','Received','Chosen to review','Submitted','Synthetic staff']);
+});
