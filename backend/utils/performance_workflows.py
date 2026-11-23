@@ -125,6 +125,9 @@ async def notify(db, row, event):
         recipients.append(('employee',employee_key(employee)))
     if base_event == 'performance.probation.meeting_completed':
         recipients.extend(('role',role) for role in ('hr_admin','hr_manager'))
+        recipients.append(('employee',employee_key(employee)))
+    if row.get('cycle_type')=='Probation' and base_event in {'performance.assessment.release','performance.probation.acknowledged'}:
+        recipients.extend(('role',role) for role in ('hr_admin','hr_manager'))
     if base_event in {"performance.assessment.manager", "performance.meeting.proposed"}:
         recipients.extend(("role", role) for role in ("hr_admin", "hr_manager", "general_manager"))
     for kind, recipient in recipients:

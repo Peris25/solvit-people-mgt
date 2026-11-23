@@ -40,9 +40,12 @@ async def body(db, notification, recipient_id=None, *, saved_review=None, saved_
     recipient = await process.find_employee(db, recipient_id, tenant) if recipient_id else None
     name = (employee or {}).get('full_name') or 'the employee named in the portal'
     own = bool(employee and recipient_id in process.reference_ids(employee))
-    manager = bool(recipient and (review or {}).get('line_manager_id') in process.reference_ids(recipient))
+    manager_id=(review or {}).get('line_manager_id') or (employee or {}).get('line_manager_id')
+    line_manager=await process.find_employee(db,manager_id,tenant) if manager_id else None
+    manager = bool(recipient and line_manager and set(process.reference_ids(recipient)) & set(process.reference_ids(line_manager)))
     period = {'Year_End': 'Year-end', 'Mid_Year': 'Mid-year', 'Probation': 'Probation'}.get(row.get('cycle_type'), 'Performance')
     if row.get('cycle_year'): period += ' ' + str(row['cycle_year'])
+    if row.get('cycle_type')=='Probation' and row.get('review_month'): period += ' · Month ' + str(row['review_month'])
     greeting = 'Hi ' + str(recipient['full_name']) + ',' if recipient and recipient.get('full_name') else 'Hello,'
     title = str(notification.get('title') or '').lower()
     event = str(data.get('performance_event') or '')
@@ -58,16 +61,17 @@ async def body(db, notification, recipient_id=None, *, saved_review=None, saved_
     if not own: context += 'You are receiving this as their line manager.' if manager else 'You are receiving this for HR follow-up.'
     if row.get('cycle_type')=='Probation' and label in {'created','performance.assessment.manager','performance.assessment.release','performance.probation.meeting_completed','performance.probation.acknowledged'}:
         if label=='created':
-            action='Complete the employee’s KPI and five values assessment, record supporting evidence and submit it. The employee does not self-score.' if manager else 'Your line manager will assess your KPIs and values first. You will then discuss the results together, add your comments and acknowledge the outcome after HR releases it. You do not need to submit a self-assessment.'
+            manager_name=(line_manager or {}).get('full_name') or 'your assigned line manager'
+            action='Complete the employee’s KPI and five values assessment, record supporting evidence and submit it. The employee does not self-score.' if manager else f'Your probation review has been sent to {manager_name}, your line manager, to complete the KPI and values assessment. You will then discuss the results together, add your comments and acknowledge the outcome after HR releases it. You do not need to submit a self-assessment.'
             timing=deadline('Manager assessment due',row.get('manager_due_on'))
         elif label=='performance.assessment.manager':
             action='Your line manager has submitted the probation assessment. Open it to read the findings and add your comments. Discuss the results and development actions in your review meeting.' if own else 'The manager has submitted the probation assessment. Arrange the employee–manager review meeting. Record its completion before approving the outcome.'
             timing=deadline('HR completion due',row.get('review_due_on'))
         elif label=='performance.assessment.release':
-            action='HR has released your probation outcome. Open the review, read it and acknowledge receipt. Acknowledgement does not mean agreement; you may record comments or disagreement.'
+            action='HR has released your probation outcome. Open the review, read it and acknowledge receipt. Acknowledgement does not mean agreement; you may record comments or disagreement.' if own else f'The probation review outcome for {name} has been released to the employee. Open the review to follow up on receipt acknowledgement and the agreed development actions.'
             timing=''
         elif label=='performance.probation.meeting_completed':
-            action='The probation review meeting has been recorded as completed. Review the discussion and agreed actions, then record HR’s outcome approval and release it to the employee.'
+            action='Your probation review meeting has been recorded as completed. Open the record to check the discussion and agreed actions. HR will review and release the outcome.' if own else 'The probation review meeting has been recorded as completed. Review the discussion and agreed actions, then record HR’s outcome approval and release it to the employee.'
             timing=deadline('HR completion due',row.get('review_due_on'))
         else:
             action='The employee has acknowledged receipt of the probation review. Open the record to check the acknowledgement and any employee comments.';timing=''

@@ -5,7 +5,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from html import escape
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 from utils.employee_integrity import find_employee, employee_key, tenant_of, tenant_query, normalize_email
@@ -66,7 +66,10 @@ async def action_email(db, tenant, event, to, subject, message, link, template_k
         return {'status': 'skipped'}
     address = normalize_email(to)
     claim_id = ObjectId(hashlib.sha256(f'email-event:{tenant}:{event}:{address}'.encode()).hexdigest()[:24])
-    html = ''.join('<p>' + escape(part) + '</p>' for part in message.split('\n\n') if part) + '<p><a href="' + escape(link, quote=True) + '">Open in Solvit People</a></p>'
+    performance_link=urlsplit(link).path=='/performance' and bool(urlsplit(link).query)
+    button_style=' style="display:inline-block;background:#df1834;color:#ffffff;text-decoration:none;padding:13px 20px;border-radius:7px;font-weight:bold;"' if performance_link else ''
+    label='Open review' if performance_link else 'Open in Solvit People'
+    html = ''.join('<p>' + escape(part) + '</p>' for part in message.split('\n\n') if part) + '<p><a href="' + escape(link, quote=True) + '"'+button_style+'>'+label+'</a></p>'
     claim = {'_id': claim_id, 'tenant_id': tenant, 'event_key': event, 'to': address,
              'subject': subject, 'body_html': html, 'delivery_claim': True, 'template_key': template_key, 'status': 'dispatching',
              'sent_at': datetime.now(timezone.utc).isoformat()}

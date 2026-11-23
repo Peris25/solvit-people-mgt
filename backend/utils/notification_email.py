@@ -132,13 +132,17 @@ async def deliver_item(db, row):
             raise
         item = inbox['items'][0]
         message = item['message']
+        link = portal_link('/notifications')
         if (row.get('data') or {}).get('performance_v3') or ((row.get('data') or {}).get('performance_review_id') and (row.get('data') or {}).get('performance_event')):
             from utils.performance_email_body import body
             message = await body(db, row, account.get('employee_id'))
+            target=item.get('link')
+            if isinstance(target,str) and target.startswith('/performance?'):
+                link=portal_link(target)
         # Projection applies the same authorization and private-content redaction
         # as the bell; raw notification messages never enter email bodies.
         result = await action_email(db, tenant_of(row), event_key(row), address,
-            item['title'], message, portal_link('/notifications'),
+            item['title'], message, link,
             'notification.inbox', retry_skipped=True)
         if result.get('reason') == 'claim_unavailable' or (result.get('status') not in {'sent', 'failed'} and result.get('reason') != 'duplicate_event'):
             complete = False
