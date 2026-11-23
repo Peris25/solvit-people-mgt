@@ -144,7 +144,7 @@ test('Create Review always opens employee popup even with no configured cycles',
   await render(<Performance />);
   await act(async()=>container.querySelector('[data-testid="create-review-btn"]').click());
   expect(container.querySelector('[role="dialog"]')).toBeTruthy();
-  expect(container.querySelector('[aria-label="Review employee"]')).toBeTruthy();
+  expect(container.querySelector('.pv-employee-picker legend').textContent).toBe('Employees');
   expect(container.textContent).toContain('Self and peer deadline');
   expect(container.textContent).toContain('Manager deadline');
   expect(container.textContent).toContain('Meetings and HR release by');
