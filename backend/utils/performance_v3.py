@@ -23,6 +23,10 @@ def enabled(employee): return token(employee.get('lifecycle_state') or employee.
 def md(employee): return bool(employee.get('is_md')) or token(employee.get('role_title')) in {'managingdirector', 'md', 'ceo', 'chiefexecutiveofficer'}
 def ed(employee): return bool(employee.get('is_ed')) or token(employee.get('role_title')) == 'executivedirector'
 def fte(employee): return not flow.restricted(employee.get('board_only')) and token(employee.get('employment_type')) in {'', 'fulltime', 'fte'}
+def employee_kpi_scope(employee):
+    state = token(employee.get('lifecycle_state') or employee.get('status'))
+    if state in {'onboarding', 'probation'} or token(employee.get('onboarding_recorded_status')) == 'inprogress': return 'Probation'
+    return 'Annual'
 def clean(row): return {k: deepcopy(v) for k, v in row.items() if k not in {'_id', 'tenant_id'}}
 
 
@@ -37,11 +41,13 @@ async def assignment(db, employee):
 async def review_readiness(db, employee, saved):
     """One preflight for both HR preparation and the authoritative send check."""
     problems = []
+    if employee_kpi_scope(employee) == 'Probation':
+        problems.append('Employee is in onboarding or probation. Use Create probation review, not the Annual cycle.')
     if not saved:
         problems.append('Assign approved Annual KPIs.')
     else:
         values = saved.get('values') or {}
-        if values.get('scope') != 'Annual':
+        if values.get('scope') != 'Annual' and employee_kpi_scope(employee) == 'Annual':
             problems.append('Assigned KPIs are ' + str(values.get('scope') or 'missing a scope') + '; an Annual assignment is required.')
         try:
             problems.extend(library.issues(values))
@@ -67,7 +73,9 @@ async def auto_assignment(db, employee, actor):
     if len(matches) != 1: return
     values = matches[0]['published_values']
     if values.get('scope') not in {'Annual', 'Probation'} or library.issues(values): return
-    return await _assign(db, actor, employee, values, matches[0].get('published_version') or matches[0]['version'], 'Approved role assigned at account setup', None, False)
+    values = deepcopy(values)
+    values['scope'] = employee_kpi_scope(employee)
+    return await _assign(db, actor, employee, values, matches[0].get('published_version') or matches[0]['version'], 'Approved role assigned at account setup using employee lifecycle status', None, False)
 
 
 async def _assign(db, user, employee, values, source_version, reason, expected, role_change):
@@ -99,10 +107,11 @@ async def assign(db, user, reference, body):
     if 'individual' in body:
         if user.get('employee_id') in reference_ids(employee): flow.fail('Another HR approver must change your individual targets', 403)
         values = library.validate(body['individual'])
-        if values.get('role_id') != source['published_values']['role_id'] or values.get('scope') != source['published_values']['scope']:
-            flow.fail('Individual overrides must retain the approved role and review scope')
+        if values.get('role_id') != source['published_values']['role_id'] or values.get('scope') not in {source['published_values']['scope'], employee_kpi_scope(employee)}:
+            flow.fail('Individual overrides must retain the approved role and employee review scope')
         if library.issues(values): flow.fail('Individual KPIs need complete approved targets, weights and an approval reference')
     if body.get('role_change') not in (None, False, True): flow.fail('Invalid role-change confirmation')
+    values['scope'] = employee_kpi_scope(employee)
     return await _assign(db, user, employee, values, source.get('published_version') or source['version'], reason, body.get('expected_version'), body.get('role_change') is True)
 
 
@@ -115,7 +124,8 @@ async def setup(db, user):
         saved = await assignment(db, employee)
         problems, _ = await review_readiness(db, employee, saved)
         employees.append({'id': employee_key(employee), 'name': employee.get('full_name'), 'role': employee.get('role_title'), 'department': employee.get('department'), 'assignment': clean(saved) if saved else None,
-                          'review_ready': not problems, 'review_issues': problems})
+                          'review_ready': not problems, 'review_issues': problems, 'expected_kpi_scope': employee_kpi_scope(employee),
+                          'employment_status': employee.get('lifecycle_state') or employee.get('status'), 'onboarding_status': employee.get('onboarding_recorded_status')})
     return {'employees': employees, 'roles': (await library.listing(db, user))['roles']}
 
 

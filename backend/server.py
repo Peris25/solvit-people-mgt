@@ -175,7 +175,8 @@ app.include_router(solver_intake_router, prefix=API_PREFIX)
 async def health():
     return {"status": "healthy", "app": "Solvit People Platform",
             "release": os.environ.get("RENDER_GIT_COMMIT"),
-            "data_updates": {"approved_finance_weights": getattr(app.state, "finance_weight_correction", "pending")}}
+            "data_updates": {"approved_finance_weights": getattr(app.state, "finance_weight_correction", "pending"),
+                             "employee_kpi_scope": getattr(app.state, "kpi_scope_correction", {"status": "pending"})}}
 
 
 SESSION_EXEMPT_ENDPOINTS.add(health)
@@ -211,6 +212,8 @@ async def startup():
     # review-state and transaction checks. Never creates reviews or notifications.
     from utils.approved_kpi_correction import run as correct_approved_finance_weights
     app.state.finance_weight_correction = await correct_approved_finance_weights(db)
+    from utils.approved_kpi_scope_correction import run as correct_employee_kpi_scopes
+    app.state.kpi_scope_correction = await correct_employee_kpi_scopes(db)
     # Start automation engine
     await automation_engine.start(db)
     # Start reminder engine (registers cron jobs for all enabled rules)

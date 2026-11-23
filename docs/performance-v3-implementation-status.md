@@ -107,3 +107,9 @@ The duplicate-period check included earlier cycles while the HR selector listed 
 # HR review send readiness — 23 November 2026
 
 Preparation and sending now share one readiness check. The HR setup response includes `review_ready` and exact `review_issues` for Annual KPI scope, complete targets/weights and valid reporting chains. The assignment picker no longer equates an existing assignment with readiness. The send popup lists corrections by employee, disables blocked options and offers selection of all ready employees. Sending revalidates stored records before any review or notification is written and reports specific reasons if data changed. This change does not rewrite staff assignments, change reporting lines or send reviews automatically.
+
+## HR-authorized status-based KPI assignments
+
+Employee lifecycle Onboarding/Probation or onboarding recorded In_Progress requires Probation KPI scope. Other eligible FTE staff use Annual scope. New explicit HR assignments and exact-role account setup assignments use that status, retaining the published role goals and approved individual targets/weights. Annual opening independently rejects staff still in onboarding/probation.
+
+The authorized deployment correction changes only existing valid assignment scopes, preserving role, goals, targets and weights. Each change uses a transaction, original-record recovery copy, version check and durable per-employee audit marker. Started reviews, missing assignments and invalid KPI data are skipped; no existing review or employee status is changed, and no notifications are created. Health reports aggregate correction outcomes only. HR preparation displays the employee status, onboarding status and expected scope. This does not infer a different job role or invent missing KPI targets.

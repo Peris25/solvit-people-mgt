@@ -45,6 +45,15 @@ test('employee checkboxes toggle individually and support selecting and clearing
   expect(api.performanceV3Action).not.toHaveBeenCalled();
 });
 
+test('HR sees employee status and probation routing without treating probation as an Annual assignment', async () => {
+  await render(<V3CycleDialog employees={[{id:'probation',name:'Probation employee',employment_status:'Onboarding',expected_kpi_scope:'Probation',review_ready:false,review_issues:['Employee is in onboarding or probation. Use Create probation review, not the Annual cycle.']}]} onClose={jest.fn()} onCreated={jest.fn()} />);
+  expect(container.textContent).toContain('Status: Onboarding');
+  expect(container.textContent).toContain('Probation KPIs');
+  expect(container.textContent).toContain('Use probation review');
+  expect(container.querySelector('.pv-employee-picker input').disabled).toBe(true);
+  expect(api.performanceV3Action).not.toHaveBeenCalled();
+});
+
 test('employees see only their own assigned tasks and cannot open HR preparation', async () => {
   await render(<PerformanceV3Panel user={{ role: 'employee', employee_id: 'staff' }} onUpdated={jest.fn()} />);
   expect(api.getPerformanceV3Setup).not.toHaveBeenCalled();
