@@ -66,7 +66,7 @@ async def action_email(db, tenant, event, to, subject, message, link, template_k
         return {'status': 'skipped'}
     address = normalize_email(to)
     claim_id = ObjectId(hashlib.sha256(f'email-event:{tenant}:{event}:{address}'.encode()).hexdigest()[:24])
-    html = '<p>' + escape(message) + '</p><p><a href="' + escape(link, quote=True) + '">Open in Solvit People</a></p>'
+    html = ''.join('<p>' + escape(part) + '</p>' for part in message.split('\n\n') if part) + '<p><a href="' + escape(link, quote=True) + '">Open in Solvit People</a></p>'
     claim = {'_id': claim_id, 'tenant_id': tenant, 'event_key': event, 'to': address,
              'subject': subject, 'body_html': html, 'delivery_claim': True, 'template_key': template_key, 'status': 'dispatching',
              'sent_at': datetime.now(timezone.utc).isoformat()}
@@ -140,6 +140,11 @@ async def performance_action(db, employee, manager, row, event):
     else:
         return
     for address in sorted(set(address for address in addresses if address)):
+        from utils.performance_email_body import body
+        recipient = employee if address == await employee_address(db, employee_key(employee), tenant) else manager if manager and address == await employee_address(db, employee_key(manager), tenant) else None
+        notice = {'tenant_id': tenant, 'title': subject, 'data': {'performance_event': event, 'employee_id': employee_key(employee)}}
+        message = await body(db, notice, employee_key(recipient) if recipient else None,
+                             saved_review={**row, 'line_manager_id': employee_key(manager) if manager else row.get('line_manager_id')}, saved_employee=employee)
         await action_email(db, tenant, f"performance:{row['id']}:{event}", address, subject, message, link, 'performance.workflow_action')
 
 

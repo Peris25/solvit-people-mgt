@@ -131,10 +131,14 @@ async def deliver_item(db, row):
                 continue
             raise
         item = inbox['items'][0]
+        message = item['message']
+        if (row.get('data') or {}).get('performance_v3') or ((row.get('data') or {}).get('performance_review_id') and (row.get('data') or {}).get('performance_event')):
+            from utils.performance_email_body import body
+            message = await body(db, row, account.get('employee_id'))
         # Projection applies the same authorization and private-content redaction
         # as the bell; raw notification messages never enter email bodies.
         result = await action_email(db, tenant_of(row), event_key(row), address,
-            item['title'], item['message'], portal_link('/notifications'),
+            item['title'], message, portal_link('/notifications'),
             'notification.inbox', retry_skipped=True)
         if result.get('reason') == 'claim_unavailable' or (result.get('status') not in {'sent', 'failed'} and result.get('reason') != 'duplicate_event'):
             complete = False

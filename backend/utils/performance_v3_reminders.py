@@ -10,11 +10,13 @@ logger = logging.getLogger(__name__)
 async def deliver(db, tenant):
     if not outbound_email_enabled(): return
     from utils.email_routing import employee_address, role_addresses, action_email, portal_link
+    from utils.performance_email_body import body
     pending = await db.notifications.find({'tenant_id': tenant, 'data.performance_v3': True, 'v3_email_pending': True}).to_list(500)
     for item in pending:
         try:
             current = await db.notifications.find_one({'_id':item['_id']})
             if not current or current.get('cycle_archived') or not current.get('v3_email_pending'): continue
+            item = current
             data = item.get('data') or {}
             if data.get('cycle_id'):
                 window = await db.performance_cycles.find_one(process.scoped(item, {'id':data['cycle_id']}))
@@ -32,7 +34,7 @@ async def deliver(db, tenant):
                 addresses = [address for address in addresses if address != subject_address]
             for address in addresses:
                 await action_email(db, tenant, 'performance-v3:' + str(item['_id']), address, item['title'],
-                                   'A performance action is ready. Open the portal to view its authorized details and deadline.', portal_link('/performance') + suffix)
+                                   await body(db, item, item.get('recipient_id')), portal_link('/performance') + suffix)
             await db.notifications.update_one({'_id': item['_id']}, {'$set': {'v3_email_pending': False}})
         except Exception:
             logger.warning('Performance notification delivery needs retry; event %s', str(item.get('_id')))

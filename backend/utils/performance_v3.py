@@ -180,7 +180,7 @@ async def notice(db, row, event, kind, recipient, title):
         'data': {**({'performance_peer_task_id': row['peer_task_id']} if row.get('peer_task_id') else
                    {'performance_alignment_cycle_id': row['cycle_id']} if row.get('alignment') else
                    {'performance_review_id': row.get('review_id') or row['id']}),
-                 'employee_id': row.get('employee_id'), 'cycle_id': row.get('cycle_id'), 'performance_v3': True},
+                 'employee_id': row.get('employee_id'), 'cycle_id': row.get('cycle_id'), 'performance_v3': True, 'performance_event': event},
         'is_read': False, 'created_at': flow.now(), 'v3_email_pending': outbound_email_enabled()}}, upsert=True)
 
 
@@ -192,7 +192,7 @@ async def hr_notice(db, row, event, title):
         identity = key('v3-hr', tenant_of(row), row['id'], event, role)
         await db.notifications.update_one({'_id': identity}, {'$setOnInsert': {'id': str(identity), 'tenant_id': tenant_of(row), 'category': 'Performance',
             'recipient_role': role, 'title': title, 'message': 'A performance workflow requires HR attention.',
-            'data': {'performance_review_id': row.get('review_id') or row['id'], 'employee_id': row.get('employee_id'), 'cycle_id': row.get('cycle_id'), 'performance_v3': True},
+            'data': {'performance_review_id': row.get('review_id') or row['id'], 'employee_id': row.get('employee_id'), 'cycle_id': row.get('cycle_id'), 'performance_v3': True, 'performance_event': event},
             'is_read': False, 'created_at': flow.now(), 'v3_email_pending': (role != 'general_manager' or needs_gm) and outbound_email_enabled()}}, upsert=True)
 
 
