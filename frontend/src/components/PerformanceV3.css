@@ -4,6 +4,14 @@
 .performance-v3 h3,.performance-v3 summary { font-size: 16px; font-weight: 600; margin: 12px 0; }
 .performance-v3 p { margin: 10px 0; line-height: 1.6; }
 .performance-v3 label { display: grid; gap: 6px; margin: 12px 0; }
+.performance-v3 .pv-employee-picker { min-width:0; border:1px solid var(--portal-line,#cbd5e1); border-radius:10px; padding:8px 12px; margin:12px 0; }
+.performance-v3 .pv-employee-options { max-height:300px; overflow-y:auto; }
+.performance-v3 .pv-employee-option { display:flex; align-items:center; gap:12px; min-height:48px; margin:0; padding:8px 4px; border-bottom:1px solid var(--portal-line,#e2e8f0); cursor:pointer; }
+.performance-v3 .pv-employee-option:last-child { border-bottom:0; }
+.performance-v3 .pv-employee-option input { flex:0 0 auto; width:18px; height:18px; accent-color:#df1834; }
+.performance-v3 .pv-employee-option span { min-width:0; overflow-wrap:anywhere; }
+.performance-v3 .pv-employee-option small { display:block; margin-top:3px; color:var(--portal-muted,#667085); }
+.performance-v3 .pv-employee-option:has(input:disabled) { opacity:.65; cursor:not-allowed; }
 .performance-v3 input:not([type=checkbox]),.performance-v3 select,.performance-v3 textarea { padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 9px; width: 100%; min-height: 44px; background: white; color: #192438; }
 .performance-v3 textarea { min-height: 85px; }
 .performance-v3 button { min-height: 44px; border: 1px solid #cbd5e1; border-radius: 9px; padding: 10px 15px; margin: 5px 8px 5px 0; font-weight: 600; background: white; cursor: pointer; }

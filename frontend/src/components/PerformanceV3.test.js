@@ -22,10 +22,26 @@ const review = values => ({ id: 'review', version: 'v1', workflow_version: 3, st
 test('send preflight shows exact corrections and selects only ready employees', async () => {
   await render(<V3CycleDialog employees={[{id:'ready',name:'Ready employee',review_ready:true,review_issues:[]},{id:'blocked',name:'Needs manager',review_ready:false,review_issues:['Selected Line Manager not found.']}]} onClose={jest.fn()} onCreated={jest.fn()} />);
   expect(container.textContent).toContain('Selected Line Manager not found.');
-  expect(container.querySelector('option[value="blocked"]').disabled).toBe(true);
+  expect(container.querySelector('input[value="blocked"]').disabled).toBe(true);
   await click('Select all ready employees');
-  expect([...container.querySelector('[aria-label="Review employee"]').selectedOptions].map(option => option.value)).toEqual(['ready']);
+  expect([...container.querySelectorAll('.pv-employee-picker input:checked')].map(input => input.value)).toEqual(['ready']);
   expect(container.textContent).toContain('1 ready to send; 1 need corrections');
+  expect(api.performanceV3Action).not.toHaveBeenCalled();
+});
+
+test('employee checkboxes toggle individually and support selecting and clearing all', async () => {
+  await render(<V3CycleDialog employees={[{id:'one',name:'Employee One'},{id:'two',name:'Employee Two'}]} onClose={jest.fn()} onCreated={jest.fn()} />);
+  const one = container.querySelector('.pv-employee-picker input[value="one"]');
+  const two = container.querySelector('.pv-employee-picker input[value="two"]');
+  await act(async () => one.click());
+  await act(async () => two.click());
+  await act(async () => one.click());
+  expect(one.checked).toBe(false); expect(two.checked).toBe(true);
+  expect(container.textContent).toContain('1 of 2 employees selected');
+  await click('Select all listed employees');
+  expect(one.checked && two.checked).toBe(true);
+  await click('Clear selection');
+  expect(one.checked || two.checked).toBe(false);
   expect(api.performanceV3Action).not.toHaveBeenCalled();
 });
 
@@ -42,7 +58,7 @@ test('HR creates reviews in one popup with fixed policy and calculated dates', a
   const start = container.querySelector('input[type="date"]'); await change(start, '2099-11-01');
   expect(container.textContent).toContain('2099-11-07'); expect(container.textContent).toContain('2099-11-14');
   expect(container.textContent).toContain('2099-11-28'); expect(container.textContent).toContain('50%');
-  expect(container.querySelector('[aria-label="Review employee"]')).not.toBeNull();
+  expect(container.querySelector('.pv-employee-picker')).not.toBeNull();
   expect(container.textContent).not.toContain('60 / 25 / 15');
 });
 
@@ -163,7 +179,7 @@ test('a soft send failure retains the selected employees and prepared cycle with
   await render(<V3CycleDialog employees={[{id:'staff',name:'Synthetic staff'}]} onClose={jest.fn()} onCreated={created} />);
   await click('Select all listed employees'); await submitCycleForm();
   expect(container.textContent).toContain('Sending could not be confirmed');
-  expect(container.querySelector('[aria-label="Review employee"]').selectedOptions).toHaveLength(1);
+  expect(container.querySelectorAll('.pv-employee-picker input:checked')).toHaveLength(1);
   expect(created).not.toHaveBeenCalled();
   expect(container.textContent).not.toContain('Review requests confirmed');
   api.performanceV3Action.mockResolvedValue({data:{id:'prepared',status:'Open'}});
