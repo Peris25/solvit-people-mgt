@@ -18,6 +18,17 @@ ROW_FIELDS = {'id', 'objective', 'metric', 'target', 'target_value', 'weight', '
 ENTRY_FIELDS = {'role_id', 'name', 'scope', 'goals', 'group_weights', 'notes', 'approval_reference', 'source_reference'}
 
 
+def combined_finance_weights(entry):
+    """Current Finance/Operations KPIs use one 100% total; keep HR's row edits."""
+    values = deepcopy(entry)
+    if values.get('role_id') == 'finance-operations-manager':
+        values['group_weights'] = {}
+        for goal in values.get('goals', []): goal['group'] = ''
+        if values.get('notes') == 'Finance and Operations each have 100% internal weights. HR must confirm the split between the two groups. Behavioural competencies remain separate.':
+            values['notes'] = 'One combined KPI set. The individual KPI weights total 100%.'
+    return values
+
+
 @lru_cache(maxsize=1)
 def catalogue():
     rows = json.loads((Path(__file__).resolve().parents[1] / 'data' / 'role_kpi_reference.json').read_text(encoding='utf-8'))
@@ -75,7 +86,7 @@ def validate(entry):
     if not isinstance(groups, dict) or len(groups) > 20: flow.fail('Invalid KPI groups')
     values['group_weights'] = {text(key,'group name',100): number(value,'group weight',100) for key,value in groups.items()}
     if any(not key for key in values['group_weights']): flow.fail('Enter a group name')
-    return values
+    return combined_finance_weights(values)
 
 
 def issues(values):
@@ -104,7 +115,7 @@ def issues(values):
 
 
 def view(row):
-    entry = deepcopy(row['values'])
+    entry = combined_finance_weights(row['values'])
     entry['source_reference'] = entry.get('source_reference', '').replace('; supplied weights are proposals pending approval.', '.')
     return {**entry, 'status':row['status'], 'version':row['version'], 'updated_at':row['updated_at'],
             'issues':issues(entry), 'has_published_version':bool(row.get('published_values'))}

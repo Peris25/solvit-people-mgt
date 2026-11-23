@@ -76,3 +76,9 @@ A task in Submitting is deliberately fail-closed; no automatic timeout deletes i
 Backend: routes/performance_v3.py, routes/performance.py, routes/surveys.py, routes/compensation.py; utils/performance_v3.py, performance_v3_reviews.py, performance_v3_admin.py, performance_v3_alignment.py, performance_v3_reminders.py, performance_v3_scoring.py, performance_workflows.py, role_kpi_library.py, notification_centre.py, staff_home.py; automation/engine.py. New regression files: tests/test_performance_v3_end_to_end.py and tests/test_performance_v3_security.py.
 
 Frontend: components/PerformanceV3Panel.js, PerformanceV3Review.js, PerformanceV3.css, PerformanceV3.test.js, PerformanceHandoffs.js, PerformanceTaskLinks.js, PerformanceWorkflow.js, CreateReviewDialog.js; pages/Performance.js, Performance.test.js, Compensation.js, MyTasks.js; services/api.js.
+
+## Finance KPI amendment on 23 November 2026
+
+Finance and Operations now use a single KPI list totalling 100%. The approved nine-row reference weights are 15, 10, 15, 15, 10, 5, 10, 10 and 10 percent. Saved Finance role drafts are presented and validated without the old internal Finance/Operations groups, preserving HR's amended goals and individual weights. Other roles retain their existing group support. Publishing stores the flat configuration; existing review snapshots and scores are not rewritten by this display/validation change.
+
+Checks: 36 backend regressions and seven editor checks passed. The reference matches the supplied KPI/weight image; it does not import example actual results or baselines as staff assessments.

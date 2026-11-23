@@ -79,3 +79,16 @@ test('typing during a save is not overwritten or falsely reported as saved',asyn
  expect(api.saveRoleKpis.mock.calls[1][1].expected_version).toBe('v1');
  expect(container.textContent).toContain('Draft saved.');
 });
+
+
+test('Finance and Operations show one combined weight total without group controls',async()=>{
+ const finance={...row(),role_id:'finance-operations-manager',name:'Finance and Operations Manager',group_weights:{}};
+ finance.goals=[15,10,15,15,10,5,10,10,10].map((weight,i)=>({...row().goals[0],id:`finance-${i}`,objective:`Approved finance KPI ${i+1}`,group:'',weight}));
+ api.getRoleKpiLibrary.mockResolvedValue({data:{roles:[finance]}});
+ await render();
+ expect(container.textContent).toContain('Total KPI weight: 100.00%');
+ expect(container.textContent).toContain('one combined KPI set');
+ expect(container.textContent).not.toContain('Weight between KPI groups');
+ expect(container.querySelector('[aria-label="KPI group 1"]')).toBeNull();
+ expect([...container.querySelectorAll('input[aria-label^="KPI weight "]')].map(input=>Number(input.value))).toEqual([15,10,15,15,10,5,10,10,10]);
+});

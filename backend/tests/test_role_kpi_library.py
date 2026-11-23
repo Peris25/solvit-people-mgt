@@ -23,7 +23,7 @@ def approved(db,user):
 def test_reference_catalogue_is_read_only_and_does_not_modify_employees():
     db,users=fixture(); before=deepcopy(db.employees.docs)
     rows=run(service.listing(db,users['hr']))['roles']
-    assert len(rows)==13 and sum(len(r['goals']) for r in rows)==110
+    assert len(rows)==13 and sum(len(r['goals']) for r in rows)==99
     assert all(row['status']=='Draft' and row['version'] is None for row in rows)
     assert db.employees.docs==before and not db.system_settings.docs
 
@@ -78,8 +78,11 @@ def test_stale_version_and_audit_failure_preserve_saved_draft():
     assert db.system_settings.docs==before
 
 
-def test_split_groups_are_not_treated_as_two_hundred_percent():
-    db,users=fixture();entry=draft(db,users['hr'],'finance-operations-manager')
+def test_other_roles_can_still_use_separate_weighted_groups():
+    db,users=fixture();entry=draft(db,users['hr'])
+    entry['goals']=entry['goals'][:2]
+    for goal,group in zip(entry['goals'],['Finance','Operations']): goal.update(group=group,weight=100)
+    entry['group_weights']={'Finance':None,'Operations':None}
     problems=service.issues(entry)
     assert 'Group weights must total 100%.' in problems
     assert not any('Finance KPI weights' in p or 'Operations KPI weights' in p for p in problems)
@@ -107,3 +110,38 @@ def test_api_rejects_staff_before_acquiring_integrity_lock():
         with pytest.raises(HTTPException) as error: run(performance.save_role_kpis('it-support',request))
     assert error.value.status_code==403
     database.assert_not_called();request.json.assert_not_awaited()
+
+
+def test_finance_reference_has_one_combined_set_with_approved_weights():
+    db,users=fixture(); entry=draft(db,users['hr'],'finance-operations-manager')
+    assert entry['group_weights']=={} and all(g['group']=='' for g in entry['goals'])
+    assert [g['weight'] for g in entry['goals']]==[15,10,15,15,10,5,10,10,10]
+    assert not service.issues(entry)
+
+
+def test_saved_finance_draft_loses_old_group_constraints_without_overwriting_hr_edits():
+    db,users=fixture(); entry=draft(db,users['hr'],'finance-operations-manager')
+    entry['group_weights']={'Finance':50,'Operations':50}
+    for i,g in enumerate(entry['goals']): g['group']='Finance' if i<5 else 'Operations'
+    entry['goals'][0]['metric']='HR amended measurement'
+    before=deepcopy(entry)
+    stored={'values':deepcopy(entry),'status':'Draft','version':'saved-hr-draft','updated_at':'2026-11-23'}
+    displayed=service.view(stored)
+    assert displayed['group_weights']=={} and all(g['group']=='' for g in displayed['goals'])
+    assert displayed['goals'][0]['metric']=='HR amended measurement'
+    assert stored['values']==before
+    validated=service.validate(entry)
+    assert validated['group_weights']=={} and all(g['group']=='' for g in validated['goals'])
+    assert validated['goals'][0]['metric']=='HR amended measurement'
+    assert [g['weight'] for g in validated['goals']]==[g['weight'] for g in entry['goals']]
+    assert entry==before
+    published=save(db,users['hr'],entry,action='publish')
+    assert published['status']=='Published' and not published['issues']
+    assert published['group_weights']=={}
+    assert next(r for r in db.system_settings.docs if r.get('category')=='performance_role_kpi_library')['published_values']['group_weights']=={}
+
+
+def test_combined_finance_total_still_rejects_weights_other_than_100():
+    db,users=fixture(); entry=draft(db,users['hr'],'finance-operations-manager'); entry['goals'][0]['weight']=14
+    with pytest.raises(HTTPException): save(db,users['hr'],entry,action='publish')
+    assert not db.system_settings.docs
