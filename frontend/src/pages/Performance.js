@@ -38,8 +38,18 @@ export default function Performance() {
     setError('');
     try {
       const [revRes, cycleRes] = await Promise.all([api.getReviews(), api.getActiveCycle()]);
-      setViewReview(previous => revRes.data.find(row => row.id === (previous?.id || new URLSearchParams(window.location.search).get('review'))) || null);
-      setReviews(revRes.data);
+      const linkedId = new URLSearchParams(window.location.search).get('review');
+      let linkedReview = null;
+      if (linkedId && !revRes.data.some(row => row.id === linkedId)) {
+        try {
+          const response = await api.getReview(linkedId);
+          if (response?.data?.id !== linkedId) throw new Error('Review unavailable');
+          linkedReview = response.data;
+        } catch { setError('The review in this link could not be opened. It may be unavailable or not assigned to this account. Your own available reviews are shown below.'); }
+      }
+      const availableReviews = linkedReview ? [linkedReview, ...revRes.data] : revRes.data;
+      setViewReview(previous => availableReviews.find(row => row.id === (previous?.id || linkedId)) || null);
+      setReviews(availableReviews);
       setSelected([]);
       setCycle(cycleRes.data);
       if (['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role)) {
@@ -48,6 +58,9 @@ export default function Performance() {
       }
     } catch { setError('Unable to load performance information. Please retry.'); } finally { setLoading(false); }
   }, [user?.role]);
+
+  const ownReferences = [user?.employee_id, ...(user?.employee_reference_ids || [])].filter(Boolean).map(String);
+  const ownReviews = reviews.filter(review => ownReferences.includes(String(review.employee_id)) && !['Archived', 'Cancelled'].includes(review.status));
 
   useEffect(() => { load(); if (['hr_admin', 'hr_manager', 'general_manager', 'executive'].includes(user?.role)) api.getTalentDensity().then(r => setTalentDensity(r.data)).catch(() => {}); }, [load, user?.role]);
 
@@ -200,6 +213,9 @@ export default function Performance() {
       </div>
 
       {error && <div role="alert">{error} <button onClick={load}>Retry</button></div>}
+      {user?.employee_id && <section className="performance-v3" aria-label="My self-review"><div className="pv-card"><h2>My self-review</h2>
+        {loading ? <p>Loading your reviews…</p> : ownReviews.length ? ownReviews.map(review => <div key={review.id} style={{marginBottom:12}}><strong>{review.cycle_type?.replaceAll('_', ' ') || 'Performance review'} {review.cycle_year}{review.review_month ? ` · Month ${review.review_month}` : ''}</strong><p>Status: {review.status?.replaceAll('_', ' ')}{review.self_due_on ? ` · Self-review due: ${fmtDate(review.self_due_on)}` : ''}</p><button type="button" className={review.can_self_assess ? 'primary' : ''} onClick={() => openView(review)}>{review.can_self_assess ? 'Complete my self-review' : 'View my review'}</button>{!review.can_self_assess && ['Self_Submitted', 'Manager_Submitted', 'HR_Reviewed'].includes(review.status) && <p>Your self-review has been submitted. You can view it here; contact HR if a correction is needed.</p>}</div>) : <p>No performance review has been sent to your account yet. HR must create and send your Annual or Probation review before you can complete the form. Your role KPIs below are reference information.</p>}
+      </div></section>}
       {user?.employee_id && <MyRoleKpis key={user.employee_id} />}
       {isHR && <KpiTemplate reviews={reviews} onUpdated={load} />}
       <PerformanceV3Panel user={user} onUpdated={load} createOpen={showCreate === true} onCloseCreate={() => setShowCreate(false)} onOpenReview={openView} />

@@ -19,7 +19,7 @@ beforeEach(() => {
   api.getPerformanceV3Setup.mockResolvedValue({ data: { employees: [], cycles: [], roles: [], reviews: [], reviewers: [] } });
   api.getPerformanceV3Tasks.mockResolvedValue({ data: { peers: [], alignment: [], questions: [], peer_questions: [] } });
 });
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); jest.clearAllMocks(); });
+afterEach(async () => { await act(async () => root.unmount()); container.remove(); jest.clearAllMocks(); window.history.replaceState({}, '', '/'); });
 const render = async element => { await act(async () => root.render(element)); };
 const click = async text => { const target = [...container.querySelectorAll('button')].find(b => b.textContent === text); expect(target).toBeTruthy(); await act(async () => target.click()); };
 const change = async (input, value) => { await act(async () => { Object.getOwnPropertyDescriptor(input.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : input.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype, 'value').set.call(input, value); input.dispatchEvent(new Event('change', { bubbles: true })); input.dispatchEvent(new Event('input', { bubbles: true })); }); };
@@ -40,6 +40,39 @@ test('review list displays employee names and authorized detail, not truncated i
 test('load failure offers retry', async () => {
   api.getReviews.mockRejectedValue(new Error('offline')); await render(<Performance />);
   expect(container.querySelector('[role="alert"]').textContent).toContain('Unable to load');
+});
+
+test('line manager has a prominent own self-review button that opens the editable form', async () => {
+  useAuth.mockReturnValue({user:{role:'line_manager',employee_id:'grace'}});
+  const own=review({id:'own-review',employee_id:'grace',employee_name:'Synthetic Grace',workflow_version:3,status:'Self_Draft',cycle_type:'Year_End',cycle_year:2026,can_self_assess:true,section_a_kpis:[]});
+  const team=review({id:'team-review',employee_id:'someone-else',employee_name:'Team member'});
+  api.getReviews.mockResolvedValue({data:[team,own]}); api.getReview.mockResolvedValue({data:own});
+  await render(<Performance/>);
+  const section=container.querySelector('[aria-label="My self-review"]');
+  expect(section.textContent).toContain('Complete my self-review');
+  expect(section.textContent).not.toContain('Team member');
+  await click('Complete my self-review');
+  expect(api.getReview).toHaveBeenCalledWith('own-review');
+  expect(container.querySelector('[aria-label="V3 performance assessment"] form')).toBeTruthy();
+  expect(api.performanceV3Action).not.toHaveBeenCalled();
+});
+
+test('a review email link fetches authorized detail even when it is absent from the list', async () => {
+  window.history.replaceState({},'', '/performance?review=linked-review');
+  const own=review({id:'linked-review',employee_id:'staff',employee_name:'Synthetic employee',can_self_assess:true});
+  api.getReview.mockResolvedValue({data:own});
+  await render(<Performance/>);
+  expect(api.getReview).toHaveBeenCalledWith('linked-review');
+  expect(container.querySelector('[data-testid="review-view-modal"]')).toBeTruthy();
+});
+
+test('missing review link reports unavailability and does not fabricate an editable form', async () => {
+  window.history.replaceState({},'', '/performance?review=missing');
+  api.getReview.mockRejectedValue(new Error('unavailable'));
+  await render(<Performance/>);
+  expect(container.querySelector('[role="alert"]').textContent).toContain('not assigned to this account');
+  expect(container.querySelector('[aria-label="My self-review"]').textContent).toContain('HR must create and send');
+  expect(container.querySelector('[data-testid="review-view-modal"]')).toBeNull();
 });
 test('self-assessment submits only employee fields through the staged endpoint', async () => {
   const updated = jest.fn(); api.submitReviewAssessment.mockResolvedValue({});

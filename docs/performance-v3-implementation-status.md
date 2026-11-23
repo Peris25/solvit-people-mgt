@@ -117,3 +117,7 @@ The authorized deployment correction changes only existing valid assignment scop
 ## Performance email body clarity
 
 Performance emails identify the review subject, period, recipient's role, next action and relevant stored deadline. Self-review, manager opening/submission, peer, Alignment, meeting, release/acknowledgement, dispute and HR follow-up messages have distinct wording. Meetings distinguish proposals from confirmed bookings and display Nairobi time. Shared body generation covers the V3 sender and authorized inbox sender, including already queued notices without event metadata. Legacy creation/HR/meeting email bodies also identify the review subject. Subjects, recipients, event deduplication and existing links are retained. Paragraphs are escaped before HTML rendering; no assessment answers, scores, peer comments or reviewer lists enter the email body. Testing uses mocked sending only; existing emails are not resent.
+
+## Employee self-review entry point
+
+Performance now places My self-review above the read-only KPI reference and peer tasks, including for line managers viewing their own review. Authorized editable reviews have a Complete my self-review button; submitted reviews remain view-only. Missing assignments explicitly require HR to create and send a review. Email review links fetch authorized detail if absent from the list and report unavailable/unauthorized links instead of silently showing the page without a form. No reviews are created or sent by opening the page.
