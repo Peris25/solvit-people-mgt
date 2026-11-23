@@ -8,6 +8,7 @@ import KpiTemplate from '../components/KpiTemplate';
 import MyRoleKpis from '../components/MyRoleKpis';
 import PerformanceV3Panel from '../components/PerformanceV3Panel';
 import PerformanceWorkflow from '../components/PerformanceWorkflow';
+import EmployeeSelfReviewDialog from '../components/EmployeeSelfReviewDialog';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -61,6 +62,7 @@ export default function Performance() {
 
   const ownReferences = [user?.employee_id, ...(user?.employee_reference_ids || [])].filter(Boolean).map(String);
   const ownReviews = reviews.filter(review => ownReferences.includes(String(review.employee_id)) && !['Archived', 'Cancelled'].includes(review.status));
+  const ownEditableReview = viewReview?.can_self_assess && ownReferences.includes(String(viewReview.employee_id));
 
   useEffect(() => { load(); if (['hr_admin', 'hr_manager', 'general_manager', 'executive'].includes(user?.role)) api.getTalentDensity().then(r => setTalentDensity(r.data)).catch(() => {}); }, [load, user?.role]);
 
@@ -302,7 +304,8 @@ export default function Performance() {
         </div>
       )}
 
-      {viewReview && (
+      {viewReview && ownEditableReview && <EmployeeSelfReviewDialog review={viewReview} onUpdated={load} onClose={() => setViewReview(null)} />}
+      {viewReview && !ownEditableReview && (
         <div className="solvit-no-print" style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '24px' }}>
           <div style={{ backgroundColor: '#fff', width: '720px', maxHeight: '90vh', overflowY: 'auto', border: '1px solid rgba(25,25,25,0.15)' }}>
             <div className="solvit-no-print" style={{ padding: '18px 24px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -343,6 +346,7 @@ export default function Performance() {
               </div>
 
               <PerformanceWorkflow key={viewReview.id + viewReview.status} review={viewReview} onUpdated={load} />
+              {viewReview.can_hr_review && !ownReferences.includes(String(viewReview.employee_id)) && <p role="note">You are viewing this employee’s review as HR. The employee must sign in to their own account to complete and submit their self-review.{viewReview.cycle_type === 'Probation' ? ' This is a Probation review and uses the separate probation form.' : ''}</p>}
               {viewReview.section_a_kpis && viewReview.section_a_kpis.length > 0 && (
                 <div style={{ marginBottom: '20px' }}>
                   <h4 style={{ margin: '0 0 8px', fontFamily: 'Barlow', fontWeight: 900, fontSize: '13px', letterSpacing: '-0.01em' }}>KPI Detail</h4>

@@ -54,7 +54,20 @@ test('line manager has a prominent own self-review button that opens the editabl
   await click('Complete my self-review');
   expect(api.getReview).toHaveBeenCalledWith('own-review');
   expect(container.querySelector('[aria-label="V3 performance assessment"] form')).toBeTruthy();
+  expect(container.querySelector('[role="dialog"]').textContent).toContain('Complete your self-review');
+  expect(container.querySelector('[role="dialog"]').textContent).not.toContain('Download PDF');
   expect(api.performanceV3Action).not.toHaveBeenCalled();
+});
+
+test('HR viewing another employee probation review is not given employee submission controls', async () => {
+  useAuth.mockReturnValue({user:{role:'hr_admin',employee_id:'hr'}});
+  const row=review({employee_id:'staff',employee_name:'Employee',cycle_type:'Probation',can_self_assess:false,can_hr_review:true});
+  api.getReviews.mockResolvedValue({data:[row]}); api.getReview.mockResolvedValue({data:row});
+  await render(<Performance/>); await click('View');
+  const modal=container.querySelector('[data-testid="review-view-modal"]');
+  expect(modal.textContent).toContain('employee must sign in to their own account');
+  expect(modal.textContent).toContain('separate probation form');
+  expect(modal.textContent).not.toContain('Submit to line manager');
 });
 
 test('a review email link fetches authorized detail even when it is absent from the list', async () => {

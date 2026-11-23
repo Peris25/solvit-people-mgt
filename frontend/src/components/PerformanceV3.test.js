@@ -79,6 +79,31 @@ test('employee saves a partial assessment without shifting empty value slots', a
   expect(updated).toHaveBeenCalled();
 });
 
+test('employee can enter KPI self-scores values and reflections and submit to the line manager', async () => {
+  const updated=jest.fn();
+  api.performanceV3Action.mockResolvedValue({data:{id:'review'}});
+  await render(<PerformanceV3Review review={review({can_self_assess:true})} onUpdated={updated}/>);
+  await change(container.querySelector('.pv-self-kpi-table input'),'1');
+  await change(container.querySelector('.pv-self-kpi-table select'),'1.5');
+  for (let index=0;index<5;index++) {
+    await change(container.querySelector(`#self-value-score-${index}`),'8');
+    await change(container.querySelector(`#self-value-example-${index}`),'A specific example from my work');
+  }
+  for (const text of ['First accomplishment','Second accomplishment','Third accomplishment','Biggest challenge','What I would do differently','Support I need']) {
+    const label=[...container.querySelectorAll('label')].find(label=>label.textContent===text);
+    await change(label.querySelector('textarea'),'My completed reflection');
+  }
+  await click('Submit to line manager');
+  const [kind,id,action,payload]=api.performanceV3Action.mock.calls[0];
+  expect([kind,id,action]).toEqual(['reviews','review','self']);
+  expect(payload.submit).toBe(true);
+  expect(payload.assessment.actuals.quality).toEqual({actual:1,self_score:1.5});
+  expect(payload.assessment.values).toHaveLength(5);
+  expect(payload.assessment.values.every(value=>value.score===8&&value.example)).toBe(true);
+  expect(updated).toHaveBeenCalledTimes(1);
+  expect(container.textContent).toContain('Saved successfully');
+});
+
 test('failed submission retains input and never reports success', async () => {
   api.performanceV3Action.mockRejectedValue({ response: { data: { detail: 'Complete all five values' } } });
   await render(<PerformanceV3Review review={review({ can_self_assess: true })} onUpdated={jest.fn()} />);
