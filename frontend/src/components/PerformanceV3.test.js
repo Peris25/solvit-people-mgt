@@ -187,3 +187,16 @@ test('blocked cycle deletion retains the cycle and shows the server reason', asy
   expect(container.textContent).toContain('Assessment work has started');
   expect(container.textContent).not.toContain('Unused cycle deleted');
 });
+
+
+test('an earlier cycle is visible for management and cannot be sent through the new workflow', async () => {
+  await render(<V3CycleDialog employees={[{id:'staff',name:'Synthetic staff'}]} cycles={[{id:'earlier',cycle_type:'Year_End',cycle_year:2026,starts_on:'2026-11-23',ends_on:'2026-12-20',status:'Configured'}]} onClose={jest.fn()} onCreated={jest.fn()} />);
+  expect(container.querySelector('option[value="earlier"]').textContent).toContain('Earlier setup (manage only)');
+  await change(container.querySelector('select'),'earlier');
+  expect(container.textContent).toContain('This is an earlier cycle setup');
+  await click('Select all listed employees');
+  expect([...container.querySelectorAll('button')].find(button=>button.textContent==='Create and send reviews').disabled).toBe(true);
+  await click('Delete unused cycle');
+  expect(container.querySelector('[aria-label="Delete cycle confirmation"]')).not.toBeNull();
+  expect(api.performanceV3Action).not.toHaveBeenCalled();
+});

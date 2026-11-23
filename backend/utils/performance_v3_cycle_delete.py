@@ -1,30 +1,35 @@
-"""Archive only unused V3 cycles; keep all records and audit history."""
+"""Archive unused cycles, including empty earlier setups; keep all records and audit history."""
 from utils import performance_v3 as process, performance_workflows as flow
 
 
 async def archive(db, user, reference, body):
     flow.require_hr(user); process.fields(body, {'reason'})
     row=await process.cycle(db,user,reference)
-    if row.get('workflow_version')!=3: flow.fail('Use the original workflow for this cycle',409)
+    cycle_aliases=[value for value in (row.get('id'),str(row['id']) if row.get('id') is not None else None,row.get('_id'),str(row.get('_id'))) if value is not None]
+    row={**row,'id':str(row.get('id') or row['_id'])}
+    linked={'cycle_id':{'$in':cycle_aliases}}
+    legacy=row.get('workflow_version') in (None,1)
+    if row.get('workflow_version')!=3 and not legacy: flow.fail('This cycle requires its original management workflow',409)
     if row.get('status')=='Archived': return {'id':row['id'],'status':'Archived'}
     reason=flow.text(body.get('reason'),'cycle deletion reason',1500)
     if len(reason)<10: flow.fail('Enter a clear reason of at least 10 characters')
-    if row.get('status') not in {'Configured','Opening','Open'}: flow.fail('Only an unused cycle can be deleted',409)
+    if row.get('status') not in {'Configured','Opening','Open','Active'}: flow.fail('Only an unused cycle can be deleted',409)
     if row.get('company_feedback') is not None: flow.fail('This cycle already contains company feedback and cannot be deleted',409)
-    reviews=await db.performance_reviews.find(process.scoped(user,{'cycle_id':row['id']})).to_list(None)
+    reviews=await db.performance_reviews.find(process.scoped(user,linked)).to_list(None)
+    if legacy and reviews: flow.fail('This earlier cycle already has review records and cannot be deleted here.',409)
     protected=('self_assessment','manager_assessment','peer_summary','section_a_score','meeting_proposal','review_meeting','meeting_completed_at','released_at')
     if any(r.get('workflow_version')!=3 or r.get('status') not in {'Draft','Self_Draft'} or any(r.get(field) is not None for field in protected) for r in reviews):
         flow.fail('Assessment work has started. This cycle cannot be deleted.',409)
-    tasks=await db.performance_peer_tasks.find(process.scoped(user,{'cycle_id':row['id']})).to_list(None)
+    tasks=await db.performance_peer_tasks.find(process.scoped(user,linked)).to_list(None)
     if any(t.get('status')!='Assigned' or t.get('started_at') or t.get('draft') is not None for t in tasks):
         flow.fail('Peer review work has started. This cycle cannot be deleted.',409)
-    if await db.performance_peer_responses.find_one(process.scoped(user,{'cycle_id':row['id']})):
+    if await db.performance_peer_responses.find_one(process.scoped(user,linked)):
         flow.fail('This cycle has peer responses and cannot be deleted.',409)
-    windows=await db.survey_windows.find(process.scoped(user,{'cycle_id':row['id']})).to_list(None)
+    windows=await db.survey_windows.find(process.scoped(user,linked)).to_list(None)
     aliases=[value for window in windows for value in (window.get('id'),window.get('_id'),str(window.get('_id'))) if value is not None]
-    if await db.survey_responses.find_one(process.scoped(user,{'$or':[{'cycle_id':row['id']},{'survey_window_id':{'$in':aliases}}]})):
+    if await db.survey_responses.find_one(process.scoped(user,{'$or':[linked,{'survey_window_id':{'$in':aliases}}]})):
         flow.fail('This cycle has Alignment Survey responses and cannot be deleted.',409)
-    notices=await db.notifications.find(process.scoped(user,{'data.cycle_id':row['id'],'data.performance_v3':True})).to_list(None)
+    notices=await db.notifications.find(process.scoped(user,{'data.cycle_id':{'$in':cycle_aliases},'data.performance_v3':True})).to_list(None)
     now=flow.now(); update={'status':'Archived','archive_reason':reason,'archived_at':now,'archived_by':user['id']}
     async with await db.client.start_session() as session:
         async with session.start_transaction():

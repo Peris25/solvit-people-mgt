@@ -100,3 +100,7 @@ Following the instruction to correct Grace's individual account through code imm
 ## HR deletion of unused cycles on 23 November 2026
 
 Create Review now shows Delete unused cycle after HR selects an existing cycle. The confirmation identifies its period and dates and requires a reason. The action archives records atomically instead of physically deleting history. It refuses assessment drafts/answers, submitted work, peer tasks already started, peer responses, Alignment responses and company feedback. An unused cycle can be removed so HR can create the correct cycle for that period. Unused review/peer/survey requests are closed, pending cycle email alerts are cancelled, and obsolete portal alerts are hidden. Emails already processed cannot be recalled. No live cycle was deleted during implementation or testing.
+
+## Earlier-cycle selector correction on 23 November 2026
+
+The duplicate-period check included earlier cycles while the HR selector listed only V3 cycles. The selector now includes earlier setups, labelled manage-only, so a blocking setup is visible. An earlier setup can be archived only with no linked review records; cycle identity aliases are checked so storage-ID links cannot evade the protection. Earlier setups cannot be sent through the V3 popup. No live cycle was archived while implementing this fix.

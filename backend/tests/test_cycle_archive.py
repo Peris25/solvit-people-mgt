@@ -92,3 +92,32 @@ def test_prepared_cycle_with_no_reviews_can_be_removed():
     db.performance_cycles.docs[0]['status']='Configured'
     result=run(process.archive(db,users['hr'],cycle['id'],{'reason':'Prepared with wrong cycle dates'}))
     assert result['unused_reviews']==0 and db.performance_cycles.docs[0]['status']=='Archived'
+
+
+def test_empty_earlier_cycle_setup_is_manageable_but_existing_reviews_protect_it():
+    db,users,cycle,review=fixture()
+    db.performance_cycles.docs[0].pop('workflow_version')
+    db.performance_cycles.docs[0]['status']='Active'
+    with pytest.raises(HTTPException):run(process.archive(db,users['hr'],cycle['id'],{'reason':'Created the earlier setup incorrectly'}))
+    db.performance_reviews.docs=[]
+    result=run(process.archive(db,users['hr'],cycle['id'],{'reason':'Created the earlier setup incorrectly'}))
+    assert result['status']=='Archived'
+
+
+def test_hr_setup_includes_earlier_cycles_that_can_block_the_same_period():
+    from utils import performance_v3_admin as admin
+    db,users,cycle,review=fixture()
+    db.performance_cycles.docs[0].pop('workflow_version')
+    db.performance_reviews.docs=[]
+    with patch.object(process,'setup',new=AsyncMock(return_value={'employees':[],'roles':[]})):
+        result=run(admin.dashboard(db,users['hr']))
+    assert any(c['id']==cycle['id'] for c in result['cycles'])
+    assert result['peer_progress']==[]
+
+
+def test_earlier_cycle_alias_linked_reviews_are_protected():
+    db,users,cycle,review=fixture()
+    db.performance_cycles.docs[0].pop('workflow_version')
+    db.performance_reviews.docs[0]['cycle_id']=str(db.performance_cycles.docs[0]['_id'])
+    with pytest.raises(HTTPException):run(process.archive(db,users['hr'],cycle['id'],{'reason':'Created the earlier setup incorrectly'}))
+    assert db.performance_cycles.docs[0]['status']=='Open'

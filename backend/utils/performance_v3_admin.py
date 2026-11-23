@@ -8,7 +8,7 @@ async def dashboard(db, user):
     result = await process.setup(db, user)
     from routes.surveys import FTE_ALIGNMENT_QUESTIONS
     result['questions'] = FTE_ALIGNMENT_QUESTIONS
-    result['cycles'] = [process.clean(r) for r in await db.performance_cycles.find(process.scoped(user, {'workflow_version': 3})).sort('starts_on', -1).to_list(50)]
+    result['cycles'] = [{**process.clean(r), 'id':str(r.get('id') or r['_id'])} for r in await db.performance_cycles.find(process.scoped(user)).sort('starts_on', -1).to_list(50)]
     result['reviewers'] = [{'id': process.employee_key(e), 'name': e.get('full_name'), 'department': e.get('department')} for e in
                            await db.employees.find(process.tenant_query(process.tenant_of(user))).to_list(None)
                            if process.enabled(e) and process.fte(e) and not process.ed(e)]
@@ -17,7 +17,7 @@ async def dashboard(db, user):
         employee = await flow.employee_access(db, user, row['employee_id'])
         visible = process.projection(row, user, employee)
         result['reviews'].append(visible)
-    result['peer_progress'] = await peer_progress(db, user, result['cycles'], result['employees'])
+    result['peer_progress'] = await peer_progress(db, user, [c for c in result['cycles'] if c.get('workflow_version')==3], result['employees'])
     return result
 
 
