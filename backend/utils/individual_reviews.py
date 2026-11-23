@@ -36,7 +36,7 @@ async def create(db, user, body):
         start, self_due, manager_due, hr_due = [date.fromisoformat(body[key]) for key in ("starts_on", "self_due_on", "manager_due_on", "review_due_on")]
     except (KeyError, TypeError, ValueError): flow.fail("Enter all four review dates")
     today = datetime.now(timezone(timedelta(hours=3))).date()
-    if start.year != year or not start <= self_due <= manager_due <= hr_due or self_due < today:
+    if start.year != year or not start <= self_due <= manager_due <= hr_due or (manager_due if kind=='Probation' else self_due) < today:
         flow.fail("Dates must follow start, employee deadline, manager deadline and HR deadline; submission deadlines cannot be in the past")
     if kind != "Probation" and hr_due > start + timedelta(days=27):
         flow.fail("Mid-year and year-end review deadlines must fit within four weeks of the start")
@@ -47,7 +47,7 @@ async def create(db, user, body):
     if kind == "Probation":
         if body.get("policy") or body.get("policy_confirmed"):
             flow.fail("Probation reviews use qualitative review criteria, not weighted annual scores")
-        policy = {"source": "probation_form_08", "approved_by": user["id"], "approved_at": flow.now()}
+        policy = {"source": "probation_manager_led_v2", "approved_by": user["id"], "approved_at": flow.now()}
     else:
         if body.get("policy_confirmed") is not True or body.get("policy") not in flow.POLICIES:
             flow.fail("HR must confirm the selected scoring policy in this popup")
@@ -58,7 +58,11 @@ async def create(db, user, body):
         "status": "Draft", "section_a_kpis": [], "starts_on": start.isoformat(), "self_due_on": self_due.isoformat(),
         "manager_due_on": manager_due.isoformat(), "review_due_on": hr_due.isoformat(), "scoring_policy": policy,
         "created_at": flow.now(), "updated_at": flow.now()}
-    if kind == "Probation": row["review_month"] = body["review_month"]
+    if kind == "Probation":
+        row.update(review_month=body['review_month'],probation_workflow_version=2)
+        from utils.probation_reviews import prepare
+        row=await prepare(db,row,employee)
+        if row.get('probation_kpi_issue'): flow.fail(row['probation_kpi_issue'],409)
     await flow.audit(db, user, "performance.review.created", row, employee_id=employee_key(employee), review_type=kind, dates={k:row[k] for k in ("starts_on","self_due_on","manager_due_on","review_due_on")})
     await db.performance_reviews.insert_one(row)
     await flow.notify(db, row, "created")
@@ -66,27 +70,6 @@ async def create(db, user, body):
 
 
 async def probation_assessment(db, user, row, employee, stage, body):
-    from utils import performance_workflows as flow
-    own = employee_key(employee) == user.get("employee_id")
-    if stage == "manager":
-        from utils.employee_integrity import is_direct_report
-        await flow.employee_access(db, user, row["employee_id"], write=True)
-        if own or not is_direct_report(employee, user): flow.fail("Only the current reporting manager may assess probation", 403)
-        if row.get("status") != "Self_Submitted": flow.fail("Employee self-assessment must be submitted first", 409)
-        if set(body) != {"summary", "delivery_rating", "values_rating", "specific_examples", "areas_for_improvement", "recommendation"}:
-            flow.fail("Provide the probation review fields only")
-        if body["delivery_rating"] not in {"Exceeds", "Meets", "Approaching", "Below"} or body["values_rating"] not in {"Strong", "Adequate", "Concerns"}:
-            flow.fail("Select valid probation ratings")
-        allowed = {"Continue probation"} if row.get("review_month") in (1,2) else {"Confirm", "Extend by 1 month", "Fail"}
-        if body["recommendation"] not in allowed: flow.fail("Select a recommendation appropriate to this probation month")
-        assessment = {k:flow.text(body[k], k.replace('_',' ')) for k in body}
-        assessment.update(actor_id=user["id"], submitted_at=flow.now())
-        update = {"manager_assessment": assessment, "status":"Manager_Submitted"}
-    else:
-        flow.require_hr(user)
-        if own: flow.fail("HR cannot approve their own probation review", 403)
-        if row.get("status") != "Manager_Submitted": flow.fail("Manager assessment must be submitted first", 409)
-        if set(body) != {"summary"}: flow.fail("Probation approval accepts an HR summary, not numeric scores or employment-status changes")
-        update = {"hr_summary":flow.text(body["summary"], "HR summary"), "hr_reviewed_by":user["id"], "hr_reviewed_at":flow.now(), "status":"HR_Reviewed"}
-    await flow.save(db,user,row,update,"performance.assessment."+stage)
-    return flow.projection(row,user,employee)
+    """Compatibility entry point; all probation actions use the manager-led rules."""
+    from utils.probation_reviews import assess, prepare
+    return await assess(db, user, await prepare(db,row,employee), employee, stage, body)

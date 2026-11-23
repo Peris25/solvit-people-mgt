@@ -304,8 +304,8 @@ export default function Performance() {
         </div>
       )}
 
-      {viewReview && ownEditableReview && <EmployeeSelfReviewDialog review={viewReview} onUpdated={load} onClose={() => setViewReview(null)} />}
-      {viewReview && !ownEditableReview && (
+      {viewReview && (ownEditableReview||viewReview.manager_led_probation) && <EmployeeSelfReviewDialog review={viewReview} onUpdated={load} onClose={() => setViewReview(null)} />}
+      {viewReview && !ownEditableReview && !viewReview.manager_led_probation && (
         <div className="solvit-no-print" style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '24px' }}>
           <div style={{ backgroundColor: '#fff', width: '720px', maxHeight: '90vh', overflowY: 'auto', border: '1px solid rgba(25,25,25,0.15)' }}>
             <div className="solvit-no-print" style={{ padding: '18px 24px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

@@ -11,7 +11,7 @@ def version(row):
 
 def removable(row):
     if row.get("status") != "Draft": return False
-    fields = ("self_assessment", "manager_assessment", "hr_summary", "released_at", "released_by", "review_meeting",
+    fields = ("probation_manager_draft", "probation_meeting", "probation_acknowledgement", "self_assessment", "manager_assessment", "hr_summary", "released_at", "released_by", "review_meeting",
         "meeting_proposal", "employee_signature", "manager_signature", "hr_signature", "submitted_at", "completed_at", "form_data_json",
         "section_a_score", "section_b_score", "section_c_score", "section_c_nps", "section_c_csat", "overall_score", "rating", "nine_box_placement")
     return not any(row.get(key) not in (None, "", [], {}) for key in fields)

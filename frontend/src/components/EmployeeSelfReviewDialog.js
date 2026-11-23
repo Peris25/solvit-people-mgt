@@ -18,7 +18,7 @@ export default function EmployeeSelfReviewDialog({ review, onUpdated, onClose })
       }
     }
   }}>
-    <header className="pv-self-review-header"><div><h1 id="employee-self-review-title">Complete your self-review</h1><p>{review.employee_name} · {review.role_title}</p><p>{review.cycle_type?.replaceAll('_', ' ')} {review.cycle_year}{review.review_month ? ` · Month ${review.review_month}` : ''}</p></div><button ref={first} type="button" onClick={onClose}>Close</button></header>
+    <header className="pv-self-review-header"><div><h1 id="employee-self-review-title">{review.manager_led_probation?'Probation performance review':'Complete your self-review'}</h1><p>{review.employee_name} · {review.role_title}</p><p>{review.cycle_type?.replaceAll('_', ' ')} {review.cycle_year}{review.review_month ? ` · Month ${review.review_month}` : ''}</p></div><button ref={first} type="button" onClick={onClose}>Close</button></header>
     <div data-testid="review-view-modal"><PerformanceWorkflow key={review.id} review={review} onUpdated={onUpdated} /></div>
   </section></div>;
 }

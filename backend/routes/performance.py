@@ -256,6 +256,8 @@ async def list_reviews(request: Request, employee_id: Optional[str] = None, cycl
         except HTTPException as error:
             if error.status_code in (403, 404): continue
             raise
+        from utils.probation_reviews import applies, prepare
+        if applies(row): row = await prepare(db,row,employee)
         out.append(workflow.projection(row, user, employee))
     return out
 

@@ -128,6 +128,8 @@ async def performance_action(db, employee, manager, row, event):
     addresses = []
     if base == 'created':
         addresses = [await employee_address(db, employee_key(employee), tenant)]
+        if row.get('cycle_type') == 'Probation' and manager:
+            addresses.append(await employee_address(db,employee_key(manager),tenant))
         subject, message = 'Your performance review is ready', 'HR has created your performance review. Open it to check the assessment deadlines and instructions.'
     elif base in {'performance.assessment.manager', 'performance.meeting.proposed'}:
         addresses = await role_addresses(db, HR_EMAIL_ROLES, tenant)

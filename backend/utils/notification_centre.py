@@ -332,12 +332,15 @@ async def list_inbox(db, user, *, category=None, kind=None, read_status="all", o
                     return None
             if event == "performance.assessment.manager":
                 if (row.get("data") or {}).get("employee_id") == user.get("employee_id"):
-                    return None  # Another HR user must arrange this person's meeting.
-                title, message = "Arrange performance review meeting", "A manager has approved a performance assessment. Open the review to schedule the meeting."
+                    if current_review.get('cycle_type')!='Probation': return None
+                    title,message='Probation assessment ready for discussion','Your line manager submitted the assessment. Read it, add comments and discuss it in your review meeting.'
+                else: title, message = "Arrange performance review meeting", "A manager has approved a performance assessment. Open the review to schedule the meeting."
             elif event == "performance.assessment.self":
                 title, message = "Performance assessment awaiting manager review", "An employee has submitted their self-assessment. Open the review to assess and approve."
             elif event == "created":
                 title, message = "Your performance review is available", "Open your review to agree goals and complete your self-assessment."
+                if current_review.get('cycle_type')=='Probation':
+                    title,message='Probation review opened','The line manager assesses KPIs and values first. The employee adds comments after submission and acknowledges the released outcome.'
             elif event == "performance.meeting.proposed":
                 title, message = "Review meeting date proposed", "The line manager proposed a review date. Open the review for details; HR confirmation is pending."
             elif event == "performance.meeting.scheduled":

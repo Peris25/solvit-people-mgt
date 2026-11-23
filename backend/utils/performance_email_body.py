@@ -56,6 +56,22 @@ async def body(db, notification, recipient_id=None, *, saved_review=None, saved_
             deadline('Submit your peer review by', (task or {}).get('due_on') or row.get('peer_due_on')), 'Use the link below to open the peer review in Solvit People.'])
     context = f'This is your own {period} performance review.' if own else f'This concerns {name}’s {period} performance review. '
     if not own: context += 'You are receiving this as their line manager.' if manager else 'You are receiving this for HR follow-up.'
+    if row.get('cycle_type')=='Probation' and label in {'created','performance.assessment.manager','performance.assessment.release','performance.probation.meeting_completed','performance.probation.acknowledged'}:
+        if label=='created':
+            action='Complete the employee’s KPI and five values assessment, record supporting evidence and submit it. The employee does not self-score.' if manager else 'Your line manager will assess your KPIs and values first. You will then discuss the results together, add your comments and acknowledge the outcome after HR releases it. You do not need to submit a self-assessment.'
+            timing=deadline('Manager assessment due',row.get('manager_due_on'))
+        elif label=='performance.assessment.manager':
+            action='Your line manager has submitted the probation assessment. Open it to read the findings and add your comments. Discuss the results and development actions in your review meeting.' if own else 'The manager has submitted the probation assessment. Arrange the employee–manager review meeting. Record its completion before approving the outcome.'
+            timing=deadline('HR completion due',row.get('review_due_on'))
+        elif label=='performance.assessment.release':
+            action='HR has released your probation outcome. Open the review, read it and acknowledge receipt. Acknowledgement does not mean agreement; you may record comments or disagreement.'
+            timing=''
+        elif label=='performance.probation.meeting_completed':
+            action='The probation review meeting has been recorded as completed. Review the discussion and agreed actions, then record HR’s outcome approval and release it to the employee.'
+            timing=deadline('HR completion due',row.get('review_due_on'))
+        else:
+            action='The employee has acknowledged receipt of the probation review. Open the record to check the acknowledgement and any employee comments.';timing=''
+        return '\n\n'.join(part for part in [greeting,context,action,timing,'Use the link below to open the probation review in Solvit People.'] if part)
     if label == 'manager-week2' or 'team performance cycle is open' in title:
         action = f'HR has opened the review for {name}. They should complete their self-review first. Once it is submitted, review their actual results and self-scores, enter your manager scores and comments, then submit to HR.'
         timing = deadline('Employee self-review due', row.get('self_due_on')) + ' ' + deadline('Your manager assessment due', row.get('manager_due_on'))

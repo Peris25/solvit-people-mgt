@@ -39,6 +39,8 @@ def test_validation_rejects_unapproved_policy_invalid_dates_and_identity(changes
 
 def probation(db,users,month=1):
     db.employees.docs[0]['lifecycle_state']='Onboarding'
+    from .test_probation_manager_led import assign
+    if not db.system_settings.docs: assign(db)
     return run(flow.create_review(db,users['hr'],body(cycle_type='Probation',review_month=month,policy=None,policy_confirmed=False)))
 
 
@@ -47,23 +49,22 @@ def test_probation_months_distinct_eligible_and_no_scoring_or_status_mutation():
     with pytest.raises(HTTPException):run(flow.create_review(db,users['hr'],body(cycle_type='Probation',review_month=1,policy=None,policy_confirmed=False)))
     one=probation(db,users,1); two=probation(db,users,2)
     assert one['id']!=two['id'] and one['review_month']==1
-    assert one['scoring_policy']['source']=='probation_form_08' and 'weights' not in one['scoring_policy']
+    assert one['scoring_policy']['source']=='probation_manager_led_v2' and 'weights' not in one['scoring_policy']
     assert db.employees.docs[0]['lifecycle_state']=='Onboarding'
     with pytest.raises(HTTPException):probation(db,users,1)
 
 
-def test_probation_self_manager_hr_release_and_meeting_flow_has_no_numeric_scores():
+def test_probation_manager_first_meeting_hr_release_has_separate_scores_and_no_status_mutation():
     db,users=fixture(); row=probation(db,users,3); ref=row['id']
-    run(flow.assess(db,users['staff'],ref,'self',self_body()))
-    assessment={'summary':'Verified review','delivery_rating':'Meets','values_rating':'Strong',
-        'specific_examples':'Recorded work evidence','areas_for_improvement':'None','recommendation':'Confirm'}
+    from .test_probation_manager_led import payload,act,completed_meeting
+    with pytest.raises(HTTPException):run(flow.assess(db,users['staff'],ref,'self',self_body()))
+    assessment=payload(db,ref)
     with pytest.raises(HTTPException):run(flow.assess(db,users['staff'],ref,'manager',assessment))
     run(flow.assess(db,users['manager'],ref,'manager',assessment))
-    run(flow.propose_meeting(db,users['manager'],ref,{'scheduled_at':'2099-01-20T10:00:00+03:00'}))
-    run(flow.schedule_meeting(db,users['hr'],ref,{'scheduled_at':'2099-01-20T10:00:00+03:00','location':'Meeting room'}))
-    with pytest.raises(HTTPException):run(flow.assess(db,users['hr'],ref,'hr',{'summary':'Verified','overall_score':1}))
-    run(flow.assess(db,users['hr'],ref,'hr',{'summary':'Discussed manager recommendation and next steps'}))
-    result=run(flow.assess(db,users['hr'],ref,'release',{}))
+    completed_meeting(db,users,ref)
+    with pytest.raises(HTTPException):act(db,users,ref,'hr','hr',{'summary':'Verified','overall_score':1})
+    act(db,users,ref,'hr','hr',{'summary':'Discussed manager recommendation and next steps','outcome':'Confirm'})
+    result=act(db,users,ref,'hr','release',{})
     assert result['status']=='Completed' and result.get('overall_score') is None
     assert db.employees.docs[0]['lifecycle_state']=='Onboarding'
     assert any(n.get('data',{}).get('performance_event')=='performance.meeting.scheduled' for n in db.notifications.docs)
@@ -71,8 +72,7 @@ def test_probation_self_manager_hr_release_and_meeting_flow_has_no_numeric_score
 
 def test_probation_rejects_final_recommendation_before_final_month():
     db,users=fixture(); row=probation(db,users,1)
-    run(flow.assess(db,users['staff'],row['id'],'self',self_body()))
-    with pytest.raises(HTTPException):run(flow.assess(db,users['manager'],row['id'],'manager',{
-        'summary':'Verified','delivery_rating':'Meets','values_rating':'Strong','specific_examples':'Evidence',
-        'areas_for_improvement':'None','recommendation':'Confirm'}))
-    assert db.performance_reviews.docs[0]['status']=='Self_Submitted'
+    from .test_probation_manager_led import payload
+    data=payload(db,row['id']);data['recommendation']='Confirm'
+    with pytest.raises(HTTPException):run(flow.assess(db,users['manager'],row['id'],'manager',data))
+    assert db.performance_reviews.docs[0]['status']=='Draft'

@@ -103,6 +103,9 @@ def projection(row, user, employee=None):
     if result["can_delete"]: result["delete_version"] = version(row)
     if user.get("role") in HR:
         result["manager_email_status"] = row.get("manager_email_status")
+    if employee:
+        from utils.probation_reviews import applies, project
+        if applies(row): result = project(row,user,employee,result)
     return result
 
 
@@ -116,6 +119,12 @@ async def notify(db, row, event):
         recipients.append(("employee", employee_key(employee)))
     if manager and (base_event in {"performance.goals.acknowledged", "performance.meeting.scheduled"} or (base_event == "performance.assessment.self" and row.get("status") == "Self_Submitted")):
         recipients.append(("employee", employee_key(manager)))
+    if row.get('cycle_type') == 'Probation' and manager and base_event == 'created':
+        recipients.append(('employee',employee_key(manager)))
+    if row.get('cycle_type') == 'Probation' and base_event == 'performance.assessment.manager':
+        recipients.append(('employee',employee_key(employee)))
+    if base_event == 'performance.probation.meeting_completed':
+        recipients.extend(('role',role) for role in ('hr_admin','hr_manager'))
     if base_event in {"performance.assessment.manager", "performance.meeting.proposed"}:
         recipients.extend(("role", role) for role in ("hr_admin", "hr_manager", "general_manager"))
     for kind, recipient in recipients:
@@ -164,6 +173,7 @@ async def launch_cycle(db, user, reference):
 
 async def propose_meeting(db, user, reference, body):
     row, employee = await record(db, user, reference)
+    if row.get('cycle_type') == 'Probation' and row.get('meeting_completed_at'): fail('The completed probation meeting cannot be rescheduled',409)
     personal_grant(user, "M05", write=True)
     if employee_key(employee) == user.get("employee_id") or not is_direct_report(employee, user):
         fail("Only the reporting manager may propose this meeting", 403)
@@ -190,6 +200,7 @@ def meeting_time(value):
 async def schedule_meeting(db, user, reference, body):
     require_hr(user)
     row, employee = await record(db, user, reference)
+    if row.get('cycle_type') == 'Probation' and row.get('meeting_completed_at'): fail('The completed probation meeting cannot be rescheduled',409)
     if employee_key(employee) == user.get("employee_id"):
         fail("Another authorized HR user must arrange your review meeting", 403)
     if row.get("workflow_version") != 1 or row.get("status") not in {"Manager_Submitted", "HR_Reviewed"}:
@@ -342,6 +353,8 @@ async def create_review(db, user, body):
 async def record(db, user, reference):
     row = await find_linked_record(db.performance_reviews, reference, user)
     employee = await employee_access(db, user, row.get("employee_id"))
+    from utils.probation_reviews import applies, prepare
+    if applies(row): row = await prepare(db,row,employee)
     return row, employee
 
 
@@ -357,6 +370,7 @@ async def save(db, user, row, update, event):
 
 async def goals(db, user, reference, body):
     row, employee = await record(db, user, reference)
+    if row.get('cycle_type') == 'Probation': fail('Probation uses the approved employee KPI assignment; edit it through HR assignment controls.',409)
     if row.get("workflow_version") != 1 or row.get("status") not in {"Draft", "Self_Draft", "Self_Submitted"}:
         fail("Goals are locked for this review stage", 409)
     actor = body.get("action")
@@ -421,9 +435,9 @@ async def assess(db, user, reference, stage, body):
                 "publication_approval_reference": reference}, "performance.historical.released")
         return projection(row, user, employee)
     if row.get("workflow_version") != 1: fail("Historical reviews require an approved reconciliation; scores are preserved", 409)
-    if row.get("cycle_type") == "Probation" and stage in {"manager", "hr"}:
-        from utils.individual_reviews import probation_assessment
-        return await probation_assessment(db,user,row,employee,stage,body)
+    if row.get('cycle_type') == 'Probation':
+        from utils.probation_reviews import assess as probation_assess
+        return await probation_assess(db,user,row,employee,stage,body)
     status, own = row.get("status"), employee_key(employee) == user.get("employee_id")
     if stage == "self":
         personal_grant(user, "M05", write=True)

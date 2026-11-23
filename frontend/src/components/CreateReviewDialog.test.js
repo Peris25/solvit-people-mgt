@@ -9,7 +9,7 @@ const employees=[{id:'staff',full_name:'Synthetic Active',lifecycle_state:'Activ
 beforeEach(()=>{container=document.createElement('div');document.body.appendChild(container);root=createRoot(container);});
 afterEach(async()=>{await act(async()=>root.unmount());container.remove();jest.resetAllMocks();});
 const change=async(label,value)=>{await act(async()=>{const input=container.querySelector(`[aria-label="${label}"]`);Object.getOwnPropertyDescriptor(input.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));});};
-const dates=async()=>{for(const [label,value] of [['Review start','2099-01-01'],['Employee submission deadline','2099-01-07'],['Manager submission deadline','2099-01-14'],['HR completion deadline','2099-01-28']])await change(label,value);};
+const dates=async()=>{for(const [label,value] of [['Review start','2099-01-01'],['Employee submission deadline','2099-01-07'],['Manager submission deadline','2099-01-14'],['HR completion deadline','2099-01-28']])if(container.querySelector(`[aria-label="${label}"]`))await change(label,value);};
 const submit=async()=>act(async()=>container.querySelector('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
 
 test('one popup sends selected employee, type, all dates and explicit scoring approval',async()=>{
@@ -28,9 +28,11 @@ test('probation filters employees and submits month without weighted scoring set
  expect(container.querySelector('[aria-label="Review employee"]').textContent).not.toContain('Synthetic Active');
  expect(container.querySelector('[aria-label="Review employee"]').textContent).toContain('Synthetic New');
  expect(container.querySelector('[aria-label="Review scoring policy"]')).toBeNull();
+ expect(container.querySelector('[aria-label="Employee submission deadline"]')).toBeNull();
  await change('Review employee','new');await change('Probation review month','2');await dates();await submit();
  expect(api.createReview).toHaveBeenCalledWith(expect.objectContaining({employee_id:'new',cycle_type:'Probation',review_month:2}));
  expect(api.createReview.mock.calls[0][0].policy).toBeUndefined();
+ expect(api.createReview.mock.calls[0][0].self_due_on).toBe('2099-01-01');
 });
 
 test('server validation keeps populated popup open and never announces false success',async()=>{
