@@ -1,4 +1,4 @@
-"""Explicit Grace-only KPI correction. Preview by default; never runs at startup.
+"""Grace-only, HR-approved KPI correction. CLI previews by default.
 
 Run in the backend environment with its existing MONGO_URL and DB_NAME.
 --apply requires the exact preview fingerprint. No notifications are created.
@@ -20,6 +20,8 @@ from database import init_db, close_db
 from utils import performance_v3 as process, role_kpi_library as library
 from utils.employee_integrity import integrity_write, tenant_query, employee_key
 from utils.staff_views import token
+
+REPAIR_ID = process.key('approved-data-correction', 'solvit', 'grace-finance-global-weights-20261123')
 
 WEIGHTS = {'scheduled':15, 'schedule_tat':10, 'pending':15, 'approval_tat':15,
            'throughput':10, 'mismatch':5, 'invoicing':10, 'collections':10, 'payments':10}
@@ -90,10 +92,10 @@ def fingerprint(plan):
 
 async def apply(db, expected):
     async with integrity_write(db):
+        if await db.audit_logs.find_one({'_id':REPAIR_ID}): return {'status':'already_applied','changed_records':0}
         plan=await prepare(db)
         require(fingerprint(plan)==expected, 'Records changed since preview; prepare a fresh plan.')
         employee,assigned,changes=plan
-        if not changes: return {'status':'already_correct','changed_records':0}
         now=datetime.now(timezone.utc).isoformat()
         assignment_version=str(uuid.uuid4()) if any(name=='system_settings' for name,_,_ in changes) else assigned['version']
         async with await db.client.start_session() as session:
@@ -106,15 +108,17 @@ async def apply(db, expected):
                     if name=='performance_reviews': update['kpi_assignment_version']=assignment_version
                     result=await db[name].update_one({'_id':original['_id'],'version':original['version']},{'$set':update},session=session)
                     require(result.modified_count==1, 'Record update not confirmed; transaction cancelled.')
-                await db.audit_logs.insert_one({'tenant_id':'solvit','event':'performance.finance.grace_weights_corrected','entity_id':employee_key(employee),'actor_id':'operator:approved-grace-kpi-correction','timestamp':now,'metadata':{'repair_plan':expected,'reason':'HR-approved combined nine KPI weights, 23 November 2026','changed_records':len(changes)}},session=session)
+                await db.audit_logs.insert_one({'_id':REPAIR_ID,'tenant_id':'solvit','event':'performance.finance.grace_weights_corrected','entity_id':employee_key(employee),'actor_id':'operator:approved-grace-kpi-correction','timestamp':now,'metadata':{'repair_plan':expected,'reason':'HR-approved combined nine KPI weights, 23 November 2026','changed_records':len(changes)}},session=session)
         verified=await prepare(db)
         require(not verified[2], 'Saved state needs review; do not rerun automatically.')
-        return {'status':'corrected_and_verified','changed_records':len(changes),'weights':list(WEIGHTS.values())}
+        return {'status':'corrected_and_verified' if changes else 'already_correct','changed_records':len(changes),'weights':list(WEIGHTS.values())}
 
 
 async def main(args):
     db=await init_db()
     try:
+        if await db.audit_logs.find_one({'_id':REPAIR_ID}):
+            print(json.dumps({'status':'already_applied','changed_records':0})); return
         plan=await prepare(db); digest=fingerprint(plan)
         if args.apply:
             require(args.confirm_plan==digest, 'Apply requires --confirm-plan with the reviewed preview fingerprint.')

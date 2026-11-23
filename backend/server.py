@@ -173,7 +173,9 @@ app.include_router(solver_intake_router, prefix=API_PREFIX)
 
 @app.get("/api/health")
 async def health():
-    return {"status": "healthy", "app": "Solvit People Platform"}
+    return {"status": "healthy", "app": "Solvit People Platform",
+            "release": os.environ.get("RENDER_GIT_COMMIT"),
+            "data_updates": {"approved_finance_weights": getattr(app.state, "finance_weight_correction", "pending")}}
 
 
 SESSION_EXEMPT_ENDPOINTS.add(health)
@@ -205,6 +207,10 @@ async def startup():
     # Hydrate runtime access overrides + custom roles from MongoDB
     from utils.access_matrix import load_runtime_state
     await load_runtime_state(db)
+    # Explicit one-time HR-approved correction for Grace, protected by identity,
+    # review-state and transaction checks. Never creates reviews or notifications.
+    from utils.approved_kpi_correction import run as correct_approved_finance_weights
+    app.state.finance_weight_correction = await correct_approved_finance_weights(db)
     # Start automation engine
     await automation_engine.start(db)
     # Start reminder engine (registers cron jobs for all enabled rules)

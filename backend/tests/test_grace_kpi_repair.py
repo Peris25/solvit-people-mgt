@@ -73,7 +73,7 @@ def test_apply_updates_only_grace_and_untouched_review_with_backups_and_audit():
     assert db.performance_reviews.docs[0]['kpi_assignment_version']==db.system_settings.docs[0]['version']
     assert len(db.removed_employee_records.docs)==2 and len(db.audit_logs.docs)==1 and not db.notifications.docs
     digest=repair.fingerprint(run(repair.prepare(db)))
-    assert run(repair.apply(db,digest))['status']=='already_correct'
+    assert run(repair.apply(db,digest))['status']=='already_applied'
     assert len(db.audit_logs.docs)==1
 
 
@@ -104,3 +104,23 @@ def test_ambiguous_objective_or_wrong_person_prevents_any_repair():
     with pytest.raises(HTTPException): run(repair.prepare(db))
     db=fixture(); db.system_settings.docs[0]['values']['goals'][0]['objective']='Unrecognised KPI'
     with pytest.raises(HTTPException): run(repair.prepare(db))
+
+
+
+def test_deployment_correction_runs_once_and_does_not_overwrite_later_hr_amendments():
+    from utils import approved_kpi_correction
+    db=fixture()
+    assert run(approved_kpi_correction.run(db))=='applied'
+    assert [g['weight'] for g in db.system_settings.docs[0]['values']['goals']]==[15,10,15,15,10,5,10,10,10]
+    db.system_settings.docs[0]['values']['goals'][0]['weight']=14
+    assert run(approved_kpi_correction.run(db))=='applied'
+    assert db.system_settings.docs[0]['values']['goals'][0]['weight']==14
+    assert len(db.audit_logs.docs)==1 and not db.notifications.docs
+
+
+def test_deployment_reports_protected_reviews_without_changing_records():
+    from utils import approved_kpi_correction
+    db=fixture(); db.performance_reviews.docs[0]['status']='Self_Submitted'
+    before=deepcopy(db.system_settings.docs)
+    assert run(approved_kpi_correction.run(db))=='needs_review'
+    assert db.system_settings.docs==before and not db.audit_logs.docs
