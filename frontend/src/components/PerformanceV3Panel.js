@@ -11,6 +11,8 @@ const dateAfter = (start, days) => start ? new Date(new Date(`${start}T12:00:00Z
 
 export function V3CycleDialog({ employees, cycles = [], questions = [], onClose, onCreated }) {
   const [selected, setSelected] = useState([]);
+  const [receipt, setReceipt] = useState(null);
+  const receiptControl = useRef(null);
   const [existing, setExisting] = useState('');
   const [form, setForm] = useState({ cycle_type: 'Year_End', cycle_year: new Date().getFullYear(), starts_on: '', approval_reference: '', alignment_confirmed: false });
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
@@ -19,38 +21,44 @@ export function V3CycleDialog({ employees, cycles = [], questions = [], onClose,
     const previous = document.activeElement; firstControl.current?.focus();
     return () => previous?.focus?.();
   }, []);
+  useEffect(() => { if (receipt) receiptControl.current?.focus(); }, [receipt]);
   const set = (key, value) => setForm(old => ({ ...old, [key]: value }));
   const submit = async event => {
     event.preventDefault(); setBusy(true); setError('');
     try {
       let id = existing;
-      if (!id) { const response = await api.performanceV3Action('cycles', 'new', 'create', form); id = response.data.id; setExisting(id); }
-      await api.performanceV3Action('cycles', id, 'open', { employee_ids: selected });
-      await onCreated();
-    } catch (err) { setError(errorText(err)); } finally { setBusy(false); }
+      if (!id) { const response = await api.performanceV3Action('cycles', 'new', 'create', form); id = response?.data?.id; if (!id) throw new Error('SEND_UNCONFIRMED'); setExisting(id); }
+      const response = await api.performanceV3Action('cycles', id, 'open', { employee_ids: selected });
+      if (response?.data?.id !== id || response?.data?.status !== 'Open') throw new Error('SEND_UNCONFIRMED');
+      setReceipt({ count: selected.length, cycleId: id });
+    } catch (err) { setError(err?.message === 'SEND_UNCONFIRMED' ? 'Sending could not be confirmed. Check the review cycle tracker before trying again. Your selection has been kept.' : errorText(err)); } finally { setBusy(false); }
   };
   return <div className="performance-v3"><div className="pv-modal"><section role="dialog" aria-modal="true" aria-labelledby="pv-create-title" className="pv-dialog" onKeyDown={e => {
-    if (e.key === 'Escape' && !busy) onClose();
+    if (e.key === 'Escape' && !busy) { if (receipt) onCreated(receipt); else onClose(); }
     if (e.key === 'Tab') {
       const controls = [...e.currentTarget.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)')];
-      if (document.activeElement === (e.shiftKey ? controls[0] : controls[controls.length - 1])) {
+      if (!controls.includes(document.activeElement) || document.activeElement === (e.shiftKey ? controls[0] : controls[controls.length - 1])) {
         e.preventDefault(); (e.shiftKey ? controls[controls.length - 1] : controls[0])?.focus();
       }
     }
   }}>
-    <h2 id="pv-create-title">Create and send performance reviews</h2><p>Select employees with approved KPIs and a saved line manager. The four-week cycle includes self-review, peer feedback, manager assessment and meetings.</p>
+    <h2 id="pv-create-title">{receipt ? 'Review requests confirmed' : 'Create and send performance reviews'}</h2>
+    {receipt && <div role="status" tabIndex={-1} ref={receiptControl}><p><strong>Reviews are available for {receipt.count} selected {receipt.count === 1 ? 'employee' : 'employees'}.</strong></p><p>Follow their progress in the review cycle tracker. Email delivery is handled by the configured notification service.</p><button type="button" className="primary" onClick={() => onCreated(receipt)}>Done - view tracker</button></div>}
+    {!receipt && <><p>Select employees with approved KPIs and a saved line manager. The four-week cycle includes self-review, peer feedback, manager assessment and meetings.</p>
     <p className="pv-note">Notifications are queued when you click Create and send reviews. A future start date does not delay sending. To notify staff on Monday morning, complete this action then.</p>
     {error && <p role="alert">{error}</p>}
-    <form onSubmit={submit}><label>Cycle<select ref={firstControl} value={existing} onChange={e => setExisting(e.target.value)}><option value="">Create a new cycle</option>{cycles.filter(c => c.status !== 'Archived').map(c => <option key={c.id} value={c.id}>{c.cycle_type.replaceAll('_', ' ')} {c.cycle_year} · {c.starts_on}</option>)}{existing && !cycles.some(c => c.id === existing) && <option value={existing}>Prepared cycle — retry sending</option>}</select></label>
-      {!existing && <><div className="pv-grid"><label>Review type<select value={form.cycle_type} onChange={e => set('cycle_type', e.target.value)}><option value="Year_End">Year-end</option><option value="Mid_Year">Mid-year</option></select></label><label>Year<input required type="number" min="2000" max="2100" value={form.cycle_year} onChange={e => set('cycle_year', Number(e.target.value))} /></label><label>Start date<input required type="date" value={form.starts_on} onChange={e => set('starts_on', e.target.value)} /></label></div>
+    <form onSubmit={submit}><label>Cycle<select ref={firstControl} disabled={busy} value={existing} onChange={e => setExisting(e.target.value)}><option value="">Create a new cycle</option>{cycles.filter(c => c.status !== 'Archived').map(c => <option key={c.id} value={c.id}>{c.cycle_type.replaceAll('_', ' ')} {c.cycle_year} · {c.starts_on}</option>)}{existing && !cycles.some(c => c.id === existing) && <option value={existing}>Prepared cycle — retry sending</option>}</select></label>
+      {!existing && <><div className="pv-grid"><label>Review type<select disabled={busy} value={form.cycle_type} onChange={e => set('cycle_type', e.target.value)}><option value="Year_End">Year-end</option><option value="Mid_Year">Mid-year</option></select></label><label>Year<input disabled={busy} required type="number" min="2000" max="2100" value={form.cycle_year} onChange={e => set('cycle_year', Number(e.target.value))} /></label><label>Start date<input disabled={busy} required type="date" value={form.starts_on} onChange={e => set('starts_on', e.target.value)} /></label></div>
         <p className="pv-note">Self and peer deadline: {dateAfter(form.starts_on, 6)}<br />Manager deadline: {dateAfter(form.starts_on, 13)}<br />Meetings and HR release by: {dateAfter(form.starts_on, 27)}<br />Scoring: KPIs 50% · Values 30% · Company NPS/CSAT 20%.</p>
-        <label>MD/HR policy approval reference<input required value={form.approval_reference} onChange={e => set('approval_reference', e.target.value)} /></label>
+        <label>MD/HR policy approval reference<input disabled={busy} required value={form.approval_reference} onChange={e => set('approval_reference', e.target.value)} /></label>
         <details><summary>Alignment Survey questions</summary><p>1 = Strongly Disagree; 2 = Disagree; 3 = Neutral; 4 = Agree; 5 = Strongly Agree.</p>{ALIGNMENT_PILLARS.map((title, index) => <section key={title} aria-label={title}><h3>{title}</h3><ol>{questions.filter(q => q.pillar === index + 1).map(q => <li key={q.id}>{q.text}</li>)}</ol></section>)}</details>
-        <label><span><input type="checkbox" required checked={form.alignment_confirmed} onChange={e => set('alignment_confirmed', e.target.checked)} /> HR confirms the fixed scoring policy and the displayed Alignment Survey questions.</span></label></>}
-      <label>Employees<select aria-label="Review employee" multiple required size={Math.min(8, Math.max(3, employees.length))} value={selected} onChange={e => setSelected([...e.target.selectedOptions].map(o => o.value))}>{employees.map(e => <option key={e.id} value={e.id}>{e.name || e.full_name} — {e.role || e.role_title}</option>)}</select></label>
+        <label><span><input disabled={busy} type="checkbox" required checked={form.alignment_confirmed} onChange={e => set('alignment_confirmed', e.target.checked)} /> HR confirms the fixed scoring policy and the displayed Alignment Survey questions.</span></label></>}
+      <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:10}}><button type="button" disabled={busy || !employees.length} onClick={() => setSelected(employees.map(employee => employee.id))}>Select all listed employees</button><button type="button" disabled={busy || !selected.length} onClick={() => setSelected([])}>Clear selection</button></div>
+      <p role="status">{selected.length} of {employees.length} employees selected. Approved Annual KPIs and valid managers are checked before sending.</p>
+      <label>Employees<select aria-label="Review employee" disabled={busy} multiple required size={Math.min(8, Math.max(3, employees.length))} value={selected} onChange={e => setSelected([...e.target.selectedOptions].map(o => o.value))}>{employees.map(e => <option key={e.id} value={e.id}>{e.name || e.full_name} — {e.role || e.role_title}</option>)}</select></label>
       <p>Use Ctrl/Cmd to select several employees. MD reviews remain Board-administered. Probation reviews remain separate.</p>
       <button type="button" onClick={onClose} disabled={busy}>Cancel</button><button className="primary" disabled={busy || !selected.length}>{busy ? 'Sending…' : 'Create and send reviews'}</button>
-    </form></section></div></div>;
+    </form></>}</section></div></div>;
 }
 
 export default function PerformanceV3Panel({ user, onUpdated, createOpen, onCloseCreate, onOpenReview }) {
@@ -77,7 +85,7 @@ export default function PerformanceV3Panel({ user, onUpdated, createOpen, onClos
   return <section className="performance-v3" aria-label="Performance review workflow">
     {error && <div role="alert">{error} <button onClick={load}>Retry loading</button></div>}{message && <p role="status">{message}</p>}
     {hr && !setup && !error && <p>Loading review preparation…</p>}
-    {createOpen && hr && setup && <V3CycleDialog employees={setup.employees} cycles={setup.cycles} questions={tasks?.questions || setup.questions || []} onClose={onCloseCreate} onCreated={async () => { onCloseCreate(); await load(); await onUpdated(); }} />}
+    {createOpen && hr && setup && <V3CycleDialog employees={setup.employees} cycles={setup.cycles} questions={tasks?.questions || setup.questions || []} onClose={onCloseCreate} onCreated={async receipt => { setMessage(`Review requests confirmed for ${receipt.count} selected employees.`); onCloseCreate(); await load(); await onUpdated(); }} />}
     {hr && setup && <>
       <details className="pv-card"><summary>1. Assign approved KPIs to employees</summary><p>Choose a published role. HR can make approved individual changes before the cycle locks the KPIs.</p>
         <form onSubmit={e => { e.preventDefault(); perform(() => api.performanceV3Action('employees', employeeId, 'assign', { role_id: role, expected_version: employee?.assignment?.version || null, reason, role_change: roleChange, ...(individual ? { individual } : {}) })); }}>

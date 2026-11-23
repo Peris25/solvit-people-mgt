@@ -127,3 +127,37 @@ test('HR peer progress shows counts and shortfalls without reviewer pairings', a
   expect(section.querySelectorAll('.pv-score-gap')).toHaveLength(2);
   expect([...section.querySelectorAll('th')].map(e => e.textContent)).toEqual(['Employee','Cycle','Received','Chosen to review','Submitted','Synthetic staff']);
 });
+
+
+const submitCycleForm = async () => { await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))); };
+test('send all requires a confirmed Open cycle and leaves a visible receipt until Done', async () => {
+  const created = jest.fn();
+  api.performanceV3Action.mockImplementation((kind, id, action) => Promise.resolve({ data: action === 'create' ? { id: 'cycle' } : { id: 'cycle', status: 'Open' } }));
+  await render(<V3CycleDialog employees={[{id:'staff',name:'Synthetic staff'},{id:'other',name:'Synthetic other'}]} onClose={jest.fn()} onCreated={created} />);
+  await click('Select all listed employees');
+  expect(container.textContent).toContain('2 of 2 employees selected');
+  await submitCycleForm();
+  expect(api.performanceV3Action).toHaveBeenLastCalledWith('cycles','cycle','open',{employee_ids:['staff','other']});
+  expect(container.textContent).toContain('Reviews are available for 2 selected employees.');
+  expect(created).not.toHaveBeenCalled();
+  expect(container.querySelector('form')).toBeNull();
+  await act(async () => document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })));
+  expect(document.activeElement.textContent).toBe('Done - view tracker');
+  await click('Done - view tracker');
+  expect(created).toHaveBeenCalledWith({count:2,cycleId:'cycle'});
+});
+
+test('a soft send failure retains the selected employees and prepared cycle without claiming success', async () => {
+  const created=jest.fn();
+  api.performanceV3Action.mockImplementation((kind,id,action)=>Promise.resolve(action==='create'?{data:{id:'prepared'}}:{data:null,_serverError:true,status:500}));
+  await render(<V3CycleDialog employees={[{id:'staff',name:'Synthetic staff'}]} onClose={jest.fn()} onCreated={created} />);
+  await click('Select all listed employees'); await submitCycleForm();
+  expect(container.textContent).toContain('Sending could not be confirmed');
+  expect(container.querySelector('[aria-label="Review employee"]').selectedOptions).toHaveLength(1);
+  expect(created).not.toHaveBeenCalled();
+  expect(container.textContent).not.toContain('Review requests confirmed');
+  api.performanceV3Action.mockResolvedValue({data:{id:'prepared',status:'Open'}});
+  await submitCycleForm();
+  expect(api.performanceV3Action.mock.calls.filter(call=>call[2]==='create')).toHaveLength(1);
+  expect(container.textContent).toContain('Reviews are available for 1 selected employee.');
+});

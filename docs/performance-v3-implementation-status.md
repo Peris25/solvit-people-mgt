@@ -82,3 +82,7 @@ Frontend: components/PerformanceV3Panel.js, PerformanceV3Review.js, PerformanceV
 Finance and Operations now use a single KPI list totalling 100%. The approved nine-row reference weights are 15, 10, 15, 15, 10, 5, 10, 10 and 10 percent. Saved Finance role drafts are presented and validated without the old internal Finance/Operations groups, preserving HR's amended goals and individual weights. Other roles retain their existing group support. Publishing stores the flat configuration; existing review snapshots and scores are not rewritten by this display/validation change.
 
 Checks: 36 backend regressions and seven editor checks passed. The reference matches the supplied KPI/weight image; it does not import example actual results or baselines as staff assessments.
+
+## Review distribution confirmation on 23 November 2026
+
+The Create Review popup now provides Select all listed employees, Clear selection and an explicit selected count. A successful send must return the expected cycle ID with Open status before the interface reports confirmation. The popup keeps a visible receipt until HR chooses Done to view the tracker. This confirms the portal review requests; email delivery follows the configured notification service. An unconfirmed response retains the prepared cycle and selection and instructs HR to check the tracker before retrying. Existing cycles can be selected when adding remaining employees. No live review was sent while building or testing this change.
