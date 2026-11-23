@@ -8,10 +8,11 @@ from utils.employee_access import personal_grant
 async def windows(db, user):
     grant = personal_grant(user, 'M05')
     employee = await process.self_employee(db, user)
-    reviews = await db.performance_reviews.find(process.scoped(user, {'employee_id': {'$in': process.reference_ids(employee)}, 'workflow_version': 3})).to_list(None)
+    reviews = await db.performance_reviews.find(process.scoped(user, {'employee_id': {'$in': process.reference_ids(employee)}, 'workflow_version': 3, 'status': {'$nin': ['Archived','Cancelled']}})).to_list(None)
     result = []
     for review in reviews:
         window = await process.cycle(db, user, review['cycle_id'])
+        if window.get('status') in {'Archived','Cancelled'}: continue
         identity = process.key('alignment-answer', process.tenant_of(user), window['id'], process.employee_key(employee))
         submitted = bool(await db.survey_responses.find_one({'_id': identity}))
         result.append({'id': window['id'], 'title': f"{window['cycle_type']} {window['cycle_year']}", 'starts_on': window['starts_on'], 'due_on': window['self_due_on'], 'submitted': submitted})

@@ -29,6 +29,7 @@ async def listing(db, user):
     rows = await db.performance_peer_tasks.find(process.scoped(user, {'reviewer_employee_id': {'$in': reference_ids(employee)}})).to_list(None)
     result = []
     for row in rows:
+        if row.get('status') in {'Archived','Cancelled'}: continue
         subject = await process.find_employee(db, row['employee_id'], process.tenant_of(user))
         if not subject or not process.enabled(subject) or not process.fte(subject) or row['employee_id'] in reference_ids(employee): continue
         can_submit = False

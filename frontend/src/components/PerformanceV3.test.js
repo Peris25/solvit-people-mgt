@@ -161,3 +161,29 @@ test('a soft send failure retains the selected employees and prepared cycle with
   expect(api.performanceV3Action.mock.calls.filter(call=>call[2]==='create')).toHaveLength(1);
   expect(container.textContent).toContain('Reviews are available for 1 selected employee.');
 });
+
+
+test('HR must select a cycle and explicitly confirm its deletion with a reason', async () => {
+  const archived=jest.fn(), created=jest.fn();
+  api.performanceV3Action.mockResolvedValue({data:{id:'cycle',status:'Archived'}});
+  await render(<V3CycleDialog employees={[]} cycles={[{id:'cycle',cycle_type:'Year_End',cycle_year:2026,starts_on:'2026-11-23',ends_on:'2026-12-20',status:'Open'}]} onClose={jest.fn()} onCreated={created} onArchived={archived} />);
+  await change(container.querySelector('select'),'cycle');
+  await click('Delete unused cycle');
+  expect(api.performanceV3Action).not.toHaveBeenCalled();
+  expect(container.querySelector('[aria-label="Delete cycle confirmation"]').textContent).toContain('2026-11-23');
+  await change(container.querySelector('[aria-label="Cycle deletion reason"]'),'Wrong cycle settings');
+  await click('Confirm delete unused cycle');
+  expect(api.performanceV3Action).toHaveBeenCalledWith('cycles','cycle','archive',{reason:'Wrong cycle settings'});
+  expect(container.textContent).toContain('Unused cycle deleted');
+  expect(created).not.toHaveBeenCalled();
+  await click('Done'); expect(archived).toHaveBeenCalledWith({cycleId:'cycle'});
+});
+
+test('blocked cycle deletion retains the cycle and shows the server reason', async () => {
+  api.performanceV3Action.mockRejectedValue({response:{status:409,data:{detail:'Assessment work has started. This cycle cannot be deleted.'}}});
+  await render(<V3CycleDialog employees={[]} cycles={[{id:'cycle',cycle_type:'Year_End',cycle_year:2026,starts_on:'2026-11-23',ends_on:'2026-12-20',status:'Open'}]} onClose={jest.fn()} onCreated={jest.fn()} />);
+  await change(container.querySelector('select'),'cycle'); await click('Delete unused cycle');
+  await change(container.querySelector('[aria-label="Cycle deletion reason"]'),'Wrong cycle settings'); await click('Confirm delete unused cycle');
+  expect(container.textContent).toContain('Assessment work has started');
+  expect(container.textContent).not.toContain('Unused cycle deleted');
+});

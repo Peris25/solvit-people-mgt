@@ -132,16 +132,8 @@ async def create_cycle(db, user, body):
 
 
 async def archive(db, user, reference, body):
-    flow.require_hr(user); fields(body, {'reason'})
-    row = await cycle(db, user, reference); reason = flow.text(body.get('reason'), 'archive reason', 1500)
-    if len(reason) < 10: flow.fail('Enter a clear archive reason')
-    if row.get('status') == 'Archived': return clean(row)
-    reviews = await db.performance_reviews.find(scoped(user, {'cycle_id': row['id']})).to_list(None)
-    if any(r.get('status') != 'Draft' or r.get('self_assessment') or r.get('released_at') for r in reviews): flow.fail('Only unused cycles with unsubmitted draft reviews can be archived', 409)
-    await flow.audit(db, user, 'performance.v3.cycle.archived', row, reason=reason)
-    for review in reviews: await db.performance_reviews.update_one({'_id': review['_id']}, {'$set': {'status': 'Archived', 'archive_reason': reason}})
-    await db.performance_cycles.update_one({'_id': row['_id']}, {'$set': {'status': 'Archived', 'archive_reason': reason}})
-    return {'status': 'Archived'}
+    from utils.performance_v3_cycle_delete import archive as archive_unused
+    return await archive_unused(db,user,reference,body)
 
 
 async def notice(db, row, event, kind, recipient, title):

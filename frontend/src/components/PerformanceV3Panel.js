@@ -9,9 +9,12 @@ const ALIGNMENT_PILLARS = ['Environment', 'Values Alignment', 'Rewards & Recogni
 const ALIGNMENT_SCALE = ['Strongly Disagree', 'Disagree', 'Neutral', 'Agree', 'Strongly Agree'];
 const dateAfter = (start, days) => start ? new Date(new Date(`${start}T12:00:00Z`).getTime() + days * 86400000).toISOString().slice(0, 10) : 'Select a start date';
 
-export function V3CycleDialog({ employees, cycles = [], questions = [], onClose, onCreated }) {
+export function V3CycleDialog({ employees, cycles = [], questions = [], onClose, onCreated, onArchived }) {
   const [selected, setSelected] = useState([]);
   const [receipt, setReceipt] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [archived, setArchived] = useState(null);
   const receiptControl = useRef(null);
   const [existing, setExisting] = useState('');
   const [form, setForm] = useState({ cycle_type: 'Year_End', cycle_year: new Date().getFullYear(), starts_on: '', approval_reference: '', alignment_confirmed: false });
@@ -21,10 +24,10 @@ export function V3CycleDialog({ employees, cycles = [], questions = [], onClose,
     const previous = document.activeElement; firstControl.current?.focus();
     return () => previous?.focus?.();
   }, []);
-  useEffect(() => { if (receipt) receiptControl.current?.focus(); }, [receipt]);
+  useEffect(() => { if (receipt || archived) receiptControl.current?.focus(); }, [receipt, archived]);
   const set = (key, value) => setForm(old => ({ ...old, [key]: value }));
   const submit = async event => {
-    event.preventDefault(); setBusy(true); setError('');
+    event.preventDefault(); if (busy || confirmDelete || archived || receipt) return; setBusy(true); setError('');
     try {
       let id = existing;
       if (!id) { const response = await api.performanceV3Action('cycles', 'new', 'create', form); id = response?.data?.id; if (!id) throw new Error('SEND_UNCONFIRMED'); setExisting(id); }
@@ -33,8 +36,20 @@ export function V3CycleDialog({ employees, cycles = [], questions = [], onClose,
       setReceipt({ count: selected.length, cycleId: id });
     } catch (err) { setError(err?.message === 'SEND_UNCONFIRMED' ? 'Sending could not be confirmed. Check the review cycle tracker before trying again. Your selection has been kept.' : errorText(err)); } finally { setBusy(false); }
   };
+  const chosenCycle = cycles.find(cycle => cycle.id === existing);
+  const finishArchive = () => onArchived ? onArchived(archived) : onClose();
+  const deleteUnused = async () => {
+    if (!existing || busy || deleteReason.trim().length < 10) return;
+    setBusy(true); setError('');
+    try {
+      const response = await api.performanceV3Action('cycles', existing, 'archive', { reason: deleteReason.trim() });
+      if (response?.data?.status !== 'Archived' || response?.data?.id !== existing) throw new Error('ARCHIVE_UNCONFIRMED');
+      setArchived({ cycleId: existing });
+    } catch (err) { setError(err?.message === 'ARCHIVE_UNCONFIRMED' ? 'Cycle deletion could not be confirmed. Refresh the tracker before trying again.' : errorText(err)); }
+    finally { setBusy(false); }
+  };
   return <div className="performance-v3"><div className="pv-modal"><section role="dialog" aria-modal="true" aria-labelledby="pv-create-title" className="pv-dialog" onKeyDown={e => {
-    if (e.key === 'Escape' && !busy) { if (receipt) onCreated(receipt); else onClose(); }
+    if (e.key === 'Escape' && !busy) { if (archived) finishArchive(); else if (receipt) onCreated(receipt); else onClose(); }
     if (e.key === 'Tab') {
       const controls = [...e.currentTarget.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)')];
       if (!controls.includes(document.activeElement) || document.activeElement === (e.shiftKey ? controls[0] : controls[controls.length - 1])) {
@@ -42,12 +57,15 @@ export function V3CycleDialog({ employees, cycles = [], questions = [], onClose,
       }
     }
   }}>
-    <h2 id="pv-create-title">{receipt ? 'Review requests confirmed' : 'Create and send performance reviews'}</h2>
+    <h2 id="pv-create-title">{archived ? 'Unused cycle deleted' : receipt ? 'Review requests confirmed' : 'Create and send performance reviews'}</h2>
+    {archived && <div role="status" tabIndex={-1} ref={receiptControl}><p>The unused cycle has been removed from active use. Its audit history is retained.</p><button type="button" className="primary" onClick={finishArchive}>Done</button></div>}
     {receipt && <div role="status" tabIndex={-1} ref={receiptControl}><p><strong>Reviews are available for {receipt.count} selected {receipt.count === 1 ? 'employee' : 'employees'}.</strong></p><p>Follow their progress in the review cycle tracker. Email delivery is handled by the configured notification service.</p><button type="button" className="primary" onClick={() => onCreated(receipt)}>Done - view tracker</button></div>}
-    {!receipt && <><p>Select employees with approved KPIs and a saved line manager. The four-week cycle includes self-review, peer feedback, manager assessment and meetings.</p>
+    {!receipt && !archived && <><p>Select employees with approved KPIs and a saved line manager. The four-week cycle includes self-review, peer feedback, manager assessment and meetings.</p>
     <p className="pv-note">Notifications are queued when you click Create and send reviews. A future start date does not delay sending. To notify staff on Monday morning, complete this action then.</p>
     {error && <p role="alert">{error}</p>}
-    <form onSubmit={submit}><label>Cycle<select ref={firstControl} disabled={busy} value={existing} onChange={e => setExisting(e.target.value)}><option value="">Create a new cycle</option>{cycles.filter(c => c.status !== 'Archived').map(c => <option key={c.id} value={c.id}>{c.cycle_type.replaceAll('_', ' ')} {c.cycle_year} · {c.starts_on}</option>)}{existing && !cycles.some(c => c.id === existing) && <option value={existing}>Prepared cycle — retry sending</option>}</select></label>
+    <form onSubmit={submit}><label>Cycle<select ref={firstControl} disabled={busy || confirmDelete} value={existing} onChange={e => { setExisting(e.target.value); setConfirmDelete(false); setDeleteReason(''); }}><option value="">Create a new cycle</option>{cycles.filter(c => c.status !== 'Archived').map(c => <option key={c.id} value={c.id}>{c.cycle_type.replaceAll('_', ' ')} {c.cycle_year} · {c.starts_on}</option>)}{existing && !cycles.some(c => c.id === existing) && <option value={existing}>Prepared cycle — retry sending</option>}</select></label>
+      {existing && <><button type="button" disabled={busy || confirmDelete} onClick={() => { setConfirmDelete(true); setError(''); }}>Delete unused cycle</button>
+        {confirmDelete && <section className="pv-card" aria-label="Delete cycle confirmation"><h3>Delete this unused cycle?</h3><p><strong>{(chosenCycle?.cycle_type || form.cycle_type).replaceAll('_', ' ')} {chosenCycle?.cycle_year || form.cycle_year}</strong><br />Start: {chosenCycle?.starts_on || form.starts_on}<br />End: {chosenCycle?.ends_on || dateAfter(form.starts_on,27)}</p><p>Only a cycle with no assessment work can be deleted. Unused review requests will close and the audit history will be retained. Emails already processed may still arrive.</p><label>Reason for deleting this cycle<textarea aria-label="Cycle deletion reason" disabled={busy} minLength={10} maxLength={1500} value={deleteReason} onChange={event => setDeleteReason(event.target.value)} /></label><button type="button" disabled={busy} onClick={() => setConfirmDelete(false)}>Keep cycle</button><button type="button" disabled={busy || deleteReason.trim().length < 10} onClick={deleteUnused}>{busy ? 'Deleting...' : 'Confirm delete unused cycle'}</button></section>}</>}
       {!existing && <><div className="pv-grid"><label>Review type<select disabled={busy} value={form.cycle_type} onChange={e => set('cycle_type', e.target.value)}><option value="Year_End">Year-end</option><option value="Mid_Year">Mid-year</option></select></label><label>Year<input disabled={busy} required type="number" min="2000" max="2100" value={form.cycle_year} onChange={e => set('cycle_year', Number(e.target.value))} /></label><label>Start date<input disabled={busy} required type="date" value={form.starts_on} onChange={e => set('starts_on', e.target.value)} /></label></div>
         <p className="pv-note">Self and peer deadline: {dateAfter(form.starts_on, 6)}<br />Manager deadline: {dateAfter(form.starts_on, 13)}<br />Meetings and HR release by: {dateAfter(form.starts_on, 27)}<br />Scoring: KPIs 50% · Values 30% · Company NPS/CSAT 20%.</p>
         <label>MD/HR policy approval reference<input disabled={busy} required value={form.approval_reference} onChange={e => set('approval_reference', e.target.value)} /></label>
@@ -57,7 +75,7 @@ export function V3CycleDialog({ employees, cycles = [], questions = [], onClose,
       <p role="status">{selected.length} of {employees.length} employees selected. Approved Annual KPIs and valid managers are checked before sending.</p>
       <label>Employees<select aria-label="Review employee" disabled={busy} multiple required size={Math.min(8, Math.max(3, employees.length))} value={selected} onChange={e => setSelected([...e.target.selectedOptions].map(o => o.value))}>{employees.map(e => <option key={e.id} value={e.id}>{e.name || e.full_name} — {e.role || e.role_title}</option>)}</select></label>
       <p>Use Ctrl/Cmd to select several employees. MD reviews remain Board-administered. Probation reviews remain separate.</p>
-      <button type="button" onClick={onClose} disabled={busy}>Cancel</button><button className="primary" disabled={busy || !selected.length}>{busy ? 'Sending…' : 'Create and send reviews'}</button>
+      <button type="button" onClick={onClose} disabled={busy}>Cancel</button><button className="primary" disabled={busy || confirmDelete || !selected.length}>{busy ? 'Sending…' : 'Create and send reviews'}</button>
     </form></>}</section></div></div>;
 }
 
@@ -85,7 +103,7 @@ export default function PerformanceV3Panel({ user, onUpdated, createOpen, onClos
   return <section className="performance-v3" aria-label="Performance review workflow">
     {error && <div role="alert">{error} <button onClick={load}>Retry loading</button></div>}{message && <p role="status">{message}</p>}
     {hr && !setup && !error && <p>Loading review preparation…</p>}
-    {createOpen && hr && setup && <V3CycleDialog employees={setup.employees} cycles={setup.cycles} questions={tasks?.questions || setup.questions || []} onClose={onCloseCreate} onCreated={async receipt => { setMessage(`Review requests confirmed for ${receipt.count} selected employees.`); onCloseCreate(); await load(); await onUpdated(); }} />}
+    {createOpen && hr && setup && <V3CycleDialog employees={setup.employees} cycles={setup.cycles} questions={tasks?.questions || setup.questions || []} onClose={onCloseCreate} onCreated={async receipt => { setMessage(`Review requests confirmed for ${receipt.count} selected employees.`); onCloseCreate(); await load(); await onUpdated(); }} onArchived={async () => { setMessage('Unused cycle deleted. Audit history retained.'); onCloseCreate(); await load(); await onUpdated(); }} />}
     {hr && setup && <>
       <details className="pv-card"><summary>1. Assign approved KPIs to employees</summary><p>Choose a published role. HR can make approved individual changes before the cycle locks the KPIs.</p>
         <form onSubmit={e => { e.preventDefault(); perform(() => api.performanceV3Action('employees', employeeId, 'assign', { role_id: role, expected_version: employee?.assignment?.version || null, reason, role_change: roleChange, ...(individual ? { individual } : {}) })); }}>

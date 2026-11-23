@@ -276,6 +276,7 @@ async def list_inbox(db, user, *, category=None, kind=None, read_status="all", o
     receipts = await db.notification_receipts.find({"$and": [tenant_query(tenant_of(user)), {"user_id": user["id"]}]}).to_list(None)
     reads = {row.get("notification_id") for row in receipts if row.get("read_at")}
     async def project_notification(row):
+        if row.get('cycle_archived'): return None
         data = row.get("data") or {}
         if user.get("role") in {"hr_admin", "hr_manager", "general_manager"} and isinstance(data, dict) and data.get("lifecycle_employee_id"):
             # Routine checklist edits are audit activity, not HR inbox actions.

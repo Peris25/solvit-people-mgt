@@ -13,7 +13,7 @@ async def dashboard(db, user):
                            await db.employees.find(process.tenant_query(process.tenant_of(user))).to_list(None)
                            if process.enabled(e) and process.fte(e) and not process.ed(e)]
     result['reviews'] = []
-    for row in await db.performance_reviews.find(process.scoped(user, {'workflow_version': 3})).to_list(None):
+    for row in await db.performance_reviews.find(process.scoped(user, {'workflow_version': 3, 'status': {'$nin': ['Archived', 'Cancelled']}})).to_list(None):
         employee = await flow.employee_access(db, user, row['employee_id'])
         visible = process.projection(row, user, employee)
         result['reviews'].append(visible)

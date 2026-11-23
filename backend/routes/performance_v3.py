@@ -22,7 +22,7 @@ async def learning(request: Request):
     from utils.employee_access import personal_grant
     grant = personal_grant(user, 'M05')
     if grant.get('scope') in {'own_team', 'own_reports'} or user.get('role') in {'line_manager', 'general_manager', 'it_admin'}:
-        team_rows = await db.performance_reviews.find(process.scoped(user, {'workflow_version': 3, 'line_manager_id': {'$in': process.user_employee_aliases(user)}})).to_list(None)
+        team_rows = await db.performance_reviews.find(process.scoped(user, {'workflow_version': 3, 'status': {'$nin': ['Archived','Cancelled']}, 'line_manager_id': {'$in': process.user_employee_aliases(user)}})).to_list(None)
         for identifier in sorted({r['cycle_id'] for r in team_rows}):
             cycle = await process.cycle(db, user, identifier)
             team_cycles.append({'id': cycle['id'], 'title': f"{cycle['cycle_type']} {cycle['cycle_year']}"})

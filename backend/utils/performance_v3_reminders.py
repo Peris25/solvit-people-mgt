@@ -13,7 +13,14 @@ async def deliver(db, tenant):
     pending = await db.notifications.find({'tenant_id': tenant, 'data.performance_v3': True, 'v3_email_pending': True}).to_list(500)
     for item in pending:
         try:
+            current = await db.notifications.find_one({'_id':item['_id']})
+            if not current or current.get('cycle_archived') or not current.get('v3_email_pending'): continue
             data = item.get('data') or {}
+            if data.get('cycle_id'):
+                window = await db.performance_cycles.find_one(process.scoped(item, {'id':data['cycle_id']}))
+                if window and window.get('status') in {'Archived','Cancelled'}:
+                    await db.notifications.update_one({'_id':item['_id']},{'$set':{'v3_email_pending':False}})
+                    continue
             if data.get('performance_peer_task_id'): suffix = '?peer=' + data['performance_peer_task_id']
             elif data.get('performance_alignment_cycle_id'): suffix = '?alignment=' + data['performance_alignment_cycle_id']
             else: suffix = '?review=' + data['performance_review_id']
