@@ -86,3 +86,9 @@ Checks: 36 backend regressions and seven editor checks passed. The reference mat
 ## Review distribution confirmation on 23 November 2026
 
 The Create Review popup now provides Select all listed employees, Clear selection and an explicit selected count. A successful send must return the expected cycle ID with Open status before the interface reports confirmation. The popup keeps a visible receipt until HR chooses Done to view the tracker. This confirms the portal review requests; email delivery follows the configured notification service. An unconfirmed response retains the prepared cycle and selection and instructs HR to check the tracker before retrying. Existing cycles can be selected when adding remaining employees. No live review was sent while building or testing this change.
+
+## Grace employee assignment repair prepared on 23 November 2026
+
+The role-library correction does not overwrite an employee's existing assignment. Grace's reported screen still contains the older group-relative weights. An explicit operator repair is available in scripts/repair_grace_kpis.py. It verifies Grace's identity and nine objectives, preserves KPI IDs, wording and targets, previews a fingerprint, and requires that fingerprint for transactional apply with recovery copies and an audit event. It refuses started or submitted assessments and has no startup hook or notification calls. Seven synthetic checks passed, including rollback, stale plans and idempotency.
+
+The local code session has no production MONGO_URL/DB_NAME. The repair has NOT been applied or verified against Grace's live record. It must be previewed and applied in an authorized backend environment with the existing database connection; publishing this script alone does not correct the live assignment.
