@@ -1,4 +1,4 @@
-﻿# Performance V3 implementation and release report
+# Performance V3 implementation and release report
 
 12 November 2026. Supersedes the earlier work-in-progress status.
 
@@ -104,3 +104,6 @@ Create Review now shows Delete unused cycle after HR selects an existing cycle. 
 ## Earlier-cycle selector correction on 23 November 2026
 
 The duplicate-period check included earlier cycles while the HR selector listed only V3 cycles. The selector now includes earlier setups, labelled manage-only, so a blocking setup is visible. An earlier setup can be archived only with no linked review records; cycle identity aliases are checked so storage-ID links cannot evade the protection. Earlier setups cannot be sent through the V3 popup. No live cycle was archived while implementing this fix.
+# HR review send readiness — 23 November 2026
+
+Preparation and sending now share one readiness check. The HR setup response includes `review_ready` and exact `review_issues` for Annual KPI scope, complete targets/weights and valid reporting chains. The assignment picker no longer equates an existing assignment with readiness. The send popup lists corrections by employee, disables blocked options and offers selection of all ready employees. Sending revalidates stored records before any review or notification is written and reports specific reasons if data changed. This change does not rewrite staff assignments, change reporting lines or send reviews automatically.

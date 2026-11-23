@@ -19,6 +19,16 @@ const click = async label => { await act(async () => [...container.querySelector
 const change = async (input, value) => { await act(async () => { Object.getOwnPropertyDescriptor(input.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : input.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype, 'value').set.call(input, value); input.dispatchEvent(new Event('change', { bubbles: true })); input.dispatchEvent(new Event('input', { bubbles: true })); }); };
 const review = values => ({ id: 'review', version: 'v1', workflow_version: 3, status: 'Self_Draft', starts_on: '2099-11-01', self_due_on: '2099-11-07', manager_due_on: '2099-11-14', review_due_on: '2099-11-28', section_a_kpis: [{ id: 'quality', objective: 'Quality', metric: 'Verified report', target: 'Agreed rubric', direction: 'Rated', weight: 100 }], ...values });
 
+test('send preflight shows exact corrections and selects only ready employees', async () => {
+  await render(<V3CycleDialog employees={[{id:'ready',name:'Ready employee',review_ready:true,review_issues:[]},{id:'blocked',name:'Needs manager',review_ready:false,review_issues:['Selected Line Manager not found.']}]} onClose={jest.fn()} onCreated={jest.fn()} />);
+  expect(container.textContent).toContain('Selected Line Manager not found.');
+  expect(container.querySelector('option[value="blocked"]').disabled).toBe(true);
+  await click('Select all ready employees');
+  expect([...container.querySelector('[aria-label="Review employee"]').selectedOptions].map(option => option.value)).toEqual(['ready']);
+  expect(container.textContent).toContain('1 ready to send; 1 need corrections');
+  expect(api.performanceV3Action).not.toHaveBeenCalled();
+});
+
 test('employees see only their own assigned tasks and cannot open HR preparation', async () => {
   await render(<PerformanceV3Panel user={{ role: 'employee', employee_id: 'staff' }} onUpdated={jest.fn()} />);
   expect(api.getPerformanceV3Setup).not.toHaveBeenCalled();

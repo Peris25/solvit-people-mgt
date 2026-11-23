@@ -34,6 +34,31 @@ async def assignment(db, employee):
     return await db.system_settings.find_one({'_id': key(ASSIGNMENT, tenant_of(employee), employee_key(employee)), 'tenant_id': tenant_of(employee)})
 
 
+async def review_readiness(db, employee, saved):
+    """One preflight for both HR preparation and the authoritative send check."""
+    problems = []
+    if not saved:
+        problems.append('Assign approved Annual KPIs.')
+    else:
+        values = saved.get('values') or {}
+        if values.get('scope') != 'Annual':
+            problems.append('Assigned KPIs are ' + str(values.get('scope') or 'missing a scope') + '; an Annual assignment is required.')
+        try:
+            problems.extend(library.issues(values))
+        except (KeyError, TypeError, ValueError):
+            problems.append('The saved KPI assignment is incomplete; edit and save its targets and weights.')
+    manager = await find_employee(db, employee.get('line_manager_id'), tenant_of(employee))
+    try:
+        await validate_manager(db, employee.get('line_manager_id'), employee, tenant_of(employee))
+    except flow.HTTPException as error:
+        problems.append(str(error.detail))
+    if manager and not enabled(manager):
+        problems.append('The assigned line manager is not active or eligible for reviews.')
+    if not manager and not any('manager' in p.lower() for p in problems):
+        problems.append('Assign an active line manager.')
+    return list(dict.fromkeys(problems)), manager
+
+
 async def auto_assignment(db, employee, actor):
     """Only exact, unambiguous approved-role matches; never overwrite targets."""
     if not enabled(employee) or not fte(employee) or md(employee) or await assignment(db, employee): return
@@ -88,7 +113,9 @@ async def setup(db, user):
         if not enabled(employee) or not fte(employee) or md(employee): continue
         await flow.employee_access(db, user, employee_key(employee))
         saved = await assignment(db, employee)
-        employees.append({'id': employee_key(employee), 'name': employee.get('full_name'), 'role': employee.get('role_title'), 'department': employee.get('department'), 'assignment': clean(saved) if saved else None})
+        problems, _ = await review_readiness(db, employee, saved)
+        employees.append({'id': employee_key(employee), 'name': employee.get('full_name'), 'role': employee.get('role_title'), 'department': employee.get('department'), 'assignment': clean(saved) if saved else None,
+                          'review_ready': not problems, 'review_issues': problems})
     return {'employees': employees, 'roles': (await library.listing(db, user))['roles']}
 
 
@@ -190,16 +217,13 @@ async def open_cycle(db, user, reference, employee_ids=None):
     ready, missing = [], []
     for employee in candidates:
         saved = await assignment(db, employee)
-        manager = await find_employee(db, employee.get('line_manager_id'), tenant_of(user))
-        try: await validate_manager(db, employee.get('line_manager_id'), employee, tenant_of(user))
-        except flow.HTTPException:
-            missing.append(employee.get('full_name') or employee_key(employee)); continue
-        if not saved or saved['values']['scope'] != 'Annual' or library.issues(saved['values']) or not manager or not enabled(manager) or employee_key(manager) == employee_key(employee):
-            missing.append(employee.get('full_name') or employee_key(employee)); continue
+        problems, manager = await review_readiness(db, employee, saved)
+        if problems:
+            missing.append(str(employee.get('full_name') or employee_key(employee)) + ': ' + ' '.join(problems)); continue
         existing = await db.performance_reviews.find(scoped(user, {'employee_id': {'$in': reference_ids(employee)}, 'cycle_type': window['cycle_type'], 'cycle_year': window['cycle_year'], 'status': {'$nin': ['Archived', 'Cancelled']}})).to_list(None)
         if any(r.get('cycle_id') != window['id'] for r in existing): flow.fail('A live review already exists for ' + str(employee.get('full_name')) + '. Archive only unused drafts first.', 409)
         ready.append((employee, saved, manager))
-    if missing: flow.fail('Assign approved Annual KPIs and valid managers first: ' + ', '.join(missing), 409)
+    if missing: flow.fail('No reviews sent. Fix these employee details first:\n' + '\n'.join(missing), 409)
     if not ready: flow.fail('No eligible employee reviews are ready', 409)
     from routes.surveys import FTE_ALIGNMENT_QUESTIONS
     survey_id = str(key('v3-alignment', tenant_of(user), window['id']))
