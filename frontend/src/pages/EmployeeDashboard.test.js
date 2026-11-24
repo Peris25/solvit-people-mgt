@@ -24,6 +24,7 @@ const home = () => ({
 beforeEach(() => {
   container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container);
   useAuth.mockReturnValue({ user }); api.getStaffHome.mockResolvedValue({ data: home() });
+  api.getMyTaskQueue.mockResolvedValue({data:{items:[],count:0,errors:[]}});
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); jest.clearAllMocks(); });
 const render = async element => { await act(async () => root.render(element || <EmployeeDashboard />)); };
@@ -47,7 +48,7 @@ test('personalized employee welcome, real zero balance and authorized quick link
 
 test('assigned performance review and deadline are prominent and open the exact review', async () => {
   const data = home();
-  data.reviews = [{ id: 'review-one', workflow_version: 1, status: 'Draft', cycle_type: 'Year_End', cycle_year: 2026, self_due_on: '2026-11-20' }];
+  data.reviews = [{ id: 'review-one', workflow_version: 1, status: 'Draft', can_self_assess:true, cycle_type: 'Year_End', cycle_year: 2026, self_due_on: '2026-11-20' }];
   api.getStaffHome.mockResolvedValue({ data }); await render();
   expect(container.querySelector('[data-testid="staff-review-trigger"]').textContent).toContain('2026-11-20');
   await click('Open performance review');
@@ -58,6 +59,7 @@ test('pending requests, due actions and existing notifications render without pr
   const data = home();
   data.pending_leave = [{ id: 'leave', leave_type: 'Annual', start_date: '2026-10-20', end_date: '2026-10-22', status: 'Pending_HR', medical_notes: 'restricted' }];
   data.tasks = [{ id: 'form', kind: 'form', form_title: 'Sign your form', due_date: '2026-01-01' }];
+  api.getMyTaskQueue.mockResolvedValue({data:{items:data.tasks,count:1,errors:[]}});
   data.notifications = [{ id: 'notice', title: 'Your update', message: '<script>unsafe()</script>', is_read: false, bank_account: 'restricted' }];
   data.unread_notifications = 1;
   api.getStaffHome.mockResolvedValue({ data }); await render();

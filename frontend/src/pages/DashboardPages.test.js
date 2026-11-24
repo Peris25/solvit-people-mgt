@@ -18,6 +18,7 @@ beforeEach(() => {
   api.getCalendarEvents.mockResolvedValue({ data: [] });
   api.getTalentDensity.mockResolvedValue({ data: { score_pct: 85, target_pct: 85 } });
   api.getVoluntaryAttrition.mockResolvedValue({ data: { pct: 2, target_pct: 10 } });
+  api.getMyTaskQueue.mockResolvedValue({data:{items:[],count:0,errors:[]}});
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); jest.resetAllMocks(); });
 
@@ -48,4 +49,14 @@ test('manager leave action opens the team approval view and hides confirmed zero
   expect(attention.querySelectorAll('button').length).toBe(2);
   await act(async () => attention.querySelector('button').click());
   expect(mockNavigate).toHaveBeenCalledWith('/leave?view=team');
+});
+
+test('personal task tile uses the same queue count as My Tasks instead of company totals',async()=>{
+  api.getEmployeeStats.mockResolvedValue({data:{active:23,open_tasks:5}});
+  api.getMyTaskQueue.mockResolvedValue({data:{items:[{id:'one'},{id:'two'}],count:2,errors:[]}});
+  await act(async()=>root.render(<Dashboard/>));
+  const tile=container.querySelector('[data-testid="stat-overdue-tasks"]');
+  expect(tile.textContent).toContain('My open tasks');
+  expect(tile.textContent).toContain('2');expect(tile.textContent).not.toContain('5');
+  await act(async()=>tile.click());expect(mockNavigate).toHaveBeenCalledWith('/my-tasks');
 });

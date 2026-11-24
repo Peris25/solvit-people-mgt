@@ -1,0 +1,9 @@
+# Personal task queue
+
+The dashboard personal-task metrics and My Tasks table use the same authenticated `GET /dashboard/my-tasks` projection. The company-wide `employees/stats.open_tasks` value is no longer used as a personal task count. Staff Home enrolment eligibility prompts are not treated as assigned work.
+
+Sources are retrieved concurrently: explicit account/employee/role assignments, form sign-offs, current performance review actions (including manager-led Probation), peer tasks and open Alignment surveys, onboarding checklists, leave approvals and learning actions. Each source retains its existing object authorization and workflow stage checks. Explicit assignments override role queues. Canonical and historical employee identifiers are verified against the caller's linked employee record. HR's personal queue does not include another person's explicit assignments merely because HR can administer them.
+
+The list has no silent 100/200-row truncation. Task counts are derived from the returned rows. A failing source returns its name in `errors` and a null count; available rows remain visible with an incomplete-list warning. An unavailable request displays Retry instead of a false empty state. Existing review, approval and checklist links open the authoritative workflow. Ordinary authorized task completion uses the existing task update API; checklist completion remains in its checklist workflow.
+
+The page makes one lightweight queue request rather than loading the Staff Home snapshot or peer-choice directory. Source queries are scoped before authorization; independent sources run concurrently. Identity lookups are memoized inside one read-only request, never across accounts or across requests. Each source has a bounded timeout. The page and dashboard refresh on focus. Account changes immediately hide previous-account data. There is no task creation, reassignment, role change, background notification or automatic completion on page load.

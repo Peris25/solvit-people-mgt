@@ -16,6 +16,15 @@ from bson import ObjectId
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
+@router.get('/my-tasks')
+async def my_tasks(request: Request):
+    from utils.my_task_queue import queue
+    from utils.employee_integrity import employee_read_snapshot
+    user=await get_current_user(request)
+    with employee_read_snapshot():
+        return await queue(get_db(),user)
+
+
 @router.get("/staff-home")
 async def staff_home(request: Request):
     from routes.leave import get_leave_balances

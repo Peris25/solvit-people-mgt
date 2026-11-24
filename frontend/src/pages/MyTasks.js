@@ -1,57 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as api from '../services/api';
-import PerformanceTaskLinks from '../components/PerformanceTaskLinks';
+import useMyTaskQueue from '../hooks/useMyTaskQueue';
 
+const KIND={assigned:'Assigned task',form:'Form sign-off',review:'Performance review',peer:'Peer review',alignment:'Alignment Survey',onboarding:'Checklist',leave:'Leave approval',learning:'Learning'};
 export default function MyTasks() {
-  const navigate = useNavigate();
-  const [tasks, setTasks] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api.getMyFormTasks()
-      .then(r => setTasks(r.data || []))
-      .finally(() => setLoading(false));
-  }, []);
-
-  return (
-    <div data-testid="my-tasks-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
-      <PerformanceTaskLinks />
-      <div style={{ marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', margin: 0 }}>My Tasks</h1>
-        <p style={{ color: '#525252', fontSize: '13px', margin: '4px 0 0' }}>Forms awaiting your sign-off · sequential workflow routing</p>
-      </div>
-
-      {loading ? <div style={{ padding: '48px', textAlign: 'center' }}>Loading...</div> : tasks.length === 0 ? (
-        <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '48px', textAlign: 'center', color: '#9CA3AF' }}>
-          🎉 No tasks awaiting your input. You're all caught up.
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '12px' }}>
-          {tasks.map(t => (
-            <div key={t.id} data-testid={`mytask-${t.id}`} style={{ backgroundColor: '#fff', border: '2px solid #FF353F', padding: '18px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: '#FF353F', textTransform: 'uppercase', letterSpacing: '0.15em' }}>{t.form_id}</div>
-                <span style={{ fontSize: '9px', backgroundColor: '#FEE2E2', color: '#991B1B', padding: '2px 8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Step {(t.current_step_index || 0) + 1} / {(t.completing_users_sequence || []).length}</span>
-              </div>
-              <div style={{ fontSize: '14px', fontWeight: 900, color: '#191919', marginBottom: '6px', letterSpacing: '-0.02em' }}>{t.form_title}</div>
-              {t.subject_employee_name && <div style={{ fontSize: '12px', color: '#525252', marginBottom: '4px' }}>Subject: <strong>{t.subject_employee_name}</strong></div>}
-              <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-                {(t.completing_users_sequence || []).map((r, idx) => (
-                  <React.Fragment key={idx}>
-                    {idx > 0 && <span style={{ fontSize: '11px', color: '#9CA3AF' }}>→</span>}
-                    <span style={{ fontSize: '9px', backgroundColor: idx === t.current_step_index ? '#FF353F' : (idx < (t.current_step_index || 0) ? '#22C55E' : '#F5F5F5'), color: idx <= (t.current_step_index || 0) ? '#fff' : '#525252', padding: '2px 8px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                      {idx < (t.current_step_index || 0) ? '✓ ' : ''}{r.replace('_', ' ')}
-                    </span>
-                  </React.Fragment>
-                ))}
-              </div>
-              <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '8px' }}>Started {t.created_at ? new Date(t.created_at).toLocaleDateString('en-GB') : '—'}</div>
-              <button onClick={() => navigate(`/forms?submission=${t.id}`)} style={{ marginTop: '12px', padding: '8px 16px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>Open & Sign</button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  const navigate=useNavigate();
+  const {data,loading,error,reload}=useMyTaskQueue();
+  const [busy,setBusy]=useState(''),[actionError,setActionError]=useState('');
+  const tasks=data?.items||[];
+  const complete=async task=>{
+    setBusy(task.id);setActionError('');
+    try{const result=await api.updateTask(task.reference,{status:'Completed'});if(result?.data?.status!=='Completed')throw new Error('Unconfirmed');reload();}
+    catch(error){setActionError('Completion could not be confirmed. Refresh the list before retrying.');}finally{setBusy('');}
+  };
+  return <div data-testid="my-tasks-page" style={{fontFamily:'Arial, Helvetica, sans-serif'}}>
+    <header style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:16,marginBottom:24}}><div><h1 style={{fontSize:32,margin:0}}>My Tasks</h1><p>Your assigned work, approvals and reviews in one place.</p></div><button type="button" disabled={loading} onClick={reload} style={{minHeight:44,padding:'8px 16px'}}>Refresh tasks</button></header>
+    {(error||actionError)&&<div role="alert"><p>{error||actionError}</p><button type="button" onClick={reload}>Retry tasks</button></div>}
+    {!!data?.errors?.length&&<div role="alert"><p>Some task types could not load: {data.errors.join(', ')}. The list below may be incomplete.</p><button type="button" onClick={reload}>Retry tasks</button></div>}
+    {loading&&<div role="status" style={{padding:24}}>Loading your assigned tasks…</div>}
+    {!loading&&data&&<><p role="status">{tasks.length} {data.errors.length?'available tasks':'open tasks'}{data.errors.length?' · Some task types are unavailable':''}</p>
+      {tasks.length===0&&!data.errors.length?<div style={{background:'#fff',padding:32,border:'1px solid #e2e8f0',borderRadius:12}}>No open tasks assigned to you.</div>:tasks.length>0&&<div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',textAlign:'left'}}><thead><tr>{['Task','Type','Employee / subject','Due','Status','Action'].map(title=><th key={title} scope="col" style={{padding:14,borderBottom:'1px solid #e2e8f0'}}>{title}</th>)}</tr></thead><tbody>{tasks.map(task=><tr key={task.id} data-testid={`mytask-${task.id}`}>
+        <th scope="row" style={{padding:14,borderBottom:'1px solid #e2e8f0',minWidth:220}}>{task.title}{task.description&&<p style={{fontWeight:400,fontSize:12}}>{task.description}</p>}</th><td style={{padding:14}}>{KIND[task.kind]||task.kind}</td><td style={{padding:14}}>{task.subject||'—'}</td><td style={{padding:14,whiteSpace:'nowrap'}}>{task.due_date?new Date(task.due_date).toLocaleDateString('en-GB'):'No date set'}</td><td style={{padding:14}}>{task.status?.replaceAll('_',' ')||'Pending'}</td><td style={{padding:14,whiteSpace:'nowrap'}}>{task.path&&<button type="button" disabled={!!busy} onClick={()=>navigate(task.path)} style={{minHeight:44,padding:'8px 16px'}}>Open task</button>}{task.can_complete&&<button type="button" disabled={!!busy} onClick={()=>complete(task)} style={{minHeight:44,padding:'8px 16px',marginLeft:8}}>{busy===task.id?'Saving…':'Mark complete'}</button>}{!task.path&&!task.can_complete&&<span>Read only</span>}</td>
+      </tr>)}</tbody></table></div>}</>}
+  </div>;
 }

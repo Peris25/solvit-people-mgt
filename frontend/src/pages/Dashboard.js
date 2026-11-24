@@ -8,6 +8,7 @@ import StatusBadge from '../components/StatusBadge';
 import * as api from '../services/api';
 import { DashboardAttention, DashboardMetric } from '../components/DashboardOverview';
 import WorkspaceSkeleton from '../components/WorkspaceSkeleton';
+import useMyTaskQueue from '../hooks/useMyTaskQueue';
 import { Bell, ClipboardList, CheckSquare } from 'lucide-react';
 
 const KPI_TILE = ({ label, value, sub, testId, onClick }) => <DashboardMetric label={label} value={value} sub={sub} testId={testId || `kpi-${label.toLowerCase().replace(/ /g,'-')}`} onClick={onClick} />;
@@ -91,6 +92,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [kanban, setKanban] = useState({ Onboarding: [], Active: [], Exiting: [], Exited: [] });
   const [stats, setStats] = useState(null);
+  const taskQueue=useMyTaskQueue();
   const [alerts, setAlerts] = useState([]);
   const [calendar, setCalendar] = useState([]);
   const [talent, setTalent] = useState(null);
@@ -160,13 +162,13 @@ export default function Dashboard() {
             <KPI_TILE testId="stat-active-employees" label="Active FTE" value={stats?.active} onClick={() => navigate('/employees')} />
             <KPI_TILE testId="stat-active-solvers" label="Active Solvers" value={stats?.active_solvers} onClick={() => navigate('/solvers')} />
             <KPI_TILE testId="stat-onboarding" label="Onboarding" value={stats?.onboarding} onClick={() => navigate('/onboarding')} />
-            <KPI_TILE testId="stat-overdue-tasks" label="Open Tasks" value={stats?.open_tasks} onClick={() => navigate('/my-tasks')} />
+            <KPI_TILE testId="stat-overdue-tasks" label="My open tasks" value={taskQueue.count} onClick={() => navigate('/my-tasks')} />
             <KPI_TILE testId="stat-attrition" label="Attrition" value={attrition ? `${attrition.pct}%` : '—'} sub={`Target ≤${attrition?.target_pct ?? 10}%`} onClick={() => navigate('/retention')} />
             <KPI_TILE testId="stat-talent-density" label="Talent Density" value={talent?.score_pct == null ? 'Awaiting data' : `${talent.score_pct.toFixed(0)}%`} sub={`Target ${talent?.target_pct ?? 85}% · 50/30/20`} onClick={() => navigate('/performance')} />
           </div>
           <DashboardAttention description="Operational updates and work to review." items={[
             { key: 'approvals', label: 'Approval alerts', count: alertsAvailable ? visibleAlerts.filter(item => item.kind === 'Approvals' || item.action?.kind === 'leave_review').length : null, detail: 'Open notifications to review assigned approvals', Icon: CheckSquare, onClick: () => navigate('/notifications') },
-            { key: 'tasks', label: 'Open tasks', count: stats?.open_tasks, detail: 'Review the task list and assigned work', Icon: ClipboardList, onClick: () => navigate('/my-tasks') },
+            { key: 'tasks', label: 'My open tasks', count: taskQueue.count, detail: 'Review your assigned tasks and approvals', Icon: ClipboardList, onClick: () => navigate('/my-tasks') },
             { key: 'alerts', label: 'Recent unread alerts', count: alertsAvailable ? visibleAlerts.length : null, detail: 'Read the latest operational updates', Icon: Bell, onClick: () => navigate('/notifications') },
           ]} />
       {!loading && alertsAvailable && visibleAlerts.length === 0 ? (

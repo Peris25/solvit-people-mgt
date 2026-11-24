@@ -21,9 +21,18 @@ async def authorize_task(db, user, task, write=False):
     if employee:
         await authorize_employee(db, user, subject, "M18" if user.get("role") == "finance" else "M04", write=write)
     assigned = task.get("assigned_to")
+    account_assignment=task.get('assigned_to_user_id')
+    if account_assignment and str(account_assignment)!=str(user['id']):
+        raise HTTPException(403,'Task is assigned to another account')
     if assigned:
-        if assigned not in [user["id"]] + user_employee_aliases(user):
+        aliases=[str(value) for value in [user['id']]+user_employee_aliases(user)]
+        if str(assigned) not in aliases and user.get('employee_id'):
+            linked=await find_employee(db,user['employee_id'],tenant_of(user))
+            if linked:aliases.extend([str(linked['_id']),str(linked.get('id') or linked['_id'])])
+        if str(assigned) not in aliases:
             raise HTTPException(403, "Task is assigned to another account")
+    elif account_assignment:
+        return
     elif task.get("assigned_role") != user.get("role"):
         raise HTTPException(403, "Task is assigned to another role")
     elif not employee and user.get("role") in ("employee", "line_manager"):

@@ -114,6 +114,7 @@ export const getEmployee = (id) => api.get(`/employees/${id}`);
 export const getMyEmployee = () => api.get('/employees/me');
 export const getLineManagerWidget = () => api.get('/dashboard/line-manager');
 export const getStaffHome = () => api.get('/dashboard/staff-home');
+export const getMyTaskQueue = () => api.get('/dashboard/my-tasks');
 export const getAccessMatrix = () => api.get('/access/matrix');
 export const listUsersWithRoles = () => api.get('/access/users');
 export const updateUserRole = (user_id, role) => api.put(`/access/users/${user_id}/role`, { role });

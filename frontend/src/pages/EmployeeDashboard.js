@@ -10,6 +10,7 @@ import * as api from '../services/api';
 import { Bell, ClipboardList, CalendarDays } from 'lucide-react';
 import { DashboardAttention, DashboardMetric } from '../components/DashboardOverview';
 import WorkspaceSkeleton from '../components/WorkspaceSkeleton';
+import useMyTaskQueue from '../hooks/useMyTaskQueue';
 
 const TABS = [
   { key: 'dashboard', label: 'My Dashboard' },
@@ -30,7 +31,8 @@ export default function EmployeeDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [tab, setTab] = useState('dashboard');
-  const [tasks, setTasks] = useState([]);
+  const taskQueue=useMyTaskQueue();
+  const tasks=taskQueue.data?.items||[];
   const [reviews, setReviews] = useState([]);
   const [leaveBalance, setLeaveBalance] = useState(null);
   const [recognitions, setRecognitions] = useState([]);
@@ -44,14 +46,14 @@ export default function EmployeeDashboard() {
     const load = async () => {
       setLoading(true);
       setError(''); setHome(null);
-      setTasks([]); setReviews([]); setRecognitions([]); setLeaveBalance(null);
+      setReviews([]); setRecognitions([]); setLeaveBalance(null);
       try {
         const response = await api.getStaffHome();
         if (cancelled) return;
         if (!response.data?.employee) throw new Error('Home unavailable');
         const data = response.data;
         setHome({ accountId: user.id, data });
-        setTasks(data.tasks || []); setReviews(data.reviews || []);
+        setReviews(data.reviews || []);
         setLeaveBalance(data.leave_balance); setRecognitions(data.recognitions || []);
       } catch (_) {
         if (!cancelled) setError('Your Staff Home is unavailable. Please retry or ask HR to check your account link.');
@@ -79,7 +81,7 @@ export default function EmployeeDashboard() {
     if (!b.due_date) return -1;
     return new Date(a.due_date) - new Date(b.due_date);
   });
-  const reviewActions = reviews.filter(review => review.workflow_version === 1 && ['Draft', 'Self_Draft'].includes(review.status));
+  const reviewActions = reviews.filter(review => review.can_self_assess);
   const annualAvailable = leaveBalance && Object.prototype.hasOwnProperty.call(leaveBalance, 'annual_available_to_request')
     ? leaveBalance.annual_available_to_request : leaveBalance?.annual_days_remaining;
 
@@ -126,12 +128,12 @@ export default function EmployeeDashboard() {
       ) : tab === 'dashboard' ? (
         <>
           <div className="dashboard-summary-grid" aria-label="My summary">
-            <DashboardMetric label="Open tasks" value={homeData.tasks == null ? null : tasks.length} sub={overdueTasks.length ? `${overdueTasks.length} overdue` : 'Your assigned work'} Icon={ClipboardList} onClick={() => navigate('/my-tasks')} />
+            <DashboardMetric label="Open tasks" value={taskQueue.count} sub={overdueTasks.length ? `${overdueTasks.length} overdue` : 'Your assigned work'} Icon={ClipboardList} onClick={() => navigate('/my-tasks')} />
             {links.some(link => link.path === '/leave') && <DashboardMetric label="Annual leave available" value={annualAvailable} unit="days" sub={annualAvailable == null ? 'Needs HR review' : 'Available to request'} Icon={CalendarDays} onClick={() => navigate('/leave')} />}
             <DashboardMetric label="Unread updates" value={homeData.unread_notifications} sub="In your notification centre" Icon={Bell} onClick={() => navigate('/notifications')} />
           </div>
           <DashboardAttention items={[
-            { key: 'tasks', label: 'Tasks to complete', count: homeData.tasks == null ? null : tasks.length, detail: overdueTasks.length ? `${overdueTasks.length} overdue · Open your task list` : 'Review your assigned tasks and deadlines', Icon: ClipboardList, urgent: overdueTasks.length > 0, onClick: () => navigate('/my-tasks') },
+            { key: 'tasks', label: 'Tasks to complete', count: taskQueue.count, detail: overdueTasks.length ? `${overdueTasks.length} overdue · Open your task list` : 'Review your assigned tasks and deadlines', Icon: ClipboardList, urgent: overdueTasks.length > 0, onClick: () => navigate('/my-tasks') },
             ...(homeData.reviews == null ? [] : [{ key: 'review', label: 'Performance review to complete', count: reviewActions.length, detail: 'Your self-assessment is ready to open', onClick: () => navigate(reviewActions.length === 1 ? '/performance?review=' + encodeURIComponent(reviewActions[0].id) : '/performance') }]),
             { key: 'updates', label: 'Unread notifications', count: homeData.unread_notifications, detail: 'Check your latest updates and requests', Icon: Bell, onClick: () => navigate('/notifications') },
           ]} />
@@ -165,7 +167,7 @@ export default function EmployeeDashboard() {
               <span style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.18em', color: '#191919' }}>My Tasks</span>
               {overdueTasks.length > 0 && <span style={{ fontSize: '11px', color: '#FF353F', fontWeight: 700 }}>{overdueTasks.length} overdue</span>}
             </div>
-            {homeData.tasks == null ? <p style={{ padding: 20 }}>Task information is unavailable. Please refresh to retry.</p> : tasks.length === 0 ? (
+            {taskQueue.loading ? <p style={{padding:20}}>Loading your tasks…</p> : taskQueue.error||taskQueue.data?.errors?.length ? <p role="alert" style={{padding:20}}>Task information is unavailable or incomplete. <button onClick={taskQueue.reload}>Retry tasks</button></p> : tasks.length === 0 ? (
               <div data-testid="emp-no-tasks" style={{ padding: '32px 20px', textAlign: 'center', color: '#22C55E', fontWeight: 700 }}>
                 ✓ You are up to date
               </div>
@@ -181,8 +183,8 @@ export default function EmployeeDashboard() {
                           {t.form_id || t.module || ''} {t.due_date && `· Due ${new Date(t.due_date).toLocaleDateString('en-GB')}`}
                         </div>
                       </div>
-                      {(t.kind === 'form' || t.path) && <button
-                        onClick={() => navigate(t.kind === 'form' ? '/my-tasks' : t.path)}
+                      {(t.kind === 'assigned' || t.kind === 'form' || t.path) && <button
+                        onClick={() => navigate(t.path || '/my-tasks')}
                         style={{ padding: '6px 14px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}
                       >
                         Open

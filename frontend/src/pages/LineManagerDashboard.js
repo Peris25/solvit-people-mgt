@@ -18,6 +18,7 @@ import * as api from '../services/api';
 import { Users as UsersIcon, Palmtree, AlertTriangle, ClipboardList, ListChecks } from 'lucide-react';
 import { DashboardAttention, DashboardMetric } from '../components/DashboardOverview';
 import WorkspaceSkeleton from '../components/WorkspaceSkeleton';
+import useMyTaskQueue from '../hooks/useMyTaskQueue';
 
 const RISK_COLOR = { Critical: '#FF353F', High: '#F97316', Elevated: '#EAB308', Healthy: '#22C55E' };
 
@@ -28,6 +29,7 @@ const Tile = ({ label, value, sub, Icon, onClick, testId }) => (
 export default function LineManagerDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const taskQueue=useMyTaskQueue();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -91,8 +93,8 @@ export default function LineManagerDashboard() {
         <Tile
           testId="lm-tile-mytasks"
           label="My Open Tasks"
-          value={data?.my_open_tasks || 0}
-          color={data?.my_open_tasks ? '#3B82F6' : '#191919'}
+          value={taskQueue.count}
+          color={taskQueue.count ? '#3B82F6' : '#191919'}
           Icon={ListChecks}
           onClick={() => navigate('/my-tasks')}
         />
@@ -101,7 +103,7 @@ export default function LineManagerDashboard() {
       <DashboardAttention description="Approvals and work waiting for your team." items={[
         { key: 'leave', label: 'Leave requests awaiting your decision', count: data?.pending_leave, detail: 'Open Team Leave to review the requests', Icon: Palmtree, onClick: () => navigate('/leave?view=team') },
         { key: 'reviews', label: 'Team reviews in progress', count: data?.open_reviews, detail: 'Check your team’s current performance reviews', Icon: ClipboardList, onClick: () => navigate('/performance') },
-        { key: 'tasks', label: 'Your open tasks', count: data?.my_open_tasks, detail: 'Review your assigned tasks and deadlines', Icon: ListChecks, onClick: () => navigate('/my-tasks') },
+        { key: 'tasks', label: 'Your open tasks', count: taskQueue.count, detail: 'Review your assigned tasks and deadlines', Icon: ListChecks, onClick: () => navigate('/my-tasks') },
       ]} />
       {/* Flight risk bar */}
       <div data-testid="lm-flight-risk" style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '14px 18px', marginBottom: '20px' }}>
