@@ -194,18 +194,53 @@ test('employee edits dates and resubmits through the authorized API', async () =
 });
 
 test('application date picker blocks past dates and sends the annual short-notice reason', async () => {
+  jest.useFakeTimers();
+  try {
+  api.previewLeave.mockResolvedValue({data:{working_days:2,notice_days_required:7,short_notice:true}});
   api.createLeaveRequest.mockResolvedValue({ data: { id: 'submitted' } });
   await render(); await act(async () => container.querySelector('[data-testid="apply-leave-btn"]').click());
   const start = container.querySelector('[aria-label="Leave start date"]');
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   expect(start.min).toBe(today);
+  for(const [label,value] of [['Leave start date','2026-11-25'],['Leave end date','2026-11-26']]) {
+    const input=container.querySelector(`[aria-label="${label}"]`);
+    await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('change',{bubbles:true}));});
+  }
+  await act(async()=>jest.advanceTimersByTime(250));
   const reason = container.querySelector('[aria-label="Annual leave short-notice reason"]');
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(reason, 'Urgent personal arrangements require short notice');
     reason.dispatchEvent(new Event('input', { bubbles: true }));
   });
+  expect(container.querySelector('[aria-label="Annual leave short-notice reason"]')).toBe(reason);
+  expect(api.previewLeave).toHaveBeenCalledTimes(1);
   await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
   expect(api.createLeaveRequest).toHaveBeenCalledWith(expect.objectContaining({ short_notice_reason: 'Urgent personal arrangements require short notice' }));
+  } finally {jest.useRealTimers();}
+});
+
+test('on-time annual leave hides the short-notice prompt and drops any previous reason',async()=>{
+  jest.useFakeTimers();
+  try {
+    api.previewLeave.mockResolvedValueOnce({data:{working_days:2,notice_days_required:7,short_notice:true}}).mockResolvedValue({data:{working_days:2,notice_days_required:7,short_notice:false}});
+    api.createLeaveRequest.mockResolvedValue({data:{id:'submitted'}});
+    await render();await act(async()=>container.querySelector('[data-testid="apply-leave-btn"]').click());
+    expect(container.querySelector('[aria-label="Annual leave short-notice reason"]')).toBeNull();
+    const changeDate=async(label,value)=>{
+      const input=container.querySelector(`[aria-label="${label}"]`);
+      await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('change',{bubbles:true}));});
+    };
+    await changeDate('Leave start date','2026-11-25');await changeDate('Leave end date','2026-11-26');
+    await act(async()=>jest.advanceTimersByTime(250));
+    const reason=container.querySelector('[aria-label="Annual leave short-notice reason"]');
+    await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(reason,'Old short-notice explanation');reason.dispatchEvent(new Event('input',{bubbles:true}));});
+    await changeDate('Leave start date','2026-12-15');await changeDate('Leave end date','2026-12-16');
+    await act(async()=>jest.advanceTimersByTime(250));
+    expect(container.querySelector('[aria-label="Annual leave short-notice reason"]')).toBeNull();
+    expect(container.textContent).not.toContain('Reason for short notice');
+    await act(async()=>container.querySelector('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+    expect(api.createLeaveRequest).toHaveBeenCalledWith(expect.objectContaining({short_notice_reason:''}));
+  } finally {jest.useRealTimers();}
 });
 
 test.each(['Approved', 'Rejected', 'Cancelled'])('employee cannot edit a finalized %s request', async status => {

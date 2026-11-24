@@ -151,7 +151,9 @@ export default function Leave() {
     catch { if (activeAccount.current === accountKey) setCalendar(null); }
   }, [calYear, calMonth, accountKey]);
   useEffect(() => { if (tab === 'calendar') loadCalendar(); }, [tab, loadCalendar]);
-  const previewBody = JSON.stringify(form);
+  // Only policy inputs refresh the quote. Typing a reason must not clear
+  // the quote and remove the very field the employee is editing.
+  const previewBody = JSON.stringify(Object.fromEntries(['leave_type','start_date','end_date','handover_contact_id','supporting_document_id','expected_delivery_date','birth_date','family_relationship','emergency_sick','early_maternity_advice'].map(key=>[key,form[key]])));
   useEffect(() => {
     let cancelled = false;
     setQuote(null); setQuoteError('');
@@ -180,7 +182,7 @@ export default function Leave() {
         if (!uploaded.data?.id) throw new Error('Supporting document could not be saved');
         documentId = uploaded.data.id; setForm(previous => ({ ...previous, supporting_document_id: documentId }));
       }
-      const payload = { ...form, employee_id: myEmpId, line_manager_id: myLM.id || undefined, supporting_document_id: documentId || undefined };
+      const payload = { ...form, short_notice_reason: form.leave_type !== 'Annual' || quote?.short_notice === false ? '' : form.short_notice_reason, employee_id: myEmpId, line_manager_id: myLM.id || undefined, supporting_document_id: documentId || undefined };
       const fields = ['start_date', 'end_date', 'leave_type', 'notes', 'short_notice_reason', 'handover_contact_id', 'supporting_document_id', 'expected_delivery_date', 'birth_date', 'family_relationship', 'emergency_sick', 'early_maternity_advice'];
       const response = editing ? await api.resubmitLeave(editing.id, Object.fromEntries(fields.filter(field => payload[field] !== undefined).map(field => [field, payload[field]]))) : await api.createLeaveRequest(payload);
       if (!response.data?.id) throw new Error('The leave request could not be confirmed. Refresh history before retrying.');
@@ -372,7 +374,7 @@ export default function Leave() {
                     </span>
                   )}
                 </div>
-                {form.leave_type === 'Annual' && <label style={{ gridColumn: '1 / -1' }}>Reason for short notice {quote?.short_notice === true ? <span className="workspace-form-required" aria-hidden="true">*</span> : <span className="workspace-form-optional">When applicable</span>}
+                {form.leave_type === 'Annual' && quote?.short_notice === true && <label style={{ gridColumn: '1 / -1' }}>Reason for short notice <span className="workspace-form-required" aria-hidden="true">*</span>
                   <textarea name="short_notice_reason" aria-label="Annual leave short-notice reason" aria-invalid={!!fieldErrors.short_notice_reason} aria-describedby={fieldErrors.short_notice_reason ? 'form-error-short_notice_reason' : undefined} maxLength={2000} minLength={10} required={quote?.short_notice === true} rows={2} style={inp} value={form.short_notice_reason || ''} onChange={event => setForm(previous => ({ ...previous, short_notice_reason: event.target.value }))} />
                   <FieldError field="short_notice_reason" errors={fieldErrors} />
                   <span style={{ fontSize: '12px', color: '#525252' }}>If you cannot give the required notice, explain why. Your request will still need manager and HR approval.</span>

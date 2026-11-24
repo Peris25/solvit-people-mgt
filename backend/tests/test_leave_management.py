@@ -178,6 +178,16 @@ def test_short_notice_reason_allows_submission_but_does_not_approve_leave():
     assert db.leave_balances.writes == 0
 
 
+@pytest.mark.parametrize('start,end,notice', [('2026-10-21','2026-10-22',7),('2026-11-11','2026-11-18',28)])
+def test_full_notice_is_accepted_without_a_short_notice_reason(start,end,notice):
+    db,actors=fixture()
+    with patch('utils.email_service.send_email',AsyncMock()),patch('automation.engine.automation_engine.fire_event',AsyncMock()):
+        result=run(workflow.create(db,actors['staff'],payload(start_date=start,end_date=end),budget()))
+    assert result['status']=='Pending_Manager'
+    assert db.leave_requests.docs[0]['policy_snapshot']['short_notice'] is False
+    assert db.leave_requests.docs[0]['policy_snapshot']['notice_days_required']==notice
+
+
 def test_holidays_and_verified_contract_calendar_are_used_without_rewriting_employee():
     db, _ = fixture(); before = deepcopy(db.employees.docs)
     db.public_holidays.docs = [{"tenant_id": "solvit", "date": "2026-11-06"}]
