@@ -10,16 +10,17 @@ const avatarFill=node=>palette[Array.from(node.department||'').reduce((sum,char)
 export function OrgChartDrawing({graph,collapsed=new Set(),selected,onSelect=()=>{}}){
   return <svg xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Employee reporting organogram" viewBox={`0 0 ${graph.width} ${graph.height}`} className="employee-org-svg">
     <title>Solvit employee reporting organogram</title>
+    <defs><marker id="solvit-org-manager-arrow" markerWidth="6" markerHeight="6" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#8392a7"/></marker></defs>
     <rect width={graph.width} height={graph.height} fill="#fbfcfe" rx="12"/>
     <g fill="none" stroke="#b4bfce" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" aria-hidden="true">
-      {graph.edges.map(edge=><path key={`${edge.from}:${edge.to}`} d={edge.d} data-from={edge.from} data-to={edge.to}/>)}
+      {graph.edges.map(edge=><path key={`${edge.from}:${edge.to}`} d={edge.d} transform={edge.transform} stroke={edge.kind==='peer'?'#d92336':undefined} strokeDasharray={edge.kind==='peer'?'4 4':undefined} markerEnd={edge.kind==='manager'?'url(#solvit-org-manager-arrow)':undefined} data-from={edge.from} data-to={edge.to} data-kind={edge.kind||'reporting'}/>)}
     </g>
     {graph.nodes.map(item=>{
       if(item.isBoard)return <g key={item.key} transform={`translate(${item.x},${item.y})`}><rect width="174" height="50" rx="12" fill="#232936"/><text x="87" y="30" textAnchor="middle" fontFamily="Arial,sans-serif" fontSize="13" fontWeight="700" fill="#fff">Board of Directors</text></g>;
       const {node,x,y,key}=item,reports=node.direct_reports||[],issue=reportingIssue(node),dark=item.isRoot;
       const name=wrapOrgText(node.name||'Name unavailable',23),role=wrapOrgText(node.role_title||'Title not recorded',32,item.height>90?2:1);
       const reportCount=node.direct_report_count??reports.length;
-      const label=`${node.name||'Employee'}, ${node.role_title||'Title not recorded'}${node.department_label||node.department?`, ${node.department_label||node.department}`:''}${reportCount?`, ${reportCount} direct reports`:''}${issue?`, ${issue}`:''}`;
+      const label=`${node.name||'Employee'}, ${node.role_title||'Title not recorded'}${node.chart_relationship?`, ${node.chart_relationship}`:''}${node.department_label||node.department?`, ${node.department_label||node.department}`:''}${reportCount?`, ${reportCount} direct reports`:''}${issue?`, ${issue}`:''}`;
       return <g key={key} transform={`translate(${x},${y})`} className="employee-org-person" role="button" tabIndex={0} aria-label={label} aria-expanded={reports.length?!collapsed.has(key):undefined} data-testid={`org-node-${node.id}`}
         onClick={()=>onSelect(item)} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();onSelect(item);}}}>
         <title>{label}</title>
@@ -60,7 +61,7 @@ export default function EmployeeOrgChart({roots,sourceRoots=roots,onWholeCompany
       </div>
     </div>
     <div className="employee-org-canvas" style={{overflowX:zoom>1?'auto':'hidden'}}><div style={{width:`${zoom*100}%`,maxWidth:graph.width*zoom,margin:'0 auto'}}><OrgChartDrawing graph={graph} collapsed={collapsed} selected={selected?.key} onSelect={select}/></div></div>
-    {selected&&<div className="employee-org-selection" aria-live="polite"><div><strong>{selected.node.name}</strong><span>{selected.node.role_title}</span><span>{selected.node.department_label||selected.node.department}</span><span>{selected.node.line_manager_name?`Reports to ${selected.node.line_manager_name}`:'Reporting root'}{selected.node.direct_reports?.length?` · ${selected.node.direct_report_count??selected.node.direct_reports.length} direct reports`:''}</span>{reportingIssue(selected.node)&&<span className="employee-org-warning">{reportingIssue(selected.node)}</span>}</div>{selected.node.direct_reports?.length>0&&<button type="button" onClick={()=>{setFocus(fullTeam(selected.node));setCollapsed(new Set());setSelected(null);setZoom(1);}}><Focus size={16} aria-hidden="true"/>Focus on this team</button>}</div>}
-    <div className="employee-org-footnote"><Users size={14} aria-hidden="true"/><span>Connected lines show saved reporting relationships. Select a person to read their full details.</span></div>
+    {selected&&<div className="employee-org-selection" aria-live="polite"><div><strong>{selected.node.name}</strong><span>{selected.node.role_title}</span><span>{selected.node.department_label||selected.node.department}</span><span>{selected.node.chart_relationship||(selected.node.line_manager_name?`Reports to ${selected.node.line_manager_name}`:'Reporting root')}{selected.node.direct_reports?.length?` · ${selected.node.direct_report_count??selected.node.direct_reports.length} direct reports`:''}</span>{reportingIssue(selected.node)&&<span className="employee-org-warning">{reportingIssue(selected.node)}</span>}</div>{selected.node.direct_reports?.length>0&&<button type="button" onClick={()=>{setFocus(fullTeam(selected.node));setCollapsed(new Set());setSelected(null);setZoom(1);}}><Focus size={16} aria-hidden="true"/>Focus on this team</button>}</div>}
+    <div className="employee-org-footnote"><Users size={14} aria-hidden="true"/><span>{graph.edges.some(edge=>edge.kind==='peer')?'Dashed line: executive peers. Solid lines: reporting relationships.':'Connected lines show saved reporting relationships.'} Select a person to read their full details.</span></div>
   </section>;
 }

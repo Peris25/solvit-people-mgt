@@ -26,7 +26,7 @@ export function reportingIssue(node){
   }[node.reporting_status];
 }
 
-export function layoutOrgChart(roots,collapsed=new Set()) {
+function layoutBasicOrgChart(roots,collapsed=new Set()) {
   const nodes=[],edges=[];
   const children=(node,path)=>collapsed.has(orgKey(node,path))?[]:node.direct_reports||[];
   function measure(node,path){
@@ -67,4 +67,94 @@ export function layoutOrgChart(roots,collapsed=new Set()) {
     top+=group.height+48;
   });
   return {nodes,edges,width,height:Math.max(220,top-48+PAD)};
+}
+
+// Display ranks are separate from reporting edges: a manager can occupy the
+// management row and still report to another manager in that row.
+function leadershipLayout(roots,collapsed){
+  const role=node=>String(node.role_title||'').toLowerCase().replace(/[^a-z]/g,'');
+  const managing=roots.filter(node=>role(node)==='managingdirector'&&node.identity_status!=='ambiguous');
+  if(managing.length!==1)return null;
+  const md=managing[0],all=[];
+  const scan=(records,path='')=>records.forEach((node,i)=>{const keyPath=path?`${path}.${i}`:String(i);all.push({node,path:keyPath});scan(node.direct_reports||[],keyPath);});
+  scan(roots);
+  const directors=all.filter(item=>role(item.node)==='executivedirector'&&item.node.identity_status!=='ambiguous');
+  const ed=directors.length===1?directors[0]:null;
+  const mdPath=String(roots.indexOf(md));
+  const leaders=[{node:md,path:mdPath,key:orgKey(md,mdPath)}];
+  if(ed)leaders.push({...ed,key:orgKey(ed.node,ed.path),peer:true});
+  const entries=[];
+  function visit(parent){
+    if(collapsed.has(parent.key))return;
+    (parent.node.direct_reports||[]).forEach((node,i)=>{
+      if(ed&&node===ed.node)return;
+      const path=`${parent.path}.${i}`,entry={node,path,key:orgKey(node,path),parentKey:parent.key};
+      entries.push(entry);visit(entry);
+    });
+  }
+  leaders.forEach(visit);
+  const leaderKeys=new Set(leaders.map(item=>item.key));
+  const managers=entries.filter(item=>leaderKeys.has(item.parentKey)||item.node.direct_reports?.length);
+  const managerKeys=new Set(managers.map(item=>item.key));
+  const leaves=entries.filter(item=>!managerKeys.has(item.key));
+  const columns=managers.map(item=>({...item,reports:leaves.filter(child=>child.parentKey===item.key)}));
+  const contentWidth=Math.max(leaders.length*CARD_WIDTH+(leaders.length-1)*GAP,columns.reduce((sum,item)=>sum+CARD_WIDTH+(item.reports.length?INDENT:0),0)+GAP*Math.max(0,columns.length-1));
+  const width=contentWidth+2*PAD,nodes=[],edges=[];
+  const boardLeaders=leaders.filter(item=>item.node.reporting_status==='resolved'&&!item.node.line_manager_id&&item.node.line_manager_name==='Board of Directors');
+  const leaderY=PAD+(boardLeaders.length?88:0);
+  const leaderStart=(width-(leaders.length*CARD_WIDTH+(leaders.length-1)*GAP))/2;
+  const positions=new Map();
+  leaders.forEach((item,i)=>{
+    const displayed=item.peer?{...item.node,chart_relationship:'Executive peer of the Managing Director'}:{...item.node,direct_report_count:(item.node.direct_report_count??item.node.direct_reports?.length??0)-(ed&&item.node.direct_reports?.includes(ed.node)?1:0)};
+    const placed={...item,node:displayed,x:leaderStart+i*(CARD_WIDTH+GAP),y:leaderY,isRoot:true,height:CARD_HEIGHT};
+    nodes.push(placed);positions.set(item.key,placed);
+  });
+  if(boardLeaders.length){
+    const boardKey=`board:${leaders[0].key}`;
+    nodes.push({key:boardKey,isBoard:true,x:(width-174)/2,y:PAD});
+    boardLeaders.forEach(item=>{const target=positions.get(item.key);edges.push({from:boardKey,to:item.key,d:`M${width/2},${PAD+50} V${PAD+68} H${target.x+CARD_WIDTH/2} V${leaderY}`});});
+  }
+  if(ed){
+    const left=positions.get(leaders[0].key),right=positions.get(leaders[1].key);
+    edges.push({from:left.key,to:right.key,kind:'peer',d:`M${left.x+CARD_WIDTH},${leaderY+CARD_HEIGHT/2} H${right.x}`});
+  }
+  const managerialLinks=managers.filter(item=>managerKeys.has(item.parentKey));
+  const managerY=leaderY+CARD_HEIGHT+ROOT_GAP+managerialLinks.length*8;
+  let x=(width-contentWidth)/2,bottom=leaderY+CARD_HEIGHT;
+  columns.forEach(item=>{
+    const placed={...item,x,y:managerY,height:CARD_HEIGHT};nodes.push(placed);positions.set(item.key,placed);
+    item.reports.forEach((child,i)=>{
+      const childY=managerY+CARD_HEIGHT+CHILD_GAP+i*(80+STACK_GAP),childX=x+INDENT;
+      nodes.push({...child,x:childX,y:childY,height:80});
+      edges.push({from:item.key,to:child.key,d:`M${x+CARD_WIDTH/2},${managerY+CARD_HEIGHT} V${managerY+CARD_HEIGHT+10} H${x+7} V${childY+40} H${childX}`});
+      bottom=Math.max(bottom,childY+80);
+    });
+    bottom=Math.max(bottom,managerY+CARD_HEIGHT);
+    x+=CARD_WIDTH+(item.reports.length?INDENT:0)+GAP;
+  });
+  let lane=0;
+  managers.forEach(item=>{
+    const from=positions.get(item.parentKey),to=positions.get(item.key);
+    if(managerKeys.has(item.parentKey)){
+      const gutter=from.x+CARD_WIDTH+7,rail=managerY-18-(lane++)*8;
+      edges.push({from:from.key,to:to.key,kind:'manager',d:`M${from.x+CARD_WIDTH},${managerY+CARD_HEIGHT/2} H${gutter} V${rail} H${to.x+CARD_WIDTH/2} V${managerY}`});
+    }else edges.push({from:from.key,to:to.key,d:`M${from.x+CARD_WIDTH/2},${leaderY+CARD_HEIGHT} V${leaderY+CARD_HEIGHT+26+leaders.findIndex(item=>item.key===from.key)*14} H${to.x+CARD_WIDTH/2} V${managerY}`});
+  });
+  const withoutPeer=node=>({...node,direct_reports:(node.direct_reports||[]).filter(child=>child!==ed?.node).map(withoutPeer)});
+  const remaining=roots.filter(root=>root!==md&&root!==ed?.node).map(withoutPeer);
+  let height=bottom+PAD;
+  if(remaining.length){
+    const extra=layoutBasicOrgChart(remaining,collapsed),combinedWidth=Math.max(width,extra.width);
+    const shift=(combinedWidth-width)/2,extraShift=(combinedWidth-extra.width)/2;
+    nodes.forEach(item=>{item.x+=shift;});
+    edges.forEach(edge=>{edge.transform=`translate(${shift},0)`;});
+    nodes.push(...extra.nodes.map(item=>({...item,x:item.x+extraShift,y:item.y+height+20})));
+    edges.push(...extra.edges.map(edge=>({...edge,transform:`translate(${extraShift},${height+20})`})));
+    return {nodes,edges,width:combinedWidth,height:height+20+extra.height};
+  }
+  return {nodes,edges,width,height};
+}
+
+export function layoutOrgChart(roots,collapsed=new Set()){
+  return leadershipLayout(roots,collapsed)||layoutBasicOrgChart(roots,collapsed);
 }
