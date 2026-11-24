@@ -8,7 +8,7 @@ import * as api from '../services/api';
 jest.mock('../services/api');
 jest.mock('../context/AuthContext');
 jest.mock('../context/NotificationContext', () => ({useNotifications: () => ({unreadCount:0})}));
-jest.mock('react-router-dom', () => ({Outlet: () => <div>Route content</div>, Navigate: () => null, Link: ({children}) => <a>{children}</a>}));
+jest.mock('react-router-dom', () => ({useSearchParams:()=>[new URLSearchParams()],Outlet: () => <div>Route content</div>, Navigate: () => null, Link: ({children}) => <a>{children}</a>}));
 jest.mock('../components/Sidebar', () => ({collapsed,onToggle}) => <button data-testid="navigation-toggle" onClick={() => onToggle(!collapsed)}>{collapsed ? 'Collapsed' : 'Expanded'}</button>);
 jest.mock('../components/AIAgent', () => () => null);
 jest.mock('../components/FirstLoginTour', () => () => null);
