@@ -1,0 +1,19 @@
+.my-tasks-page { color:var(--portal-ink,#20252f); }
+.my-tasks-header h1 { font-size:32px; line-height:1.2; letter-spacing:-.7px; }
+.my-tasks-header p { margin-bottom:0; line-height:1.5; }
+.my-tasks-page .my-tasks-button { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:10px 16px; border:1px solid var(--portal-line,#e6e8ed); border-radius:10px; background:var(--portal-surface,#fff); color:var(--portal-ink,#20252f); font:inherit; font-size:13px; font-weight:600; cursor:pointer; }
+.my-tasks-page button:focus-visible { outline:2px solid var(--portal-accent,#d92336); outline-offset:3px; }
+.my-tasks-page button:disabled { opacity:.55; cursor:wait; }
+.my-tasks-panel { background:var(--portal-surface,#fff); border:1px solid var(--portal-line,#e6e8ed); border-radius:16px; overflow:hidden; }
+.my-tasks-panel-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; padding:20px 24px; border-bottom:1px solid var(--portal-line,#e6e8ed); }
+.my-tasks-panel-heading h2 { margin:0; font-size:16px; font-weight:700; }
+.my-tasks-count { border-radius:999px; padding:6px 11px; background:var(--portal-bg,#f5f6f8); color:var(--portal-muted,#667080); font-size:12px; font-weight:600; }
+.my-tasks-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:44px 24px 48px; text-align:center; }
+.my-tasks-empty-icon { display:flex; align-items:center; justify-content:center; width:56px; height:56px; margin-bottom:16px; border-radius:16px; background:var(--portal-bg,#f5f6f8); color:var(--portal-muted,#667080); }
+.my-tasks-empty h3 { margin:0 0 8px; font-size:18px; font-weight:700; }
+.my-tasks-empty p { margin:3px 0; color:var(--portal-muted,#667080); font-size:13px; line-height:1.6; }
+.my-tasks-table { overflow-x:auto; }
+.my-tasks-table table { min-width:840px; font-size:13px; }
+.my-tasks-table thead { background:var(--portal-bg,#f5f6f8); color:var(--portal-muted,#667080); }
+.my-tasks-table tbody tr:not(:last-child) { border-bottom:1px solid var(--portal-line,#e6e8ed); }
+@media(max-width:600px) { .my-tasks-header h1 { font-size:28px; } .my-tasks-panel-heading { padding:18px; } .my-tasks-empty { padding:36px 18px; } }
