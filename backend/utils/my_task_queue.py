@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from bson import ObjectId
 from utils.employee_integrity import tenant_query, tenant_of, user_employee_aliases, resolve_user_employee, employee_key
 from utils.employee_access import personal_grant
+from utils.task_activity import current,current_checklist,ACTIVE_SINCE
 
 logger=logging.getLogger(__name__)
 OPEN=['Pending','In_Progress','Open']
@@ -48,12 +49,17 @@ async def queue(db,user):
             {'assigned_role':role,'assigned_to':{'$in':[None,'']},'assigned_to_user_id':{'$in':[None,'']}}]})).to_list(None)
         result=[]
         for row in candidates:
+            if not current(row):continue
             if row.get('assigned_to') and str(row['assigned_to']) not in actor_refs: continue
             if row.get('assigned_to_user_id') and str(row['assigned_to_user_id'])!=str(user['id']):continue
             check={**row}
             if check.get('assigned_to'):check['assigned_to']=str(check['assigned_to'])
             if row.get('assigned_to_user_id'):check['assigned_to']=user['id']
             if not await permitted(authorize_task,db,user,check):continue
+            if str(row.get('task_type') or '').startswith(('onboarding','probation_review_','check_in','checkin')):
+                from utils.employee_integrity import find_employee
+                subject=await find_employee(db,row.get('employee_id') or row.get('entity_id'),tenant_of(user))
+                if not subject or not current_checklist(row,subject):continue
             checklist=row.get('task_type')=='exit_workflow'
             can_complete=not checklist and await permitted(authorize_task,db,user,check,write=True)
             path='/onboarding' if checklist else None
@@ -65,6 +71,7 @@ async def queue(db,user):
         from utils.form_access import authorize_signature
         result=[]
         for row in await db.form_submissions.find(scoped({'status':'InProgress','next_required_role':{'$in':[role,'employee']}})).to_list(None):
+            if not current(row):continue
             if row.get('form_id')=='form-06':continue
             if await permitted(authorize_signature,db,user,row.get('next_required_role'),row.get('subject_employee_id'),row.get('started_by')):
                 result.append(item('form',row,row.get('form_title') or row.get('form_id') or 'Form sign-off',route('/forms','submission',identifier(row))))
@@ -84,6 +91,9 @@ async def queue(db,user):
         rows=await db.performance_reviews.find({'$and':[scope,{'$or':relevant}]}).to_list(None)
         result=[]
         for row in rows:
+            if not current(row,row.get('starts_on'),row.get('released_at'),
+                           (row.get('self_assessment') or {}).get('submitted_at'),
+                           (row.get('manager_assessment') or {}).get('submitted_at')):continue
             try: subject=await flow.employee_access(db,user,row.get('employee_id'))
             except HTTPException as error:
                 if error.status_code in {403,404}:continue
@@ -112,13 +122,18 @@ async def queue(db,user):
         from utils.performance_v3_peers import listing
         from utils.performance_v3_alignment import windows
         peers,surveys=await asyncio.gather(listing(db,user),windows(db,user))
-        result=[item('peer',row,'Complete confidential peer review',route('/performance','peer',row['id']),row.get('due_on'),subject=row.get('employee_name')) for row in peers if row.get('status')=='Assigned' and row.get('can_submit')]
+        result=[]
         from utils import performance_v3 as process
+        for row in peers:
+            if row.get('status')!='Assigned' or not row.get('can_submit'):continue
+            raw=await db.performance_peer_tasks.find_one(process.scoped(user,{'id':row['id']}))
+            cycle=await process.cycle(db,user,row['cycle_id'])
+            if current(raw or {},cycle.get('starts_on')):result.append(item('peer',row,'Complete confidential peer review',route('/performance','peer',row['id']),row.get('due_on'),subject=row.get('employee_name')))
         today=process.today().isoformat()
         for row in surveys:
             if row.get('submitted') or not row.get('starts_on','z')<=today<=row.get('due_on',''):continue
             cycle=await process.cycle(db,user,row['id'])
-            if cycle.get('status')=='Open':result.append(item('alignment',row,'Complete Alignment Survey',route('/performance','alignment',row['id']),row.get('due_on')))
+            if cycle.get('status')=='Open' and current(cycle,cycle.get('starts_on')):result.append(item('alignment',row,'Complete Alignment Survey',route('/performance','alignment',row['id']),row.get('due_on')))
         return result
 
     async def checklists():
@@ -131,6 +146,7 @@ async def queue(db,user):
             if row.get('assigned_role')=='employee' and str(row.get('entity_id')) not in refs:continue
             from utils.employee_integrity import find_employee,is_direct_report
             subject=await find_employee(db,row.get('entity_id'),tenant_of(user))
+            if not subject or not current_checklist(row,subject):continue
             if subject and subject.get('onboarding_recorded_status')=='Completed':continue
             if row.get('assigned_role')=='line_manager':
                 if not subject or not is_direct_report(subject,user):continue
@@ -144,6 +160,7 @@ async def queue(db,user):
         if not hr:candidates['line_manager_id']={'$in':refs}
         result=[]
         for row in await db.leave_requests.find(scoped(candidates)).to_list(None):
+            if not current(row,row.get('manager_decided_at') if row.get('status')=='Pending_HR' else None):continue
             if await stage_for(db,user,row):result.append(item('leave',row,'Review leave request',route('/leave','request',identifier(row))+'&view=team',row.get('start_date')))
         return result
 
@@ -157,6 +174,8 @@ async def queue(db,user):
         from utils.learning_workflows import employee_access,projection
         result=[]
         for row in await collection.find(scoped(query)).to_list(None):
+            if not current(row,row.get('manager_decided_at'),row.get('hr_decided_at'),
+                           (row.get('completion_submission') or {}).get('submitted_at')):continue
             try:subject=await employee_access(db,user,row.get('employee_id'))
             except HTTPException as error:
                 if error.status_code in {403,404}:continue
@@ -177,4 +196,4 @@ async def queue(db,user):
         else:items.extend(result)
     unique={row['id']:row for row in items}
     ordered=sorted(unique.values(),key=lambda row:(not bool(row.get('due_date')),str(row.get('due_date') or ''),row['title']))
-    return {'items':ordered,'count':len(ordered) if not errors else None,'errors':errors,'as_of':datetime.now(timezone.utc).isoformat()}
+    return {'items':ordered,'count':len(ordered) if not errors else None,'errors':errors,'active_since':ACTIVE_SINCE,'as_of':datetime.now(timezone.utc).isoformat()}

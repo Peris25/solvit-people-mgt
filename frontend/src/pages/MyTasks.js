@@ -15,7 +15,7 @@ export default function MyTasks() {
     catch(error){setActionError('Completion could not be confirmed. Refresh the list before retrying.');}finally{setBusy('');}
   };
   return <div data-testid="my-tasks-page" style={{fontFamily:'Arial, Helvetica, sans-serif'}}>
-    <header style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:16,marginBottom:24}}><div><h1 style={{fontSize:32,margin:0}}>My Tasks</h1><p>Your assigned work, approvals and reviews in one place.</p></div><button type="button" disabled={loading} onClick={reload} style={{minHeight:44,padding:'8px 16px'}}>Refresh tasks</button></header>
+    <header style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:16,marginBottom:24}}><div><h1 style={{fontSize:32,margin:0}}>My Tasks</h1><p>Your assigned work, approvals and reviews in one place.</p><p>Current tasks from Monday, 23 November 2026. Earlier records remain in workflow history.</p></div><button type="button" disabled={loading} onClick={reload} style={{minHeight:44,padding:'8px 16px'}}>Refresh tasks</button></header>
     {(error||actionError)&&<div role="alert"><p>{error||actionError}</p><button type="button" onClick={reload}>Retry tasks</button></div>}
     {!!data?.errors?.length&&<div role="alert"><p>Some task types could not load: {data.errors.join(', ')}. The list below may be incomplete.</p><button type="button" onClick={reload}>Retry tasks</button></div>}
     {loading&&<div role="status" style={{padding:24}}>Loading your assigned tasks…</div>}

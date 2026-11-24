@@ -157,7 +157,9 @@ async def checklists(request: Request):
                 group["recorded_status"] = employee.get("onboarding_recorded_status")
                 if group["recorded_status"] == "Completed":
                     writable = False
-            group["tasks"].append(service.project(row, writable))
+            from utils.task_activity import current,current_checklist
+            active=(current_checklist(row,employee) and employee.get('onboarding_recorded_status')!='Completed') if kind=='onboarding' else current(row) and not employee.get('offboarding_completed_at')
+            group['tasks'].append({**service.project(row,writable and active),'current_task':active})
     for group in groups.values():
         tasks = group["tasks"]
         group["progress_pct"] = round(100 * sum(t["status"] == "Completed" for t in tasks) / len(tasks))

@@ -1,5 +1,9 @@
 # Personal task queue
 
+The active-work boundary is Monday, 23 November 2026 at midnight Nairobi time, as requested by HR. All users' task lists and dashboard counts exclude earlier work. Creation, explicit assignment and relevant workflow submission timestamps establish current work; a future due date or a recent generic edit does not revive a historical task. Review cycle start dates also establish current review work.
+
+Onboarding checklists use the employee's onboarding/start date, unless explicitly reassigned. Generating templates retrospectively does not create current induction work for earlier starters. Completed onboarding is excluded. The onboarding screen hides earlier checklists by default and offers **Show earlier checklist history** as a read-only reference. This is a display boundary only: no historical records are deleted or marked completed.
+
 The dashboard personal-task metrics and My Tasks table use the same authenticated `GET /dashboard/my-tasks` projection. The company-wide `employees/stats.open_tasks` value is no longer used as a personal task count. Staff Home enrolment eligibility prompts are not treated as assigned work.
 
 Sources are retrieved concurrently: explicit account/employee/role assignments, form sign-offs, current performance review actions (including manager-led Probation), peer tasks and open Alignment surveys, onboarding checklists, leave approvals and learning actions. Each source retains its existing object authorization and workflow stage checks. Explicit assignments override role queues. Canonical and historical employee identifiers are verified against the caller's linked employee record. HR's personal queue does not include another person's explicit assignments merely because HR can administer them.

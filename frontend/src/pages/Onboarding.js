@@ -20,6 +20,11 @@ export default function Onboarding() {
   const [documents, setDocuments] = useState({});
   const [onboardingEmployees, setOnboardingEmployees] = useState([]);
   const [documentIds, setDocumentIds] = useState({});
+  const [showHistory,setShowHistory]=useState(false);
+  const visibleGroups=groups.map(group=>{
+    const tasks=group.tasks.filter(task=>showHistory||task.current_task!==false);
+    return {...group,tasks,empty_original:group.tasks.length===0,history_only:tasks.length>0&&tasks.every(task=>task.current_task===false),progress_pct:tasks.length?Math.round(100*tasks.filter(task=>task.status==='Completed').length/tasks.length):group.progress_pct};
+  }).filter(group=>group.tasks.length>0||(group.kind==='offboarding'&&group.empty_original));
   const load = useCallback(async () => {
     setLoading(true);
     try { setGroups((await api.getLifecycleChecklists()).data); }
@@ -56,24 +61,26 @@ export default function Onboarding() {
       <button style={button} disabled={busy || !employee}>Initiate workflow</button>
       <p>Account creation uses the existing Access Control provisioning process and mandatory first-login password change.</p>
     </form>}
-    {loading ? <p role="status">Loading checklists...</p> : groups.length === 0 ? <p>No onboarding or offboarding responsibilities available.</p> :
-      groups.map(group => <section key={group.kind + group.employee_id} style={{ background: '#fff', padding: 20, marginBottom: 20 }}>
-        <h2>{group.name} / {group.kind}</h2><p>{group.recorded_status === 'Completed' ? 'Onboarded — HR confirmed. Original checklist history retained below.' : `${group.progress_pct}% complete`} {group.completed_at && '/ Archived'}</p>
+    <p>Current responsibilities from 23 November 2026. Older records are retained in history.</p>
+    <label><input type="checkbox" checked={showHistory} onChange={event=>setShowHistory(event.target.checked)}/> Show earlier checklist history</label>
+    {loading ? <p role="status">Loading checklists...</p> : visibleGroups.length === 0 ? <p>No current onboarding or offboarding responsibilities available.</p> :
+      visibleGroups.map(group => <section key={group.kind + group.employee_id} style={{ background: '#fff', padding: 20, marginBottom: 20 }}>
+        <h2>{group.name} / {group.kind}</h2><p>{group.history_only?'Historical checklist — retained for reference.':group.recorded_status === 'Completed' ? 'Onboarded — HR confirmed. Original checklist history retained below.' : `${group.progress_pct}% complete`} {group.completed_at && '/ Archived'}</p>
         {group.last_working_day && <p>Last working day: {group.last_working_day}</p>}
         <progress value={group.progress_pct} max="100" aria-label="Checklist progress" />
         <div style={{ display: 'grid', gap: 12, marginTop: 16 }}>{group.tasks.map(task => <div key={task.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'space-between', borderBottom: '1px solid #eee', paddingBottom: 12 }}>
           <div><strong>{task.title}</strong><div>{task.assigned_role?.replaceAll('_', ' ')} / {task.due_date || 'Due date awaiting HR confirmation'} / {task.status}</div>
             {task.document_id && <Link to="/documents">View authorized documents</Link>}</div>
-          {hr && task.task_key === 'DOCS' && task.status !== 'Completed' && <div>
+          {hr && task.current_task!==false && task.task_key === 'DOCS' && task.status !== 'Completed' && <div>
             <button disabled={busy} onClick={() => perform(async () => { const response = await api.getEmployeeDocuments(group.employee_id); setDocuments(previous => ({ ...previous, [group.employee_id]: response.data })); })}>Load employee documents</button>
             <label>Verified document <select value={documentIds[task.id] || ''} onChange={e => setDocumentIds(previous => ({ ...previous, [task.id]: e.target.value }))}>
               <option value="">Select a verified document</option>{(documents[group.employee_id] || []).filter(doc => !doc.deleted_at).map(doc => <option key={doc.id} value={doc.id}>{doc.title || doc.file_name || doc.category}</option>)}
             </select></label>
           </div>}
-          {task.can_complete && task.status !== 'Completed' && !group.completed_at && <button style={button} disabled={busy}
+          {task.can_complete && task.current_task!==false && task.status !== 'Completed' && !group.completed_at && <button style={button} disabled={busy}
             onClick={() => perform(() => api.updateLifecycleTask(group.kind, task.id, { status: 'Completed', ...(documentIds[task.id] ? { document_id: documentIds[task.id] } : {}) }))}>Mark complete</button>}
         </div>)}</div>
-        {hr && group.kind === 'offboarding' && !group.completed_at && <div style={{ marginTop: 20 }}>
+        {hr && !group.history_only && group.kind === 'offboarding' && !group.completed_at && <div style={{ marginTop: 20 }}>
           {confirm === group.employee_id ? <><p>Archival requires completed clearance and the 17:00 EAT cutoff. Scheduled deactivation revokes access at that cutoff even if clearance remains open.</p>
             <button style={button} disabled={busy} onClick={() => perform(() => api.completeOffboarding(group.employee_id))}>Confirm deactivation</button>
             <button style={button} disabled={busy} onClick={() => perform(() => api.authorizeExitDeactivation(group.employee_id))}>Authorize scheduled deactivation</button>

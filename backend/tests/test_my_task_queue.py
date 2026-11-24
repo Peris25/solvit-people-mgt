@@ -14,7 +14,7 @@ def setup():
 
 
 def task(reference,**extra):
-    return {'_id':reference,'id':reference,'tenant_id':'solvit','title':'Assigned '+reference,'status':'Pending',**extra}
+    return {'_id':reference,'id':reference,'tenant_id':'solvit','title':'Assigned '+reference,'status':'Pending','created_at':'2026-11-23T09:00:00Z',**extra}
 
 
 def test_queue_contains_account_and_employee_assignments_but_not_global_or_foreign_tasks():
@@ -43,9 +43,9 @@ def test_role_assignment_does_not_override_an_explicit_different_assignee():
 
 def test_forms_and_review_actions_appear_in_same_list_with_correct_links():
     db,users=setup()
-    db.form_submissions.docs=[{'_id':'form','id':'form','tenant_id':'solvit','form_id':'form-15','form_title':'Sign form','status':'InProgress','subject_employee_id':'staff','next_required_role':'employee'}]
+    db.form_submissions.docs=[{'_id':'form','id':'form','tenant_id':'solvit','form_id':'form-15','form_title':'Sign form','status':'InProgress','subject_employee_id':'staff','next_required_role':'employee','created_at':'2026-11-23T09:00:00Z'}]
     db.performance_cycles.docs=[{'_id':'cycle','id':'cycle','tenant_id':'solvit','workflow_version':3,'status':'Configured','cycle_type':'Year_End','cycle_year':2099,'starts_on':'2099-01-01','self_due_on':'2099-01-07'}]
-    db.performance_reviews.docs=[{'_id':'review','id':'review','tenant_id':'solvit','workflow_version':3,'cycle_id':'cycle','cycle_type':'Year_End','cycle_year':2099,'employee_id':'staff','status':'Self_Draft','section_a_kpis':[],'self_due_on':'2099-01-07'}]
+    db.performance_reviews.docs=[{'_id':'review','id':'review','tenant_id':'solvit','workflow_version':3,'cycle_id':'cycle','cycle_type':'Year_End','cycle_year':2099,'employee_id':'staff','status':'Self_Draft','section_a_kpis':[],'starts_on':'2099-01-01','self_due_on':'2099-01-07'}]
     result=run(queue(db,users['staff']))
     assert result['errors']==[] and result['count']==2
     assert {item['path'] for item in result['items']}=={'/forms?submission=form','/performance?review=review'}

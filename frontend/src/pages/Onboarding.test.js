@@ -17,7 +17,7 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); jest.clearAllMocks(); });
 const render = async () => { await act(async () => root.render(<Onboarding />)); };
 test('own empty state and private document links without HR initiation controls', async () => {
-  await render(); expect(container.textContent).toContain('No onboarding or offboarding');
+  await render(); expect(container.textContent).toContain('No current onboarding or offboarding');
   expect(container.textContent).not.toContain('Initiate a workflow');
   expect(container.querySelector('a[href="/documents"]')).toBeTruthy();
 });
@@ -43,4 +43,13 @@ test('HR exit completion requires a separate confirmation action', async () => {
 test('read failures show retry and update failures preserve checklist', async () => {
   api.getLifecycleChecklists.mockRejectedValue(new Error('offline')); await render();
   expect(container.querySelector('[role="alert"]').textContent).toContain('Unable to load');
+});
+
+test('earlier checklists are hidden by default and available as read-only history',async()=>{
+ api.getLifecycleChecklists.mockResolvedValue({data:[{employee_id:'staff',name:'Historical colleague',kind:'onboarding',progress_pct:0,tasks:[{id:'old',title:'Old 30-day check-in',status:'Pending',assigned_role:'line_manager',current_task:false,can_complete:true}]}]});
+ await render();expect(container.textContent).not.toContain('Historical colleague');expect(container.textContent).not.toContain('Old 30-day check-in');
+ await act(async()=>container.querySelector('input[type="checkbox"]').click());
+ expect(container.textContent).toContain('Old 30-day check-in');expect(container.textContent).toContain('Historical checklist');
+ expect([...container.querySelectorAll('button')].some(button=>button.textContent==='Mark complete')).toBe(false);
+ expect(api.updateLifecycleTask).not.toHaveBeenCalled();
 });
