@@ -51,21 +51,22 @@ export default function Organogram() {
 
   if (!allowed) return <div role="alert" style={{ padding: 28 }}>Staff organogram access is not available for this account.</div>;
   return (
-    <div data-testid="organogram-page" style={{ padding: '32px 28px', backgroundColor: '#F9FAFB', minHeight: 0 }}>
+    <div data-testid="organogram-page" className="workspace-page org-page">
       <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'baseline', gap: '20px', flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: 900, letterSpacing: '-0.04em', color: '#191919', margin: 0 }}>Organogram</h1>
           <p style={{ color: '#525252', fontSize: '13px', margin: '4px 0 0' }}>
-            Live reporting structure — auto-builds from each employee's line manager assignment.
+            See who reports to whom across Solvit.
           </p>
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div className="org-page-search" style={{ marginLeft: 'auto' }}>
           <input
             data-testid="org-search"
             placeholder="Search name, role, department…"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            style={{ padding: '8px 12px', border: '1px solid rgba(25,25,25,0.15)', fontSize: '13px', minWidth: '280px' }}
+            aria-label="Search reporting relationships"
+            style={{ padding: '8px 12px', border: '1px solid rgba(25,25,25,0.15)', fontSize: '13px' }}
           />
           <span style={{ fontSize: '12px', color: '#525252' }}>
             <strong style={{ color: '#191919' }}>{total}</strong> people
@@ -73,10 +74,10 @@ export default function Organogram() {
         </div>
       </div>
 
-      <CompactRoleChart />
-      <details open={Boolean(filter.trim())} data-testid="employee-reporting-details" style={{marginTop:20,background:'#fff',border:'1px solid #e5e7eb',borderRadius:12,padding:16}}>
+      <details style={{marginBottom:16}}><summary style={{cursor:'pointer',minHeight:36,fontSize:13}}>Role structure reference</summary><CompactRoleChart /></details>
+      <details open data-testid="employee-reporting-details" style={{background:'var(--portal-surface,#fff)',border:'1px solid var(--portal-line,#e5e7eb)',borderRadius:12,padding:16,minWidth:0,boxSizing:'border-box'}}>
         <summary style={{cursor:'pointer',fontWeight:700,minHeight:32}}>Employee reporting relationships ({total} people)</summary>
-        <p style={{fontSize:12,color:'#64748b'}}>Live employee reporting links use saved manager assignments. Search above to find a person, role or department.</p>
+        <p style={{fontSize:12,color:'#64748b'}}>Select a manager to expand or collapse their team. Search to find a person, role or department.</p>
       {loading ? <div style={{ padding: '32px' }}>Loading organogram…</div> : null}
       {error ? (
         <div style={{ padding: '16px', backgroundColor: '#FEE2E2', color: '#991B1B', fontSize: '13px' }}>
@@ -92,9 +93,9 @@ export default function Organogram() {
         </div>
       ) : null}
       {!loading && !error && filtered.length > 0 ? (
-        <div style={{ overflowX: 'auto', padding: '20px', backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'flex-start', gap: '24px', minWidth: 'max-content' }}>
-            {filtered.map((r) => <OrgNode key={r.node_id || r.id} node={r} />)}
+        <div style={{paddingTop:12,minWidth:0}}>
+          <div className="org-reporting-roots">
+            {filtered.map((r) => <OrgNode key={`${filter.trim()}:${r.node_id || r.id}`} node={r} />)}
           </div>
         </div>
       ) : null}

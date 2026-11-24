@@ -19,14 +19,15 @@ test('unsupported roles cannot load the organogram through a direct page visit',
   expect(container.textContent).toContain('not available');
 });
 
-test('compact reference role chart is primary and live tree is collapsed initially', async () => {
+test('live reporting tree is open and reference chart is collapsed initially', async () => {
   await render({ roots: [], total: 0 });
   const chart=container.querySelector('svg[role="img"]');
   expect(chart.getAttribute('viewBox')).toBe('0 0 1024 720');
   expect(chart.textContent).toContain('Executive Director linked laterally');
   expect(chart.textContent).toContain('FINANCE &');
   expect(chart.textContent).toContain('IT SUPPORT');
-  expect(container.querySelector('[data-testid="employee-reporting-details"]').open).toBe(false);
+  expect(container.querySelector('[data-testid="employee-reporting-details"]').open).toBe(true);
+  expect(chart.closest('details').open).toBe(false);
 });
 
 test('distinct render keys keep conflicting records visible with review notices', async () => {

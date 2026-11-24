@@ -1,79 +1,32 @@
 import React, { useState } from 'react';
+import { ChevronDown, ChevronRight, UserRound } from 'lucide-react';
+import './OrgNode.css';
 
-function OrgNode(props) {
-  const node = props.node;
-  const [open, setOpen] = useState(true);
-  const reports = node.direct_reports || [];
-  const hasReports = reports.length > 0;
-  const color = '#191919';
-  const issue = node.identity_status === 'ambiguous' ? 'Employee identifier needs review' : {
-    unavailable: 'Reporting link unavailable', ambiguous: 'Manager reference needs review',
-    cycle: 'Reporting cycle needs review', depth_limit: 'Reporting branch shown separately',
-    none: 'Reporting assignment awaits HR confirmation',
+export default function OrgNode({node, depth=0}) {
+  const [open,setOpen]=useState(true);
+  const reports=node.direct_reports||[];
+  const hasReports=reports.length>0;
+  const issue=node.identity_status==='ambiguous'?'Employee identifier needs review':{
+    unavailable:'Reporting link unavailable',ambiguous:'Manager reference needs review',
+    cycle:'Reporting cycle needs review',depth_limit:'Reporting branch shown separately',
+    none:'Reporting assignment awaits HR confirmation',
   }[node.reporting_status];
-
-  return (
-    <div
-      data-testid={'org-node-' + node.id}
-      style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', padding: '0 8px' }}
-    >
-      <div
-        onClick={() => hasReports && setOpen(!open)}
-        role={hasReports ? 'button' : undefined}
-        tabIndex={hasReports ? 0 : undefined}
-        aria-expanded={hasReports ? open : undefined}
-        onKeyDown={event => { if (hasReports && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setOpen(!open); } }}
-        style={{
-          minWidth: '220px', maxWidth: '240px',
-          backgroundColor: '#fff',
-          border: '1px solid rgba(25,25,25,0.12)',
-          borderTop: '3px solid ' + color,
-          padding: '12px 14px',
-          cursor: hasReports ? 'pointer' : 'default',
-          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
-          position: 'relative',
-        }}
-      >
-        <div style={{ fontSize: '13px', fontWeight: 900, color: '#191919', letterSpacing: '-0.01em' }}>
-          {node.name || '—'}
-        </div>
-        <div style={{ fontSize: '11px', color: '#525252', marginTop: '2px' }}>
-          {node.role_title || '—'}
-        </div>
-        <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '6px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-          {node.department_label || node.department || '—'}
-        </div>
-        {issue && <div role="status" style={{ fontSize: '10px', color: '#92400E', marginTop: '6px' }}>{issue}</div>}
-        {hasReports ? (
-          <div style={{ position: 'absolute', top: '8px', right: '10px', fontSize: '10px', color: '#525252', fontWeight: 700 }}>
-            {(open ? '−' : '+') + ' ' + reports.length}
-          </div>
-        ) : null}
+  const toggle=()=>hasReports&&setOpen(value=>!value);
+  return <div className="org-person-branch" data-testid={'org-node-'+node.id}>
+    <div className={'org-person-card'+(hasReports?' org-person-manager':'')}
+      role={hasReports?'button':undefined} tabIndex={hasReports?0:undefined}
+      aria-expanded={hasReports?open:undefined} onClick={toggle}
+      onKeyDown={event=>{if(hasReports&&(event.key==='Enter'||event.key===' ')){event.preventDefault();toggle();}}}>
+      <span className="org-person-avatar" aria-hidden="true"><UserRound size={18}/></span>
+      <div className="org-person-info"><strong>{node.name||'Name unavailable'}</strong>
+        <span>{node.role_title||'Title not recorded'}</span>
+        {(node.department_label||node.department)&&<span className="org-person-department">{node.department_label||node.department}</span>}
+        {issue&&<span role="status" className="org-person-issue">{issue}</span>}
       </div>
-
-      {hasReports && open ? (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <div style={{ width: '2px', height: '20px', backgroundColor: 'rgba(25,25,25,0.2)' }} />
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '20px' }}>
-            {reports.length > 1 ? (
-              <div style={{
-                position: 'absolute', top: 0, left: '8%', right: '8%',
-                height: '2px', backgroundColor: 'rgba(25,25,25,0.2)',
-              }} />
-            ) : null}
-            {reports.map((child) =>
-              React.createElement(
-                'div',
-                { key: child.node_id || child.id, style: { display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' } },
-                React.createElement('div', { style: { position: 'absolute', top: '-20px', width: '2px', height: '20px', backgroundColor: 'rgba(25,25,25,0.2)' } }),
-                React.createElement(OrgNode, { node: child })
-              )
-            )}
-          </div>
-        </div>
-      ) : null}
+      {hasReports&&<span className="org-person-toggle"><span>{reports.length} direct {reports.length===1?'report':'reports'}</span>{open?<ChevronDown size={18} aria-hidden="true"/>:<ChevronRight size={18} aria-hidden="true"/>}</span>}
     </div>
-  );
+    {hasReports&&open&&<div className={'org-person-reports'+(depth>=2?' org-person-deep':'')} role="group" aria-label={'Direct reports to '+(node.name||'manager')}>
+      {reports.map(child=>React.createElement(OrgNode,{key:child.node_id||child.id,node:child,depth:depth+1}))}
+    </div>}
+  </div>;
 }
-
-export default OrgNode;
