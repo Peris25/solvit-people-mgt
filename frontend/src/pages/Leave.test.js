@@ -28,6 +28,24 @@ afterEach(async () => { await act(async () => root.unmount()); container.remove(
 const render = async () => { await act(async () => root.render(<Leave />)); };
 const click = async text => { const button = [...container.querySelectorAll('button')].find(b => b.textContent === text); expect(button).toBeTruthy(); await act(async () => button.click()); };
 
+test('HR sees current and upcoming approved leave without the pending filter hiding it',async()=>{
+  useAuth.mockReturnValue({user:{...user,role:'hr_admin'}});
+  api.getLeaveRequests.mockResolvedValue({data:[
+    {...row,id:'current',status:'Approved',start_date:'2000-01-01',end_date:'2099-12-31',can_cancel:false},
+    {...row,id:'future',employee_id:'future-staff',employee_name:'Future colleague',status:'Approved',start_date:'2100-01-01',end_date:'2100-01-02',can_cancel:false},
+    {...row,id:'pending',employee_id:'pending-staff',employee_name:'Pending colleague',start_date:'2000-01-01',end_date:'2099-12-31'},
+    {...row,id:'finished',employee_id:'finished-staff',status:'Approved',start_date:'2000-01-01',end_date:'2000-01-02'}
+  ]});
+  await render();
+  await click('On leave now (1)');
+  expect(container.querySelector('[data-testid="leave-current"]')).toBeTruthy();
+  expect(container.querySelector('[data-testid="leave-pending"]')).toBeNull();
+  expect(container.querySelector('[data-testid="leave-finished"]')).toBeNull();
+  await click('Upcoming leave (1)');
+  expect(container.querySelector('[data-testid="leave-future"]')).toBeTruthy();
+  expect(container.querySelector('[data-testid="leave-current"]')).toBeNull();
+});
+
 test('clear filters restores all team applications and their count', async () => {
   useAuth.mockReturnValue({ user: { ...user, role: 'hr_admin' } });
   api.getLeaveRequests.mockResolvedValue({ data: [{ ...row, employee_id: 'report', status: 'Approved' }] });

@@ -3,7 +3,7 @@ import EmployeeLeaveBalances from '../components/EmployeeLeaveBalances';
 import LeaveActionButton from '../components/LeaveActionButton';
 import WorkspaceSkeleton from '../components/WorkspaceSkeleton';
 import FormDialog, { FieldError, FormNotice, fieldErrorsFrom } from '../components/FormDialog';
-import { leaveStatus } from '../utils/leaveDisplay';
+import { leaveStatus, leaveTiming, nairobiDate } from '../utils/leaveDisplay';
 import LeaveHistory, { HistoricalLeaveDecision } from '../components/LeaveHistory';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import StatusBadge from '../components/StatusBadge';
@@ -219,8 +219,11 @@ export default function Leave() {
   const ownAliases = [myEmpId, user?.employee_id, ...(user?.employee_reference_ids || [])].filter(Boolean).map(String);
   const selectedRequests = relatedRecordRows(requests, linkedRequest);
   const myRequests = selectedRequests.filter(r => ownAliases.includes(String(r.employee_id)));
-  const teamRequests = selectedRequests.filter(r => !ownAliases.includes(String(r.employee_id)));
-  const visibleTeamRequests = teamRequests.filter(row => linkedRequest || ((teamStatus === 'All' || leaveStatus(row.status) === teamStatus) && `${row.employee_name || ''} ${row.leave_type || ''} ${row.start_date || ''} ${row.end_date || ''}`.toLowerCase().includes(teamSearch.trim().toLowerCase())));
+  const teamRequests = isHR ? selectedRequests : selectedRequests.filter(r => !ownAliases.includes(String(r.employee_id)));
+  const today = nairobiDate();
+  const presenceFilters = ['On leave now', 'Upcoming leave'];
+  const presenceCounts = Object.fromEntries(presenceFilters.map(filter => [filter,new Set(requests.filter(row=>leaveTiming(row,today)===filter).map(row=>row.employee_id).filter(Boolean)).size]));
+  const visibleTeamRequests = teamRequests.filter(row => linkedRequest || ((teamStatus === 'All' || (presenceFilters.includes(teamStatus) ? leaveTiming(row,today)===teamStatus : leaveStatus(row.status) === teamStatus)) && `${row.employee_name || ''} ${row.leave_type || ''} ${row.start_date || ''} ${row.end_date || ''}`.toLowerCase().includes(teamSearch.trim().toLowerCase())));
 
   const annualBal = balances?.Annual;
   const accruedDisplay = balances && Object.prototype.hasOwnProperty.call(balances, 'annual_available_to_request') ? balances.annual_available_to_request ?? 'Needs HR review' : annualBal?.remaining ?? 'Unavailable';
@@ -308,10 +311,14 @@ export default function Leave() {
         <>
           {tab === 'my' && <RequestsTable rows={myRequests} withdraw={withdraw} edit={openForm} review={openReview} saving={saving} testId="my-applications" />}
           {tab === 'team' && hasTeam && <>
+            {isHR && !linkedRequest && <div aria-label="Approved leave overview" style={{display:'flex',flexWrap:'wrap',gap:'12px',marginBottom:'16px'}}>
+              {presenceFilters.map(filter=><button key={filter} type="button" aria-pressed={teamStatus===filter} style={teamStatus===filter?btnRed:btnGhost} onClick={()=>{setTeamSearch('');setTeamStatus(filter);}}>{filter} ({presenceCounts[filter]})</button>)}
+              <p className="workspace-table-help">Approved leave only · People counted once · Dates use Nairobi time</p>
+            </div>}
             <p className="workspace-table-help">Review team applications below. Updates automatically every 30 seconds. Workbook corrections are under Imported leave history.</p>
             <div className="workspace-toolbar" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
               <label className="workspace-search"><Search size={17} aria-hidden="true" /><input className="workspace-search-input" aria-label="Search team leave" placeholder="Search employee, leave type or date" value={teamSearch} onChange={event => setTeamSearch(event.target.value)} style={inp} /></label>
-              <select aria-label="Team leave status" value={teamStatus} onChange={event => setTeamStatus(event.target.value)} style={{ ...inp, maxWidth: '200px' }}>{['All', 'Pending', 'Approved', 'Denied', 'Withdrawn'].map(status => <option key={status}>{status}</option>)}</select>
+              <select aria-label="Team leave status" value={teamStatus} onChange={event => setTeamStatus(event.target.value)} style={{ ...inp, maxWidth: '200px' }}>{['All', 'Pending', 'On leave now', 'Upcoming leave', 'Approved', 'Denied', 'Withdrawn'].map(status => <option key={status}>{status}</option>)}</select>
               <button style={btnGhost} onClick={load}>Refresh requests</button>
               {!linkedRequest && (teamSearch || teamStatus !== 'All') && <button type="button" className="workspace-filter-reset" onClick={() => { setTeamSearch(''); setTeamStatus('All'); }}>Clear filters</button>}
             </div>
