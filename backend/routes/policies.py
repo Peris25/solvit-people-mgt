@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse,Response
 from pydantic import BaseModel
 from typing import Optional, Literal
 from datetime import datetime, timezone
@@ -13,6 +13,8 @@ import uuid
 import os
 import shutil
 import hashlib
+from urllib.parse import quote
+from utils import policy_storage
 from utils.employee_integrity import integrity_write
 from utils.legacy_security import module_access, policy_visible, policy_record, audit, projection, HR
 from utils import document_uploads
@@ -59,6 +61,8 @@ class PolicyCreate(BaseModel):
 def readable_policy(doc):
     if isinstance(doc.get("content"), str) and doc["content"].strip():
         return True
+    if doc.get('file_storage_id') and doc.get('file_sha256') and isinstance(doc.get('file_size'),int) and 0<doc['file_size']<=document_uploads.MAX_BYTES:
+        return True
     value = doc.get("file_url")
     if not isinstance(value, str) or not value:
         return False
@@ -73,8 +77,9 @@ def fmt(doc):
     if not doc:
         return None
     out = projection(doc, {"title", "version", "category", "description", "effective_date", "applies_to", "status", "content", "created_at", "updated_at", "acknowledgement_count", "file_name"})
-    out["has_attachment"] = bool(doc.get("file_url"))
-    out["acknowledgement_available"] = doc.get("status") == "Active" and readable_policy(doc)
+    out["has_attachment"] = bool(doc.get("file_url") or doc.get('file_storage_id'))
+    out['status']='Active' if doc.get('status')=='Published' else doc.get('status')
+    out["acknowledgement_available"] = doc.get("status") in {"Active","Published"} and readable_policy(doc)
     if isinstance(out.get("file_name"), str): out["file_name"] = out["file_name"].replace(chr(92), "/").split("/")[-1]
     return out
 
@@ -84,7 +89,7 @@ async def list_policies(request: Request):
     user = await get_current_user(request)
     db = get_db()
     module_access(user, "M13")
-    policies = await db.policies.find(tenant_query(tenant_of(user))).sort("category", 1).to_list(200)
+    policies = await db.policies.find(tenant_query(tenant_of(user))).sort("category", 1).to_list(None)
     return [fmt(p) for p in policies if policy_visible(p, user)]
 
 
@@ -156,21 +161,16 @@ async def upload_policy_file(policy_id: str, request: Request, file: UploadFile 
     content = await document_uploads.read_bounded(file)
     document_uploads.validate_content(content, ext, file.content_type)
     await document_uploads.scan_content(content)
-    policy_dir = (UPLOAD_ROOT / str(p['_id'])).resolve()
-    if not policy_dir.is_relative_to(UPLOAD_ROOT.resolve()):
-        raise HTTPException(409, 'Policy storage needs administrator review')
-    path = policy_dir / f"{uuid.uuid4()}{ext}"
     async with integrity_write(db):
         current = await policy_record(db, user, policy_id)
         if current != p: raise HTTPException(409, "Policy changed; refresh before uploading")
         await audit(db, user, "policy.file.uploaded", p['_id'])
-        policy_dir.mkdir(parents=True, exist_ok=True)
-        with path.open('xb') as stream: stream.write(content)
+        stored=await policy_storage.store(db,p,name,content)
         history = list(p.get('file_history') or [])
-        if p.get('file_url'):
-            history.append({key: p.get(key) for key in ('file_url', 'file_name', 'version', 'updated_at')})
-        await db.policies.update_one({"_id": p["_id"]}, {"$set": {"file_url": str(path), "file_name": name,
-            "file_history": history, "updated_at": datetime.now(timezone.utc).isoformat()}})
+        if p.get('file_url') or p.get('file_storage_id'):
+            history.append({key: p.get(key) for key in ('file_url','file_storage_id','file_sha256','file_size','file_name','version','updated_at')})
+        await db.policies.update_one({"_id": p["_id"]}, {"$set": {"file_url": None, "file_name": name,
+            **stored,"file_history": history, "updated_at": datetime.now(timezone.utc).isoformat()}})
     return {"message": "File uploaded successfully", "file_name": name}
 
 
@@ -179,6 +179,11 @@ async def download_policy_file(policy_id: str, request: Request):
     user = await get_current_user(request)
     db = get_db()
     p = await policy_record(db, user, policy_id)
+    if p.get('file_storage_id'):
+        content=await policy_storage.load(db,p)
+        await audit(db,user,'policy.file.downloaded',p['_id'])
+        name=str(p.get('file_name') or 'policy_document').replace(chr(92),'/').split('/')[-1]
+        return Response(content,media_type='application/octet-stream',headers={'Content-Disposition':"attachment; filename*=UTF-8''"+quote(name,safe=''),'Cache-Control':'private, no-store'})
     file_url = p.get("file_url")
     path = Path(file_url).resolve() if isinstance(file_url, str) else None
     if not path or not path.is_relative_to(UPLOAD_ROOT.resolve()) or not path.is_file():
@@ -215,8 +220,10 @@ async def acknowledge_policy(policy_id: str, request: Request):
             raise HTTPException(409, "Policy changed; refresh before acknowledging")
         existing = await db.policy_acknowledgements.find_one({"_id": "policy-ack:" + key})
         if existing: return {"message": "Already acknowledged", "already_done": True}
-        if p.get("status") != "Active" or not readable_policy(p):
+        if p.get("status") not in {"Active","Published"} or not readable_policy(p):
             raise HTTPException(409, "Readable published policy content is required before acknowledgement")
+        if p.get('file_storage_id') and not str(p.get('content') or '').strip():
+            await policy_storage.load(db,p)
         doc = {"_id": "policy-ack:" + key, "id": str(uuid.uuid4()), "tenant_id": tenant_of(user),
             "policy_id": str(p.get("id") or p['_id']), "policy_storage_id": str(p['_id']), "policy_version": version,
             "employee_id": user["id"], "employee_email": user.get("email"), "signature": body["signature"],

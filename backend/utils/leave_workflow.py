@@ -32,8 +32,10 @@ async def stage_for(db, user, record):
         employee = await authorize_employee(db, user, record.get("employee_id"), "M18", approve=True)
         if own(employee, user):
             return None
-        if user.get("role") in HR:
+        if user.get("role") in HR and record.get("status")=="Pending_HR" and record.get("manager_decision")=="Approve":
             return "hr"
+        if record.get("status")=="Pending_HR":
+            return None
         # Approval follows the current saved reporting line, including requests
         # created before a legitimate manager change. Keep the original audit trail.
         manager_id = await saved_manager(db, user, employee)
@@ -317,9 +319,8 @@ async def decide(db, user, reference, body, balance_loader):
                     reviewed = day(current["manager_decided_at"][:10]) if current.get("manager_decision") == "Approve" and current.get("manager_decided_at") else today()
                     if reviewed > deadline:
                         raise HTTPException(422, "Manager handover sign-off must be completed by the last working day before leave")
-                # Either approver now finalizes leave, so both must complete
-                # the same eligibility, evidence, balance and cover checks.
-                if stage in {"hr", "manager"}:
+                # The manager confirms handover; HR performs final checks.
+                if stage == "hr":
                     if body.get("policy_review_confirmed") is not True:
                         raise HTTPException(422, "Confirm contract, holiday calendar, balance and eligibility review")
                     if quote["supporting_document_required"] and body.get("document_verified") is not True:
@@ -333,7 +334,7 @@ async def decide(db, user, reference, body, balance_loader):
                     if current["leave_type"] == "Unpaid" and await availability(db, employee, await balance_loader(employee_key(employee)), exclude=current["_id"]) > 0:
                         raise HTTPException(422, "Annual leave must be exhausted before unpaid leave")
             now = stamp()
-            status = "Rejected" if decision == "Reject" else "Discussion_Requested" if decision == "Discussion" else "Approved"
+            status = "Rejected" if decision == "Reject" else "Discussion_Requested" if decision == "Discussion" else "Pending_HR" if stage == "manager" else "Approved"
             history.append({"stage": stage, "actor_id": user["id"], "actor_role": user["role"], "at": now, "decision": decision,
                             "reason": body.get("reason", ""), "hr_override": override, "handover_reviewed": body.get("handover_reviewed") is True,
                             "policy_review_confirmed": body.get("policy_review_confirmed") is True, "document_verified": body.get("document_verified") is True})

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import StatusBadge from '../components/StatusBadge';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -26,12 +26,17 @@ const CATEGORIES = [
 
 export default function Policies() {
   const { user } = useAuth();
+  const accountKey=`${user?.id}:${user?.role}`;
+  const currentAccount=useRef(accountKey);currentAccount.current=accountKey;
+  const sequence=useRef(0);
+  const mounted=useRef(false);
+  const [loadedFor,setLoadedFor]=useState(null);
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [selected, setSelected] = useState(null);
   const [signature, setSignature] = useState('');
-  const [form, setForm] = useState({ title: '', version: '1.0', category: '08 - Policies and Compliance', description: '', content: '', effective_date: new Date().toISOString().slice(0, 10), applies_to: ['all'] });
+  const [form, setForm] = useState({ title: '', version: '1.0', category: '08 - Policies and Compliance', description: '', content: '', effective_date: new Date().toISOString().slice(0, 10), applies_to: ['employees'] });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [draftId, setDraftId] = useState(null);
@@ -43,14 +48,16 @@ export default function Policies() {
   const canAcknowledge = selected && (selected.acknowledgement_available ?? (selected.status === 'Active' && Boolean(selected.content?.trim() || selected.has_attachment)));
   const canEdit = ['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role);
 
-  useEffect(() => { load(); }, []);
-
-  const load = async () => {
-    setLoading(true);
-    try { const r = await api.getPolicies(); setPolicies(r.data); }
-    catch { setError('Policies could not be loaded. Please retry.'); }
-    finally { setLoading(false); }
-  };
+  const load = useCallback(async () => {
+    const generation=++sequence.current;
+    const valid=()=>mounted.current&&currentAccount.current===accountKey&&sequence.current===generation;
+    setLoading(true);setError('');setPolicies([]);
+    try { const r = await api.getPolicies(); if(!Array.isArray(r.data))throw new Error('Unavailable'); if(valid())setPolicies(r.data); }
+    catch { if(valid())setError('Policies could not be loaded. Please retry.'); }
+    finally { if(valid()){setLoading(false);setLoadedFor(accountKey);} }
+  },[accountKey]);
+  useEffect(() => {mounted.current=true;setSelected(null);setShowForm(false);setDraftId(null);setFileInput(null);setSignature('');setFilterCategory('All');setForm({title:'',version:'1.0',category:'08 - Policies and Compliance',description:'',content:'',effective_date:new Date().toISOString().slice(0,10),applies_to:['employees']});load();return()=>{mounted.current=false;};}, [load]);
+  const visiblePolicies=loadedFor===accountKey?policies:[];
 
   const create = async (e) => {
     e.preventDefault();
@@ -61,16 +68,18 @@ export default function Policies() {
     try {
       const payload = { ...form, status: 'Draft' };
       const response = draftId ? await api.updatePolicy(draftId, payload) : await api.createPolicy(payload);
+      if(currentAccount.current!==accountKey)return;
       const id = draftId || response.data.id;
       setDraftId(id);
       if (fileInput) {
         setUploading(true);
         const fd = new FormData(); fd.append('file', fileInput);
         await api.uploadPolicyFile(id, fd);
+        if(currentAccount.current!==accountKey)return;
       }
       await api.updatePolicy(id, { status: 'Active' });
       setShowForm(false); setDraftId(null);
-      setForm({ title: '', version: '1.0', category: '08 - Policies and Compliance', description: '', content: '', effective_date: new Date().toISOString().slice(0, 10), applies_to: ['all'] });
+      setForm({ title: '', version: '1.0', category: '08 - Policies and Compliance', description: '', content: '', effective_date: new Date().toISOString().slice(0, 10), applies_to: ['employees'] });
       setFileInput(null);
       if (fileRef.current) fileRef.current.value = '';
       await load();
@@ -97,20 +106,20 @@ export default function Policies() {
   };
 
   const grouped = CATEGORIES.reduce((acc, cat) => {
-    const filtered = policies.filter(p => p.category === cat);
+    const filtered = visiblePolicies.filter(p => p.category === cat);
     if (filtered.length > 0) acc[cat] = filtered;
     return acc;
   }, {});
 
   const allCategories = ['All', ...Object.keys(grouped)];
-  const displayPolicies = filterCategory === 'All' ? policies : (grouped[filterCategory] || []);
+  const displayPolicies = filterCategory === 'All' ? visiblePolicies : (grouped[filterCategory] || []);
 
   return (
     <div data-testid="policies-page" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '24px' }}>
         <div>
           <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', margin: 0 }}>Policy Library</h1>
-          <p style={{ color: '#525252', fontSize: '13px', margin: '4px 0 0' }}>{policies.length} documents · acknowledge to confirm understanding</p>
+          <p style={{ color: '#525252', fontSize: '13px', margin: '4px 0 0' }}>{loading||loadedFor!==accountKey?'Loading documents...':error?'Documents unavailable':`${visiblePolicies.length} documents · acknowledge to confirm understanding`}</p>
         </div>
         {canEdit && <button data-testid="add-policy-btn" onClick={() => setShowForm(true)} style={{ padding: '10px 20px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>+ Publish Document</button>}
       </div>
@@ -123,9 +132,9 @@ export default function Policies() {
         ))}
       </div>
 
-      {error && <p role="alert">{error}</p>}
-      {loading ? <div style={{ padding: '48px', textAlign: 'center' }}>Loading...</div> : displayPolicies.length === 0 ? (
-        <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '48px', textAlign: 'center', color: '#9CA3AF' }}>No documents in this category yet. {canEdit && 'Click "+ Publish Document" to add one.'}</div>
+      {error && <p role="alert">{error} <button type="button" onClick={load}>Retry documents</button></p>}
+      {loading||loadedFor!==accountKey ? <div style={{ padding: '48px', textAlign: 'center' }}>Loading...</div> : error?null:displayPolicies.length === 0 ? (
+        <div style={{ backgroundColor: '#fff', border: '1px solid rgba(25,25,25,0.08)', padding: '48px', textAlign: 'center', color: '#667080' }}>{filterCategory!=='All'?'No documents in this category yet.':canEdit?'No policy documents are available. Publish the approved handbook or policy files for staff.':'No published policy documents are available for your account. HR can publish the handbook and policies here.'} {canEdit && 'Use "+ Publish Document" to attach the approved file and select its audience.'}</div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 360px), 1fr))', gap: '12px' }}>
           {displayPolicies.map(p => (
@@ -152,7 +161,7 @@ export default function Policies() {
         </div>
       )}
 
-      {selected && (
+      {selected && loadedFor===accountKey && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <div style={{ backgroundColor: '#fff', width: '600px', maxWidth: 'calc(100vw - 24px)', maxHeight: '85vh', overflowY: 'auto', border: '1px solid rgba(25,25,25,0.15)' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between' }}>
@@ -185,7 +194,7 @@ export default function Policies() {
         </div>
       )}
 
-      {showForm && (
+      {showForm && canEdit && loadedFor===accountKey && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <div style={{ backgroundColor: '#fff', width: '560px', maxWidth: 'calc(100vw - 24px)', maxHeight: '90vh', overflowY: 'auto', border: '1px solid rgba(25,25,25,0.15)' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'space-between' }}>
@@ -220,6 +229,7 @@ export default function Policies() {
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Effective Date</label>
                 <input type="date" required value={form.effective_date} onChange={e => setForm(p => ({ ...p, effective_date: e.target.value }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', boxSizing: 'border-box' }} />
               </div>
+              <div><label htmlFor="policy-audience">Who can read this document?</label><select id="policy-audience" value={form.applies_to[0]} onChange={event=>setForm(previous=>({...previous,applies_to:[event.target.value]}))} style={{width:'100%',minHeight:44}}><option value="employees">Employees, managers and HR</option><option value="solver">Solvers only</option><option value="all">Everyone, including solvers</option></select></div>
               <div>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#525252', marginBottom: '5px' }}>Attach File (optional)</label>
                 <input ref={fileRef} type="file" aria-label="Policy file" accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg" onChange={e => setFileInput(e.target.files[0] || null)} style={{ width: '100%', padding: '6px 0', fontSize: '12px', boxSizing: 'border-box' }} />

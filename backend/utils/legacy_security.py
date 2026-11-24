@@ -71,7 +71,7 @@ def candidate_view(row, user):
 def policy_visible(row, user):
     if user.get("role") in HR:
         return True
-    if row.get("status") != "Active":
+    if row.get("status") not in {"Active", "Published"}:
         return False
     audience = row.get("applies_to")
     if not isinstance(audience, list) or not audience:

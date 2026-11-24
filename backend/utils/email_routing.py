@@ -107,7 +107,7 @@ async def leave_action(db, employee, row, event):
     addresses = []
     if event == 'submitted':
         addresses = await role_addresses(db, HR_EMAIL_ROLES, tenant)
-        subject, message = 'New leave request submitted', 'A new leave request is available in Team Leave. Either the assigned line manager or HR can review it and give final approval.'
+        subject, message = 'New leave request submitted', 'A new leave request is available in Team Leave. Line manager approval is followed by HR final approval. HR may override and approve directly.'
     elif row.get('status') == 'Pending_HR':
         addresses = await role_addresses(db, HR_EMAIL_ROLES, tenant)
         subject, message = 'Leave request awaiting HR approval', 'The line manager has approved a leave request. Please review it in Team Leave.'

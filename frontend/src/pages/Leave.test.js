@@ -214,15 +214,15 @@ test.each(['Approved', 'Rejected', 'Cancelled'])('employee cannot edit a finaliz
   expect([...container.querySelectorAll('button')].some(button => button.textContent === 'Edit and resubmit')).toBe(false);
 });
 
-test('manager final approval uses the server-assigned stage and shows policy checks', async () => {
+test('manager approval is sent to HR for final approval', async () => {
   useAuth.mockReturnValue({ user: { ...user, role: 'line_manager' } });
   api.getLeaveRequests.mockResolvedValue({ data: [{ ...row, employee_id: 'report', approval_stage: 'manager', can_cancel: false, can_reject: true }] });
-  api.leaveDecision.mockResolvedValue({ data: { id: 'request', status: 'Approved' } });
+  api.leaveDecision.mockResolvedValue({ data: { id: 'request', status: 'Pending_HR' } });
   await render(); await act(async () => container.querySelector('[data-testid="leave-tab-team"]').click());
-  await click('Review'); expect(container.textContent).not.toContain('HR final approval');
-  expect(container.textContent).toContain('Contract eligibility, recorded balance and gazetted holiday calendar verified');
+  await click('Review'); expect(container.textContent).toContain('Line manager approval is followed by HR final approval');
+  expect(container.textContent).not.toContain('Contract eligibility, recorded balance and gazetted holiday calendar verified');
   expect(container.querySelector('[aria-label="Leave decision reason"]').hasAttribute('maxlength')).toBe(false);
-  await click('Approve leave');
+  await click('Approve and send to HR');
   expect(api.leaveDecision).toHaveBeenCalledWith('request', expect.objectContaining({ decision: 'Approve', stage: 'manager', policy_review_confirmed: false }));
 });
 
