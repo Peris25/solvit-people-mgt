@@ -19,15 +19,14 @@ test('unsupported roles cannot load the organogram through a direct page visit',
   expect(container.textContent).toContain('not available');
 });
 
-test('live reporting tree is open and reference chart is collapsed initially', async () => {
-  await render({ roots: [], total: 0 });
-  const chart=container.querySelector('svg[role="img"]');
-  expect(chart.getAttribute('viewBox')).toBe('0 0 1024 720');
-  expect(chart.textContent).toContain('Executive Director linked laterally');
-  expect(chart.textContent).toContain('FINANCE &');
-  expect(chart.textContent).toContain('IT SUPPORT');
-  expect(container.querySelector('[data-testid="employee-reporting-details"]').open).toBe(true);
-  expect(chart.closest('details').open).toBe(false);
+test('one connected employee diagram replaces the static reference chart', async () => {
+  await render({ roots: [{id:'boss',name:'Synthetic manager',direct_reports:[{id:'staff',name:'Synthetic staff',direct_reports:[]}]}], total: 2 });
+  const chart=container.querySelector('svg[aria-label="Employee reporting organogram"]');
+  expect(chart).not.toBeNull();
+  expect(chart.querySelectorAll('[data-from]')).toHaveLength(1);
+  expect(container.textContent).not.toContain('Role structure reference');
+  expect(container.querySelector('image')).toBeNull();
+  expect(container.querySelector('[data-testid="employee-reporting-details"]')).toBeNull();
 });
 
 test('distinct render keys keep conflicting records visible with review notices', async () => {
@@ -51,7 +50,7 @@ test('search uses configured department labels and preserves ancestor context', 
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(search, 'HR & People');
     search.dispatchEvent(new Event('input', { bubbles: true }));
   });
-  expect(container.querySelector('[data-testid="employee-reporting-details"]').open).toBe(true);
+  expect(container.querySelector('svg[aria-label="Employee reporting organogram"]')).not.toBeNull();
   expect(container.textContent).toContain('Synthetic manager');
   expect(container.textContent).toContain('Synthetic staff');
   expect(container.textContent).toContain('HR & People');
@@ -64,7 +63,7 @@ test('search uses configured department labels and preserves ancestor context', 
 
 test('reporting cards expand and collapse using the keyboard', async () => {
   await render({ total: 2, roots: [{ id: 'boss', name: 'Synthetic manager', direct_reports: [{ id: 'staff', name: 'Synthetic staff', direct_reports: [] }] }] });
-  const toggle = container.querySelector('[role="button"]');
+  const toggle = container.querySelector('[data-testid="org-node-boss"]');
   await act(async () => toggle.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
   expect(container.textContent).not.toContain('Synthetic staff');
   expect(toggle.getAttribute('aria-expanded')).toBe('false');
@@ -76,6 +75,21 @@ test('null API data produces a safe load failure', async () => {
   await render(null);
   expect(container.textContent).toContain('could not be loaded');
   expect(container.querySelector('[data-testid="org-empty"]')).toBeNull();
+});
+
+test('team focus and fit controls show the requested branch without losing the company view',async()=>{
+  await render({total:4,roots:[{id:'md',name:'Company director',direct_reports:[{id:'manager',name:'Team manager',direct_reports:[{id:'staff',name:'Team colleague',direct_reports:[]}]},{id:'other',name:'Other colleague',direct_reports:[]}]}]});
+  expect(container.querySelector('.employee-org-canvas').style.overflowX).toBe('hidden');
+  await act(async()=>container.querySelector('[data-testid="org-node-manager"]').dispatchEvent(new MouseEvent('click',{bubbles:true})));
+  const button=text=>[...container.querySelectorAll('button')].find(item=>item.textContent===text);
+  await act(async()=>button('Focus on this team').click());
+  expect(container.querySelector('[data-testid="org-node-staff"]')).not.toBeNull();
+  expect(container.querySelector('[data-testid="org-node-other"]')).toBeNull();
+  await act(async()=>container.querySelector('[aria-label="Zoom in"]').click());
+  await act(async()=>button('Fit chart').click());
+  expect(container.querySelector('.employee-org-canvas').style.overflowX).toBe('hidden');
+  await act(async()=>button('Whole company').click());
+  expect(container.querySelector('[data-testid="org-node-other"]')).not.toBeNull();
 });
 
 test('empty directory retains existing empty state', async () => {

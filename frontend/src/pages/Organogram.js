@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import OrgNode from '../components/OrgNode';
+import EmployeeOrgChart from '../components/EmployeeOrgChart';
 import * as api from '../services/api';
-import CompactRoleChart from '../components/CompactRoleChart';
 import { useAuth } from '../context/AuthContext';
 import { STAFF_DIRECTORY_ROLES } from '../utils/staffDirectory';
 
@@ -40,9 +39,10 @@ export default function Organogram() {
       (n.department_label || '').toLowerCase().includes(q) ||
       (n.work_email || '').toLowerCase().includes(q);
     const prune = (n) => {
+      if(match(n))return n;
       const childMatches = (n.direct_reports || []).map(prune).filter(Boolean);
-      if (match(n) || childMatches.length > 0) {
-        return { ...n, direct_reports: childMatches };
+      if (childMatches.length > 0) {
+        return { ...n, direct_report_count:(n.direct_reports||[]).length,direct_reports: childMatches };
       }
       return null;
     };
@@ -74,10 +74,6 @@ export default function Organogram() {
         </div>
       </div>
 
-      <details style={{marginBottom:16}}><summary style={{cursor:'pointer',minHeight:36,fontSize:13}}>Role structure reference</summary><CompactRoleChart /></details>
-      <details open data-testid="employee-reporting-details" style={{background:'var(--portal-surface,#fff)',border:'1px solid var(--portal-line,#e5e7eb)',borderRadius:12,padding:16,minWidth:0,boxSizing:'border-box'}}>
-        <summary style={{cursor:'pointer',fontWeight:700,minHeight:32}}>Employee reporting relationships ({total} people)</summary>
-        <p style={{fontSize:12,color:'#64748b'}}>Select a manager to expand or collapse their team. Search to find a person, role or department.</p>
       {loading ? <div style={{ padding: '32px' }}>Loading organogram…</div> : null}
       {error ? (
         <div style={{ padding: '16px', backgroundColor: '#FEE2E2', color: '#991B1B', fontSize: '13px' }}>
@@ -93,15 +89,10 @@ export default function Organogram() {
         </div>
       ) : null}
       {!loading && !error && filtered.length > 0 ? (
-        <div style={{paddingTop:12,minWidth:0}}>
-          <div className="org-reporting-roots">
-            {filtered.map((r) => <OrgNode key={`${filter.trim()}:${r.node_id || r.id}`} node={r} />)}
-          </div>
-        </div>
+        <EmployeeOrgChart key={`${user?.id}:${user?.role}:${filter.trim()}`} roots={filtered} sourceRoots={roots} onWholeCompany={()=>setFilter('')}/>
       ) : null}
       {!loading && !error && issues > 0 && <p role="status" style={{ color: '#92400E', fontSize: '12px' }}>Some identifiers or reporting links need review. Unresolved branches are shown separately; saved assignments have not been changed.</p>}
       {!loading && !error && total > 0 && filtered.length === 0 && <p role="status" style={{ color: '#525252', fontSize: '13px' }}>No people match your search.</p>}
-      </details>
     </div>
   );
 }
