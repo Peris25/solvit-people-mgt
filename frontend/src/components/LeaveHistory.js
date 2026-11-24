@@ -58,7 +58,7 @@ export default function LeaveHistory({ rows, onSaved }) {
         if (!Number.isInteger(response.data?.approved)) throw new Error();
         setConfirmRecorded(false); setApprovalReason(''); onSaved();
       }); }}>
-        <label>Confirmation reason<input aria-label="Source approval reason" style={style} required minLength={5} maxLength={1000} disabled={busy} value={approvalReason} onChange={event => setApprovalReason(event.target.value)} /></label>
+        <label>Confirmation reason<input aria-label="Source approval reason" style={style} required disabled={busy} value={approvalReason} onChange={event => setApprovalReason(event.target.value)} /></label>
         {error && <p role="alert">{error}</p>}
         <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}><button style={buttonStyle} type="button" disabled={busy} onClick={() => setConfirmRecorded(false)}>Cancel</button><button style={buttonStyle} type="submit" disabled={busy}>Confirm source approvals</button></div>
       </form>
@@ -78,7 +78,7 @@ export default function LeaveHistory({ rows, onSaved }) {
         {['leave_type', 'status', 'day_basis'].map(field => <label key={field}>{labels[field]}<select aria-label={`Historical ${field}`} style={style} disabled={busy} value={editing[field]} onChange={event => setEditing({ ...editing, [field]: event.target.value })}>
           {(field === 'leave_type' ? ['Annual', 'Sick', 'Paternity', 'Maternity', 'Compassionate', 'Unpaid'] : field === 'status' ? ['Pending', 'Approved', 'Denied', 'Withdrawn'] : ['Recorded units', 'Calendar days']).map(value => <option key={value}>{value}</option>)}
         </select></label>)}
-        {['start_date', 'end_date', 'resumption_date', 'working_days', 'reason'].map(field => <label key={field}>{labels[field]}<input aria-label={`Historical ${field}`} style={style} disabled={busy} readOnly={field === 'working_days' && recalculateDays} type={field.endsWith('date') ? 'date' : field === 'working_days' && !recalculateDays ? 'number' : 'text'} required={field !== 'resumption_date'} step={field === 'working_days' ? 'any' : undefined} min={field === 'working_days' ? '0.01' : undefined} minLength={field === 'reason' ? 5 : undefined} maxLength={field === 'reason' ? 1000 : undefined} value={field === 'working_days' && recalculateDays ? 'Calculated automatically when saved' : editing[field]} onChange={event => setEditing({ ...editing, [field]: event.target.value })} /></label>)}
+        {['start_date', 'end_date', 'resumption_date', 'working_days', 'reason'].map(field => <label key={field}>{labels[field]}<input aria-label={`Historical ${field}`} style={style} disabled={busy} readOnly={field === 'working_days' && recalculateDays} type={field.endsWith('date') ? 'date' : field === 'working_days' && !recalculateDays ? 'number' : 'text'} required={field !== 'resumption_date'} step={field === 'working_days' ? 'any' : undefined} min={field === 'working_days' ? '0.01' : undefined}  value={field === 'working_days' && recalculateDays ? 'Calculated automatically when saved' : editing[field]} onChange={event => setEditing({ ...editing, [field]: event.target.value })} /></label>)}
       </div>
       <label style={{ display: 'block', marginTop: '16px' }}><input type="checkbox" aria-label="Recalculate historical days" checked={recalculateDays} disabled={busy || datesChanged} onChange={event => setEditing({ ...editing, recalculate_days: event.target.checked })} /> Recalculate days from these dates</label>
       {recalculateDays && <p role="status">The server will recalculate days using the employee's work schedule and configured holidays. Calendar-day records count all dates.</p>}
@@ -99,7 +99,7 @@ export function HistoricalLeaveDecision({ record, onClose, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const decide = async status => {
-    if (reason.trim().length < 5) { setError('Enter a decision reason of at least five characters.'); return; }
+    if (!reason.trim()) { setError('Enter a decision reason.'); return; }
     setBusy(true); setError('');
     try {
       const fields = Object.fromEntries(['leave_type', 'start_date', 'end_date', 'working_days', 'revision'].map(key => [key, record[key]]));
@@ -112,7 +112,7 @@ export function HistoricalLeaveDecision({ record, onClose, onSaved }) {
     <h3 id="historical-correction-title">Review imported leave - {record.employee_name}</h3>
     <p id="historical-correction-description">This entry came from the leave tracker. HR can record its approval or denial here; dates and days will stay the same.</p>
     <p>{record.leave_type}: {record.start_date} to {record.end_date} · {record.working_days} days</p>
-    <label>Decision reason<input aria-label="Imported leave decision reason" style={style} value={reason} maxLength={1000} disabled={busy} onChange={event => setReason(event.target.value)} /></label>
+    <label>Decision reason<input aria-label="Imported leave decision reason" style={style} value={reason} disabled={busy} onChange={event => setReason(event.target.value)} /></label>
     {error && <p role="alert">{error}</p>}
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '20px' }}>
       <LeaveActionButton disabled={busy} onClick={onClose}>Cancel</LeaveActionButton>

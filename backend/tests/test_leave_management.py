@@ -180,25 +180,44 @@ def test_annual_creation_is_serialized_idempotent_and_reserves_pending_units():
     with pytest.raises(HTTPException): run(workflow.create(db, actors["staff"], payload(request_token="different"), loader))
 
 
-def test_two_step_approval_history_no_self_approval_and_notifications_are_private():
+def test_manager_final_approval_history_no_self_approval_and_notifications_are_private():
     db, actors = fixture(); loader = budget()
     with patch("utils.email_service.send_email", AsyncMock()), patch("automation.engine.automation_engine.fire_event", AsyncMock()):
         row = run(workflow.create(db, actors["staff"], payload(), loader))
         with pytest.raises(HTTPException): run(workflow.decide(db, actors["staff"], row["id"], {"decision": "Approve"}, loader))
         with pytest.raises(HTTPException): run(workflow.decide(db, actors["hr"], row["id"], {"decision": "Approve", "stage": "hr"}, loader))
-        pending = run(workflow.decide(db, actors["boss"], row["id"], {"decision": "Approve", "handover_reviewed": True}, loader))
-        assert pending["status"] == "Pending_HR"
-        approved = run(workflow.decide(db, actors["hr"], row["id"], {"decision": "Approve", "stage": "hr", "handover_reviewed": True, "policy_review_confirmed": True}, loader))
-    assert approved["status"] == "Approved" and len(approved["approval_history"]) == 3
-    assert len(db.audit_logs.docs) == 3 and all("Tasks, deadlines" not in str(row) for row in db.notifications.docs)
+        approved = run(workflow.decide(db, actors["boss"], row["id"], {"decision": "Approve", "handover_reviewed": True, "policy_review_confirmed": True}, loader))
+    assert approved["status"] == "Approved" and len(approved["approval_history"]) == 2
+    assert approved['manager_decision']=='Approve' and db.leave_requests.docs[0]['hr_confirmed'] is False
+    assert len(db.audit_logs.docs) == 2 and all("Tasks, deadlines" not in str(row) for row in db.notifications.docs)
 
 
-def test_hr_who_signed_as_manager_cannot_be_the_second_reviewer():
+def test_hr_can_finalize_direct_report_without_a_second_reviewer():
     db, actors = fixture(); db.employees.docs[0]["line_manager_id"] = "hr"
     with patch("utils.email_service.send_email", AsyncMock()), patch("automation.engine.automation_engine.fire_event", AsyncMock()):
         row = run(workflow.create(db, actors["staff"], payload(), budget()))
-        run(workflow.decide(db, actors["hr"], row["id"], {"decision": "Approve", "stage": "manager", "handover_reviewed": True}, budget()))
-        with pytest.raises(HTTPException): run(workflow.decide(db, actors["hr"], row["id"], {"decision": "Approve", "stage": "hr", "handover_reviewed": True, "policy_review_confirmed": True}, budget()))
+        result=run(workflow.decide(db, actors["hr"], row["id"], {"decision": "Approve", "stage": "hr", "handover_reviewed": True, "policy_review_confirmed": True, "reason":"OK"}, budget()))
+    assert result['status']=='Approved' and result['hr_reason']=='OK'
+
+
+def test_current_manager_can_finalize_request_with_older_manager_snapshot():
+    db,actors=fixture()
+    with patch("utils.email_service.send_email", AsyncMock()), patch("automation.engine.automation_engine.fire_event", AsyncMock()):
+        row=run(workflow.create(db,actors['staff'],payload(),budget()))
+        db.leave_requests.docs[0]['line_manager_id']='other-boss'
+        assert run(workflow.stage_for(db,actors['boss'],db.leave_requests.docs[0]))=='manager'
+        assert run(workflow.stage_for(db,actors['other-boss'],db.leave_requests.docs[0])) is None
+        result=run(workflow.decide(db,actors['boss'],row['id'],{'decision':'Approve','handover_reviewed':True,'policy_review_confirmed':True,'reason':'x'*5001},budget()))
+    assert result['status']=='Approved' and len(result['manager_reason'])==5001
+
+
+def test_hr_can_finalize_pending_hr_without_a_different_second_reviewer():
+    db,actors=fixture()
+    with patch("utils.email_service.send_email", AsyncMock()), patch("automation.engine.automation_engine.fire_event", AsyncMock()):
+        row=run(workflow.create(db,actors['staff'],payload(),budget()))
+        db.leave_requests.docs[0].update(status='Pending_HR',manager_decision='Approve',manager_decided_by=actors['hr']['id'],manager_decided_at='2026-10-14T09:00:00Z')
+        result=run(workflow.decide(db,actors['hr'],row['id'],{'decision':'Approve','handover_reviewed':True,'policy_review_confirmed':True},budget()))
+    assert result['status']=='Approved'
 
 
 @pytest.mark.parametrize("used,requested,expected", [(0, 3, (3, 0, 0)), (29, 3, (1, 2, 0)), (43, 5, (0, 2, 3)), (45, 1, (0, 0, 1))])

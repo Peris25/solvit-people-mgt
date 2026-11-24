@@ -26,18 +26,17 @@ def own(employee, user): return employee_key(employee) == user.get("employee_id"
 
 
 async def stage_for(db, user, record):
-    if record.get("historical_import") or record.get("status") not in {"Pending_Manager", "Pending_HR"}:
+    if record.get("historical_import") or record.get("status") not in PENDING:
         return None
     try:
         employee = await authorize_employee(db, user, record.get("employee_id"), "M18", approve=True)
         if own(employee, user):
             return None
-        if record["status"] == "Pending_HR":
-            await saved_manager(db, user, employee, record.get("line_manager_id"))
-            if user.get("employee_id") and user.get("role") in HR and record.get("manager_decision") == "Approve" and record.get("manager_decided_by") and record.get("manager_decided_by") != user["id"]:
-                return "hr"
-            return None
-        manager_id = await saved_manager(db, user, employee, record.get("line_manager_id"))
+        if user.get("role") in HR:
+            return "hr"
+        # Approval follows the current saved reporting line, including requests
+        # created before a legitimate manager change. Keep the original audit trail.
+        manager_id = await saved_manager(db, user, employee)
         await validate_manager(db, manager_id, employee, tenant_of(user))
         if manager_id == user.get("employee_id"):
             return "manager"
@@ -262,7 +261,9 @@ async def decide(db, user, reference, body, balance_loader):
         raise HTTPException(422, "HR override must be a boolean")
     if override and (user.get("role") not in HR or decision != "Approve"):
         raise HTTPException(403, "Only HR may directly approve leave")
-    if override and len(str(body.get("reason") or "").strip()) < 5:
+    if not isinstance(body.get("reason", ""), str):
+        raise HTTPException(422, "A text decision reason is required")
+    if override and not str(body.get("reason") or "").strip():
         raise HTTPException(422, "A reason is required for direct HR approval")
     if decision not in {"Approve", "Reject", "Discussion"}:
         raise HTTPException(422, "Invalid leave decision")
@@ -306,14 +307,16 @@ async def decide(db, user, reference, body, balance_loader):
                         deadline -= timedelta(days=1)
                     else:
                         raise HTTPException(409, "The working calendar requires HR review")
-                    reviewed = today() if stage == "manager" or override else day(current["manager_decided_at"][:10])
+                    reviewed = day(current["manager_decided_at"][:10]) if current.get("manager_decision") == "Approve" and current.get("manager_decided_at") else today()
                     if reviewed > deadline:
                         raise HTTPException(422, "Manager handover sign-off must be completed by the last working day before leave")
-                if stage == "hr":
+                # Either approver now finalizes leave, so both must complete
+                # the same eligibility, evidence, balance and cover checks.
+                if stage in {"hr", "manager"}:
                     if body.get("policy_review_confirmed") is not True:
-                        raise HTTPException(422, "HR must confirm contract, holiday calendar, balance and eligibility review")
+                        raise HTTPException(422, "Confirm contract, holiday calendar, balance and eligibility review")
                     if quote["supporting_document_required"] and body.get("document_verified") is not True:
-                        raise HTTPException(422, "HR must verify the supporting document")
+                        raise HTTPException(422, "Verify the supporting document")
                     if quote.get("compassionate_unpaid_days", 0) and not str(body.get("reason") or "").strip():
                         raise HTTPException(422, "Additional unpaid compassionate leave requires a documented HR exception")
                     if current["leave_type"] == "Annual":
@@ -323,7 +326,7 @@ async def decide(db, user, reference, body, balance_loader):
                     if current["leave_type"] == "Unpaid" and await availability(db, employee, await balance_loader(employee_key(employee)), exclude=current["_id"]) > 0:
                         raise HTTPException(422, "Annual leave must be exhausted before unpaid leave")
             now = stamp()
-            status = "Rejected" if decision == "Reject" else "Discussion_Requested" if decision == "Discussion" else "Pending_HR" if stage == "manager" else "Approved"
+            status = "Rejected" if decision == "Reject" else "Discussion_Requested" if decision == "Discussion" else "Approved"
             history.append({"stage": stage, "actor_id": user["id"], "actor_role": user["role"], "at": now, "decision": decision,
                             "reason": body.get("reason", ""), "hr_override": override, "handover_reviewed": body.get("handover_reviewed") is True,
                             "policy_review_confirmed": body.get("policy_review_confirmed") is True, "document_verified": body.get("document_verified") is True})
@@ -331,7 +334,7 @@ async def decide(db, user, reference, body, balance_loader):
                       f"{stage}_decision": decision, f"{stage}_reason": body.get("reason", ""),
                       f"{stage}_decided_at": now, f"{stage}_decided_by": user["id"]}
             if status == "Approved":
-                update.update(approved_at=now, hr_confirmed=True, document_verified=body.get("document_verified") is True)
+                update.update(approved_at=now, hr_confirmed=stage == "hr", document_verified=body.get("document_verified") is True)
                 update.update(sick_pay=quote["sick_pay"], compassionate_paid_days=quote["compassionate_paid_days"],
                               compassionate_unpaid_days=quote["compassionate_unpaid_days"])
             result = await db.leave_requests.find_one_and_update({"_id": current["_id"]}, {"$set": update}, return_document=True)

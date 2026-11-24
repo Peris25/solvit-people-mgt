@@ -155,9 +155,12 @@ async def queue(db,user):
         return result
 
     async def leave():
-        from utils.leave_workflow import stage_for
-        candidates={'status':{'$in':['Pending_Manager','Pending_HR']}}
-        if not hr:candidates['line_manager_id']={'$in':refs}
+        from utils.leave_workflow import stage_for,PENDING
+        candidates={'status':{'$in':list(PENDING)}}
+        if not hr:
+            reports=await db.employees.find(scoped({'line_manager_id':{'$in':refs}}),{'id':1,'_id':1}).to_list(None) if refs else []
+            report_refs=[value for record in reports for value in [str(record.get('id') or record['_id']),str(record['_id'])]]
+            candidates['employee_id']={'$in':report_refs}
         result=[]
         for row in await db.leave_requests.find(scoped(candidates)).to_list(None):
             if not current(row,row.get('manager_decided_at') if row.get('status')=='Pending_HR' else None):continue

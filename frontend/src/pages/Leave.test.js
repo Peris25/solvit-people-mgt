@@ -196,13 +196,15 @@ test.each(['Approved', 'Rejected', 'Cancelled'])('employee cannot edit a finaliz
   expect([...container.querySelectorAll('button')].some(button => button.textContent === 'Edit and resubmit')).toBe(false);
 });
 
-test('manager recommendation uses the server-assigned stage and does not finalize HR approval', async () => {
+test('manager final approval uses the server-assigned stage and shows policy checks', async () => {
   useAuth.mockReturnValue({ user: { ...user, role: 'line_manager' } });
   api.getLeaveRequests.mockResolvedValue({ data: [{ ...row, employee_id: 'report', approval_stage: 'manager', can_cancel: false, can_reject: true }] });
-  api.leaveDecision.mockResolvedValue({ data: { id: 'request', status: 'Pending_HR' } });
+  api.leaveDecision.mockResolvedValue({ data: { id: 'request', status: 'Approved' } });
   await render(); await act(async () => container.querySelector('[data-testid="leave-tab-team"]').click());
   await click('Review'); expect(container.textContent).not.toContain('HR final approval');
-  await click('Recommend to HR');
+  expect(container.textContent).toContain('Contract eligibility, recorded balance and gazetted holiday calendar verified');
+  expect(container.querySelector('[aria-label="Leave decision reason"]').hasAttribute('maxlength')).toBe(false);
+  await click('Approve leave');
   expect(api.leaveDecision).toHaveBeenCalledWith('request', expect.objectContaining({ decision: 'Approve', stage: 'manager', policy_review_confirmed: false }));
 });
 
@@ -211,7 +213,7 @@ test('HR final review includes contract, calendar and document confirmations', a
   api.getLeaveRequests.mockResolvedValue({ data: [{ ...row, employee_id: 'report', status: 'Pending_HR', approval_stage: 'hr', can_cancel: false }] });
   await render(); await act(async () => container.querySelector('[data-testid="leave-tab-team"]').click());
   await click('Review'); expect(container.textContent).toContain('Contract eligibility, recorded balance and gazetted holiday calendar verified');
-  expect(container.textContent).toContain('HR final approval');
+  expect(container.textContent).toContain('Approve leave');
 });
 
 test('HR can select direct approval with reason and policy confirmations while manager routing remains pending', async () => {

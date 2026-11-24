@@ -72,7 +72,7 @@ class HistoricalBatch(BaseModel):
 
 class HistoricalCorrection(HistoricalFields):
     revision: int = Field(ge=1)
-    reason: str = Field(min_length=5, max_length=1000)
+    reason: str = Field(min_length=1)
     recalculate_days: bool = False
 
     @model_validator(mode="after")
@@ -95,13 +95,13 @@ class RecordedTarget(BaseModel):
 class RecordedApproval(BaseModel):
     model_config = ConfigDict(extra="forbid")
     targets: list[RecordedTarget] = Field(min_length=1, max_length=200)
-    reason: str = Field(min_length=5, max_length=1000)
+    reason: str = Field(min_length=1)
 
 
 async def approve_recorded(db, user, body):
     """Explicit HR source confirmation; never edits live pending applications."""
     require_hr(user)
-    if len(body.reason.strip()) < 5 or len({target.id for target in body.targets}) != len(body.targets):
+    if not body.reason.strip() or len({target.id for target in body.targets}) != len(body.targets):
         raise HTTPException(422, "Unique records and a confirmation reason are required")
     async with integrity_write(db):
         records = []
@@ -193,6 +193,8 @@ async def history_audit(db, user, record, action, before, reason=None):
 
 async def correct(db, user, reference, body):
     require_hr(user)
+    if not body.reason.strip():
+        raise HTTPException(422, "A correction reason is required")
     async with integrity_write(db):
         current = await find_linked_record(db.leave_requests, reference, user)
         employee = await authorize_employee(db, user, current.get("employee_id"), "M18", write=True)

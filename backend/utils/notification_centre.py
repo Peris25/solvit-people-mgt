@@ -250,7 +250,7 @@ async def leave_preview(db, user, row, action):
         return PREVIEWS["Leave"]
     if action:
         title = "Leave awaiting HR review" if user.get("role") in {"hr_admin", "hr_manager", "general_manager"} else "Leave awaiting manager review"
-        message = "A team member's leave request needs your review. Open it to approve or deny." if user.get("role") in {"hr_admin", "hr_manager", "general_manager"} else "A direct report's leave request needs your review. Open it to recommend approval or deny."
+        message = "A team member's leave request needs your review. Open it to approve or deny." if user.get("role") in {"hr_admin", "hr_manager", "general_manager"} else "A direct report's leave request needs your review. Open it to approve or deny."
     elif record.get("status") == "Approved":
         title, message = "Leave approved", "Your leave request is approved." if employee_key(employee) == user.get("employee_id") else "A leave request you follow has been approved."
     elif record.get("status") in {"Rejected", "Denied"}:

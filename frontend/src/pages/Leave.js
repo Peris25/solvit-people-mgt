@@ -203,7 +203,7 @@ export default function Leave() {
       load(); notificationState?.refresh();
     } catch (err) { setError(message(err)); } finally { setSaving(false); }
   };
-  const openReview = row => { setReview(row); setError(''); setChecks({ handover_reviewed: false, policy_review_confirmed: false, document_verified: false, reason: '', hr_override: row.can_hr_override === true }); };
+  const openReview = row => { setReview(row); setError(''); setChecks({ handover_reviewed: false, policy_review_confirmed: false, document_verified: false, reason: '', hr_override: !row.approval_stage && row.can_hr_override === true }); };
   const downloadEvidence = async id => {
     try {
       const response = await api.downloadLeaveEvidence(id);
@@ -430,22 +430,22 @@ export default function Leave() {
       {review && loadedFor === accountKey && <div role="dialog" aria-label="Review leave request" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100 }}>
         <div style={{ background: '#fff', width: '600px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', padding: '24px' }}>
           <h2>Review leave request</h2><p>{review.employee_name} · {review.leave_type} · {fmtPeriod(review.start_date, review.end_date)} · {review.working_days} working days</p>
-          <p>Status: {leaveStatus(review.status)}. HR may approve directly with a documented override reason.</p>
+          <p>Status: {leaveStatus(review.status)}. Either the assigned line manager or HR can give final approval.</p>
           {review.short_notice_reason && <p><strong>Short-notice reason:</strong> {review.short_notice_reason}</p>}
           {review.notes && <p style={{ whiteSpace: 'pre-wrap' }}>Handover: {review.notes}</p>}
           {review.supporting_document_id && <button style={btnGhost} onClick={() => downloadEvidence(review.supporting_document_id)}>Download restricted supporting document</button>}
           <label style={{ display: 'block', margin: '12px 0' }}><input type="checkbox" checked={checks.handover_reviewed} onChange={e => setChecks(p => ({ ...p, handover_reviewed: e.target.checked }))} /> Written handover reviewed and signed off (planned leave)</label>
-          {review.can_hr_override && <label style={{ display: 'block', margin: '12px 0' }}><input type="checkbox" checked={!!checks.hr_override} onChange={event => setChecks(previous => ({ ...previous, hr_override: event.target.checked }))} /> Approve directly as HR, overriding manager routing (reason required)</label>}
-          {(review.approval_stage === 'hr' || checks.hr_override) && <>
+          {!review.approval_stage && review.can_hr_override && <label style={{ display: 'block', margin: '12px 0' }}><input type="checkbox" checked={!!checks.hr_override} onChange={event => setChecks(previous => ({ ...previous, hr_override: event.target.checked }))} /> Approve directly as HR, overriding manager routing (reason required)</label>}
+          {(review.approval_stage || checks.hr_override) && <>
             <label style={{ display: 'block', margin: '12px 0' }}><input type="checkbox" checked={checks.policy_review_confirmed} onChange={e => setChecks(p => ({ ...p, policy_review_confirmed: e.target.checked }))} /> Contract eligibility, recorded balance and gazetted holiday calendar verified</label>
             <label style={{ display: 'block', margin: '12px 0' }}><input type="checkbox" checked={checks.document_verified} onChange={e => setChecks(p => ({ ...p, document_verified: e.target.checked }))} /> Supporting document verified where required</label>
           </>}
-          <label>Decision reason<textarea aria-label="Leave decision reason" maxLength={4000} style={inp} value={checks.reason} onChange={e => setChecks(p => ({ ...p, reason: e.target.value }))} /></label>
+          <label>Decision reason<textarea aria-label="Leave decision reason" style={inp} value={checks.reason} onChange={e => setChecks(p => ({ ...p, reason: e.target.value }))} /></label>
           <h3>Approval history</h3>{(review.approval_history || []).map((entry, index) => <p key={index}>{entry.stage} · {entry.decision || 'Recorded'} · {entry.actor_role} · {entry.at}</p>)}
           {error && <p role="alert">{error}</p>}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '16px' }}>
             <LeaveActionButton onClick={() => setReview(null)}>Close</LeaveActionButton>
-            {(review.approval_stage || (review.can_hr_override && checks.hr_override)) && <LeaveActionButton icon={Check} variant="primary" disabled={saving} onClick={() => decide('Approve')}>{checks.hr_override ? 'Approve directly as HR' : review.approval_stage === 'hr' ? 'HR final approval' : 'Recommend to HR'}</LeaveActionButton>}
+            {(review.approval_stage || (review.can_hr_override && checks.hr_override)) && <LeaveActionButton icon={Check} variant="primary" disabled={saving} onClick={() => decide('Approve')}>{checks.hr_override ? 'Approve directly as HR' : 'Approve leave'}</LeaveActionButton>}
             {review.can_reject && <LeaveActionButton icon={X} variant="danger" disabled={saving} onClick={() => decide('Reject')}>Deny</LeaveActionButton>}
           </div>
         </div>

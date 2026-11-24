@@ -167,7 +167,7 @@ async def leave_decision(request_id: str, request: Request):
     from utils.leave_workflow import decide
     user = await get_current_user(request)
     body = await request.json()
-    if not isinstance(body, dict) or not isinstance(body.get("reason", ""), str) or len(body.get("reason", "")) > 4000:
+    if not isinstance(body, dict) or not isinstance(body.get("reason", ""), str):
         raise HTTPException(422, "A valid decision and text reason are required")
     async def balance_loader(employee_id):
         return await get_leave_balances(employee_id, request)
@@ -179,7 +179,7 @@ async def cancel_leave(request_id: str, request: Request):
     from utils.leave_workflow import cancel
     user = await get_current_user(request)
     body = await request.json()
-    if not isinstance(body, dict) or not isinstance(body.get("reason", ""), str) or len(body.get("reason", "")) > 4000:
+    if not isinstance(body, dict) or not isinstance(body.get("reason", ""), str):
         raise HTTPException(422, "A valid withdrawal reason is required")
     return await cancel(get_db(), user, request_id, body.get("reason", ""))
 
