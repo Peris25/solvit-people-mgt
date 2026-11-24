@@ -176,7 +176,8 @@ async def health():
     return {"status": "healthy", "app": "Solvit People Platform",
             "release": os.environ.get("RENDER_GIT_COMMIT"),
             "data_updates": {"approved_finance_weights": getattr(app.state, "finance_weight_correction", "pending"),
-                             "employee_kpi_scope": getattr(app.state, "kpi_scope_correction", {"status": "pending"})}}
+                             "employee_kpi_scope": getattr(app.state, "kpi_scope_correction", {"status": "pending"}),
+                             "approved_growth_kpis": getattr(app.state, "growth_kpi_correction", {"status": "pending"})}}
 
 
 SESSION_EXEMPT_ENDPOINTS.add(health)
@@ -214,6 +215,8 @@ async def startup():
     app.state.finance_weight_correction = await correct_approved_finance_weights(db)
     from utils.approved_kpi_scope_correction import run as correct_employee_kpi_scopes
     app.state.kpi_scope_correction = await correct_employee_kpi_scopes(db)
+    from utils.approved_growth_kpi_correction import run as correct_approved_growth_kpis
+    app.state.growth_kpi_correction = await correct_approved_growth_kpis(db)
     # Start automation engine
     await automation_engine.start(db)
     # Start reminder engine (registers cron jobs for all enabled rules)

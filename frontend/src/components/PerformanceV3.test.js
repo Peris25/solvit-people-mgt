@@ -45,6 +45,16 @@ test('employee checkboxes toggle individually and support selecting and clearing
   expect(api.performanceV3Action).not.toHaveBeenCalled();
 });
 
+test('updated KPI reviews show the current rows and preserve previous draft entries separately',async()=>{
+  await render(<PerformanceV3Review review={review({can_self_assess:true,kpi_revision_note:'Updated to four approved KPIs.',kpi_draft_revisions:[{recorded_at:'2026-11-24T09:00:00Z',reason:'Approved KPI update',goals:[{id:'old',objective:'Previous KPI'}],actuals:{old:{actual:25,self_score:1.5}}}]})} onUpdated={jest.fn()}/>);
+  expect(container.textContent).toContain('Updated to four approved KPIs.');
+  const history=[...container.querySelectorAll('details')].find(section=>section.textContent.includes('Previous KPI draft entries'));
+  expect(history.textContent).toContain('Previous actual: 25');
+  expect(history.textContent).toContain('Previous self-score: 1.5');
+  expect(container.querySelector('.pv-self-kpi-table').textContent).not.toContain('Previous KPI');
+  expect(api.performanceV3Action).not.toHaveBeenCalled();
+});
+
 test('HR sees employee status and probation routing without treating probation as an Annual assignment', async () => {
   await render(<V3CycleDialog employees={[{id:'probation',name:'Probation employee',employment_status:'Onboarding',expected_kpi_scope:'Probation',review_ready:false,review_issues:['Employee is in onboarding or probation. Use Create probation review, not the Annual cycle.']}]} onClose={jest.fn()} onCreated={jest.fn()} />);
   expect(container.textContent).toContain('Status: Onboarding');

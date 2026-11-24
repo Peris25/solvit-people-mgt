@@ -266,6 +266,8 @@ def projection(row, user, employee):
     manager = not own and is_direct_report(employee, user) and row.get('line_manager_id') in user_employee_aliases(user)
     result = {k: deepcopy(row[k]) for k in ('id', 'employee_id', 'cycle_id', 'cycle_type', 'cycle_year', 'workflow_version', 'status', 'version', 'starts_on', 'self_due_on', 'peer_due_on', 'manager_due_on', 'review_due_on', 'section_a_kpis', 'group_weights', 'self_assessment', 'review_meeting', 'meeting_proposal', 'meeting_completed_at', 'ack_due_on', 'acknowledged_at') if k in row}
     if own or hr:
+        if row.get('kpi_draft_revisions'): result['kpi_draft_revisions']=deepcopy(row['kpi_draft_revisions'])
+        if row.get('kpi_revision_note'): result['kpi_revision_note']=row['kpi_revision_note']
         if row.get('dispute'): result['dispute'] = deepcopy(row['dispute'])
     if hr: result['actual_corrections'] = deepcopy(row.get('actual_corrections', []))
     result.update(employee_name=employee.get('full_name'), department=employee.get('department'), role_title=employee.get('role_title'), scores_released=flow.released(row), can_self_assess=own and row['status'] == 'Self_Draft', can_manage=manager, can_hr_review=hr, can_delete=False)
