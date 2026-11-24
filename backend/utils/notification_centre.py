@@ -33,6 +33,8 @@ PREVIEWS = {
 
 
 def category_of(row):
+    if isinstance(row.get('data'),dict) and row['data'].get('policy_id'):
+        return 'Policies'
     value = token(row.get("category"))
     aliases = {"benefits": "Benefits", "benefit": "Benefits", "leave": "Leave", "approval": "Approvals", "approvals": "Approvals", "onboarding": "Onboarding",
                "probation": "Onboarding", "training": "Training", "learning": "Training", "lnd": "Training",
@@ -156,6 +158,19 @@ async def related_link(db, user, row, category):
     if not isinstance(data, dict):
         return None, None
     try:
+        if data.get('policy_id'):
+            from utils.legacy_security import policy_record
+            policy=await policy_record(db,user,data['policy_id'])
+            if policy.get('status') not in {'Active','Published'}:return None,None
+            return '/policies?policy='+quote(str(policy.get('id') or policy['_id']),safe=''),None
+        if data.get('submission_id'):
+            from utils.form_access import authorize_signature
+            submission=await find_linked_record(db.form_submissions,data['submission_id'],user)
+            from utils.task_activity import current
+            if (submission.get('status')!='InProgress' or not current(submission) or submission.get('form_id')=='form-06'
+                    or submission.get('next_required_role') not in {user.get('role'),'employee'}):return None,None
+            await authorize_signature(db,user,submission.get('next_required_role'),submission.get('subject_employee_id'),submission.get('started_by'))
+            return '/my-tasks?task='+quote('form:'+str(submission.get('id') or submission['_id']),safe=''),None
         if data.get('public_solver_assessment_id'):
             from utils.public_solver_assessments import reviewer, PUBLIC_KIND
             await reviewer(db,user)
@@ -297,6 +312,9 @@ async def list_inbox(db, user, *, category=None, kind=None, read_status="all", o
             raise
         category_value = category_of(row)
         link, action = await related_link(db, user, row, category_value)
+        target_fields=('policy_id','submission_id','leave_request_id','training_request_id','benefit_request_id','performance_review_id','performance_peer_task_id','performance_alignment_cycle_id')
+        if not link and isinstance(data,dict) and any(data.get(field) for field in target_fields):
+            return None
         # HR's operational inbox must lead to an existing, authorized record.
         # Legacy automation logs without a usable target are not notifications.
         if user.get("role") in {"hr_admin", "hr_manager", "general_manager"} and not link:
@@ -304,6 +322,11 @@ async def list_inbox(db, user, *, category=None, kind=None, read_status="all", o
         if category_value == "Performance" and (row.get("data") or {}).get("performance_review_id") and not link:
             return None  # Removed/unavailable reviews must not become generic stale alerts.
         title, message = PREVIEWS[category_value]
+        if data.get('policy_id') and link:
+            from utils.legacy_security import policy_record
+            policy=await policy_record(db,user,data['policy_id'])
+            title='Policy: '+str(policy.get('title') or 'Updated policy')[:140]
+            message='Read the published document and acknowledge it if required.'
         if category_value == 'Performance' and link and (row.get('data') or {}).get('performance_v3'):
             title = str(row.get('title') or 'Performance action')[:180]
             message = 'Open this performance item in the portal to review the action and deadline.'
@@ -349,7 +372,9 @@ async def list_inbox(db, user, *, category=None, kind=None, read_status="all", o
             title, message = "New Solver assessment received", "A new applicant assessment is ready for HR review. Open it to view the answers."
         elif link and category_value == "System":
             data = row.get("data") or {}
-            if data.get("solver_workflow"):
+            if data.get('submission_id'):
+                title,message='Form awaiting your sign-off','Open the selected task to review the form assigned to you.'
+            elif data.get("solver_workflow"):
                 title, message = "Solver workflow update", "A Solver workflow has been updated. Open the record to review it."
             elif data.get("lifecycle_employee_id"):
                 if data.get("lifecycle_event") == "offboarding:blocked" or ":offboarding:blocked:" in storage_key(row):

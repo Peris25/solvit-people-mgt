@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import StatusBadge from '../components/StatusBadge';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import {useSearchParams} from 'react-router-dom';
 
 const CATEGORIES = [
   '01 - People Strategy Foundation',
@@ -26,6 +27,8 @@ const CATEGORIES = [
 
 export default function Policies() {
   const { user } = useAuth();
+  const [searchParams]=useSearchParams();
+  const linkedPolicy=searchParams.get('policy');
   const accountKey=`${user?.id}:${user?.role}`;
   const currentAccount=useRef(accountKey);currentAccount.current=accountKey;
   const sequence=useRef(0);
@@ -58,6 +61,14 @@ export default function Policies() {
   },[accountKey]);
   useEffect(() => {mounted.current=true;setSelected(null);setShowForm(false);setDraftId(null);setFileInput(null);setSignature('');setFilterCategory('All');setForm({title:'',version:'1.0',category:'08 - Policies and Compliance',description:'',content:'',effective_date:new Date().toISOString().slice(0,10),applies_to:['employees']});load();return()=>{mounted.current=false;};}, [load]);
   const visiblePolicies=loadedFor===accountKey?policies:[];
+  useEffect(()=>{
+    if(!linkedPolicy||loadedFor!==accountKey||loading)return undefined;
+    let active=true;
+    const found=policies.find(policy=>String(policy.id)===linkedPolicy);
+    if(found)setSelected(found);
+    else api.getPolicy(linkedPolicy).then(response=>{if(active){if(!response.data?.id)throw new Error('Unavailable');setSelected(response.data);}}).catch(()=>{if(active)setError('The linked policy is unavailable or you no longer have access.');});
+    return()=>{active=false;};
+  },[linkedPolicy,loadedFor,accountKey,loading,policies]);
 
   const create = async (e) => {
     e.preventDefault();

@@ -33,6 +33,7 @@ def fixture():
     db = Database(employees, users)
     db.notifications = Collection(); db.notification_receipts = Receipts()
     db.leave_requests = Collection(); db.training_requests = Collection(); db.solvers = Collection()
+    db.policies = Collection(); db.form_submissions = Collection()
     actors = {u["employee_id"]: {**u, "id": str(u["_id"])} for u in users}
     return db, actors
 
@@ -193,7 +194,7 @@ def test_manager_can_only_open_and_approve_saved_direct_reports_leave():
     assert result["items"][0]["link"] == f"/leave?request={request['_id']}&view=team"
     assert result["items"][0]["action"] == {"kind": "leave_review", "record_id": str(request["_id"]), "stage": "manager"}
     assert result["items"][0]["kind"] == "Approvals"
-    assert run(list_inbox(db, actors["other-boss"]))["items"][0]["link"] is None
+    assert run(list_inbox(db, actors["other-boss"]))["items"] == []
 
 
 @pytest.mark.parametrize("target", ["missing", "foreign", "conflicting", "external"])
@@ -204,9 +205,13 @@ def test_missing_foreign_conflicting_or_arbitrary_links_are_never_exposed(target
     if target == "conflicting": db.leave_requests.docs = [{"id": "target", "_id": ObjectId(), "tenant_id": "solvit", "employee_id": "other"}]
     if target == "external": row["data"] = {}
     db.notifications.docs = [row]
-    item = run(list_inbox(db, actors["staff"]))["items"][0]
-    assert item["link"] is None and item["action"] is None
-    assert "external.example" not in str(item) and "javascript" not in str(item)
+    result = run(list_inbox(db, actors["staff"]))
+    if target == "external":
+        assert result["items"][0]["link"] is None
+    else:
+        assert result["items"] == [] and result["unread_count"] == 0
+    assert "external.example" not in str(result) and "javascript" not in str(result)
+    assert db.notifications.writes == 0
 
 
 def test_duplicate_notification_reference_cannot_mark_arbitrary_record():
@@ -225,6 +230,7 @@ def test_legacy_account_employee_identifier_collision_fails_closed():
 def test_existing_leave_event_is_targeted_and_repeated_dispatch_does_not_duplicate_or_email():
     db, actors = fixture(); engine = AutomationEngine(); engine.db = db
     rule = {"rule_id": "AR-LV-01", "category": "Leave", "notification_recipients_json": ["line_manager"]}
+    db.leave_requests.docs = [{"_id": ObjectId(), "id": "source", "tenant_id": "solvit", "employee_id": "staff", "status": "Pending_Manager"}]
     data = {"employee_id": "staff", "leave_request_id": "source"}
     with patch("utils.email_service.send_email", AsyncMock()) as email:
         run(engine._send_notification_action(rule, data, {})); run(engine._send_notification_action(rule, data, {}))
@@ -260,3 +266,30 @@ def test_real_mongo_concurrent_receipts_and_leave_event_dispatch_use_only_builti
             await asyncio.gather(*(engine._send_notification_action(rule, {"employee_id": "staff", "leave_request_id": "source"}, {}) for _ in range(8)))
             assert await db.notifications.count_documents({"rule_id": "AR-LV-01"}) == 1
     run(exercise())
+
+
+@pytest.mark.parametrize("status", ["InProgress", "Completed"])
+def test_form_notification_targets_only_current_authorized_signer(status):
+    db, actors = fixture()
+    db.form_submissions.docs = [{"_id": ObjectId(), "id": "form-one", "tenant_id": "solvit", "status": status,
+                                "next_required_role": "line_manager", "subject_employee_id": "staff", "created_at": "2026-11-23T10:00:00Z"}]
+    db.notifications.docs = [notice(recipient_role="line_manager", category="Form", data={"submission_id": "form-one"})]
+    own = run(list_inbox(db, actors["boss"]))
+    if status == "InProgress":
+        assert own["items"][0]["link"] == "/my-tasks?task=form%3Aform-one"
+    else:
+        assert own["items"] == []
+    assert run(list_inbox(db, actors["other-boss"]))["items"] == []
+
+
+@pytest.mark.parametrize("status,audience,visible", [("Active", ["employees"], True), ("Published", ["employees"], True), ("Draft", ["employees"], False), ("Active", ["solver"], False)])
+def test_policy_notification_opens_only_published_authorized_document(status, audience, visible):
+    db, actors = fixture()
+    db.policies.docs = [{"_id": ObjectId(), "id": "handbook", "tenant_id": "solvit", "title": "Employee Handbook", "status": status, "applies_to": audience}]
+    db.notifications.docs = [notice(recipient_id="staff", category="System", data={"policy_id": "handbook"})]
+    result = run(list_inbox(db, actors["staff"]))
+    if visible:
+        assert result["items"][0]["link"] == "/policies?policy=handbook"
+        assert result["items"][0]["title"] == "Policy: Employee Handbook"
+    else:
+        assert result["items"] == []

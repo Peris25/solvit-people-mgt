@@ -37,3 +37,12 @@ test('first-login restricted sessions do not fetch protected notifications', asy
   useAuth.mockReturnValue({ user: { id: 'one', role: 'it_admin', mfa_required: true, mfa_verified: false } });
   await render(); expect(api.getNotificationCentre).not.toHaveBeenCalled();
 });
+
+
+test('confirmed read clears the badge before a slow background refresh finishes', async () => {
+  await render();api.markNotificationRead.mockResolvedValue({data:{is_read:true}});
+  let resolveRefresh;api.getNotificationCentre.mockReturnValueOnce(new Promise(resolve=>{resolveRefresh=resolve;}));
+  await act(async()=>current.markRead('notice'));
+  expect(current.unreadCount).toBe(6);expect(current.items[0].is_read).toBe(true);
+  await act(async()=>resolveRefresh({data:{items:[{id:'notice',is_read:true}],unread_count:6}}));
+});

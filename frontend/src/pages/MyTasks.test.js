@@ -4,10 +4,15 @@ import MyTasks from './MyTasks';
 import * as api from '../services/api';
 import {useAuth} from '../context/AuthContext';
 jest.mock('../services/api');jest.mock('../context/AuthContext');
-const mockNavigate=jest.fn();jest.mock('react-router-dom',()=>({useNavigate:()=>mockNavigate}));
+const mockNavigate=jest.fn();let mockTaskSearch='';jest.mock('react-router-dom',()=>({useNavigate:()=>mockNavigate,useSearchParams:()=>[new URLSearchParams(mockTaskSearch)]}));
 global.IS_REACT_ACT_ENVIRONMENT=true;
 let root,container;
-beforeEach(()=>{container=document.createElement('div');document.body.appendChild(container);root=createRoot(container);useAuth.mockReturnValue({user:{id:'staff',role:'employee'}});api.getMyTaskQueue.mockResolvedValue({data:{items:[],count:0,errors:[]}});});
+beforeEach(()=>{mockTaskSearch='';container=document.createElement('div');document.body.appendChild(container);root=createRoot(container);useAuth.mockReturnValue({user:{id:'staff',role:'employee'}});api.getMyTaskQueue.mockResolvedValue({data:{items:[],count:0,errors:[]}});});
+
+test('a stale task notification explains that the assigned work is no longer pending',async()=>{
+ mockTaskSearch='task=form%3Asigned';await render();
+ expect(container.textContent).toContain('The linked task is no longer pending');
+});
 afterEach(async()=>{await act(async()=>root.unmount());container.remove();jest.resetAllMocks();});
 const render=async()=>act(async()=>root.render(<MyTasks/>));
 const click=async text=>act(async()=>[...container.querySelectorAll('button')].find(button=>button.textContent===text).click());

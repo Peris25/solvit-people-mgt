@@ -4,9 +4,11 @@ import Policies from './Policies';
 import * as api from '../services/api';
 import {useAuth} from '../context/AuthContext';
 jest.mock('../services/api');jest.mock('../context/AuthContext');
+let mockPolicySearch='';
+jest.mock('react-router-dom',()=>({useSearchParams:()=>[new URLSearchParams(mockPolicySearch)]}));
 global.IS_REACT_ACT_ENVIRONMENT=true;
 let root,container;
-beforeEach(()=>{container=document.createElement('div');document.body.appendChild(container);root=createRoot(container);useAuth.mockReturnValue({user:{id:'staff',role:'employee'}});api.getPolicies.mockResolvedValue({data:[]});});
+beforeEach(()=>{mockPolicySearch='';container=document.createElement('div');document.body.appendChild(container);root=createRoot(container);useAuth.mockReturnValue({user:{id:'staff',role:'employee'}});api.getPolicies.mockResolvedValue({data:[]});});
 afterEach(async()=>{await act(async()=>root.unmount());container.remove();jest.resetAllMocks();});
 const render=()=>act(async()=>root.render(<Policies/>));
 
@@ -38,4 +40,11 @@ test('HR can choose the policy audience and employees cannot publish',async()=>{
  useAuth.mockReturnValue({user:{id:'hr',role:'hr_admin'}});await render();
  await act(async()=>container.querySelector('[data-testid="add-policy-btn"]').click());
  expect(container.querySelector('#policy-audience').value).toBe('employees');
+});
+
+test('a policy notification opens its exact authorized document',async()=>{
+ mockPolicySearch='policy=handbook';
+ api.getPolicies.mockResolvedValue({data:[{id:'handbook',title:'Synthetic handbook',status:'Active',category:'Other',version:'2',content:'Approved source',acknowledgement_available:true}]});
+ await render();expect(container.querySelector('[data-testid="ack-signature"]')).not.toBeNull();
+ expect(container.textContent).toContain('Approved source');
 });

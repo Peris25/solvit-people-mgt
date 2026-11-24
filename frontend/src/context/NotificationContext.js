@@ -29,13 +29,22 @@ export function NotificationProvider({ children }) {
     if (!key) return undefined;
     refresh();
     const timer = setInterval(refresh, 60000);
-    return () => { sequence.current += 1; clearInterval(timer); };
+    window.addEventListener('focus',refresh);
+    return () => { sequence.current += 1; clearInterval(timer);window.removeEventListener('focus',refresh); };
   }, [key, refresh]);
   const markRead = useCallback(async id => {
     const response = await api.markNotificationRead(id);
-    if (activeKey.current !== key) return;
+    if (activeKey.current !== key) throw new Error('The signed-in account changed.');
     if (!response.data?.is_read) throw new Error('The notification could not be marked as read. Please retry.');
-    await refresh();
+    // Update only after the server confirms persistence. A slow refresh must
+    // not delay opening the record or restore an older unread snapshot.
+    sequence.current+=1;
+    setState(previous=>{
+      if(previous.key!==key)return previous;
+      const known=previous.items.find(item=>item.id===id);
+      return {...previous,items:previous.items.map(item=>item.id===id?{...item,is_read:true}:item),unreadCount:known&&!known.is_read&&typeof previous.unreadCount==='number'?Math.max(0,previous.unreadCount-1):previous.unreadCount};
+    });
+    refresh();
   }, [key, refresh]);
   const current = state.key === key ? state : { items: [], unreadCount: null, loading: !!key, error: '' };
   const markAllRead = async () => {

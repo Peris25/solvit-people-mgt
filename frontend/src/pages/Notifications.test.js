@@ -8,7 +8,8 @@ import * as api from '../services/api';
 jest.mock('../services/api');
 jest.mock('../context/AuthContext');
 jest.mock('../context/NotificationContext');
-jest.mock('react-router-dom', () => ({ Link: ({ to, children, ...props }) => <a href={to} {...props}>{children}</a> }));
+const mockNavigate=jest.fn();
+jest.mock('react-router-dom', () => ({ useNavigate:()=>mockNavigate,Link: ({ to, children, ...props }) => <a href={to} {...props}>{children}</a> }));
 global.IS_REACT_ACT_ENVIRONMENT = true;
 let container, root;
 const inbox = items => ({ items, unread_count: items.filter(item => !item.is_read).length, total: items.length, filtered_total: items.length, categories: ['Leave', 'Training'], offset: 0, limit: 20 });
@@ -78,4 +79,22 @@ test('server-authorized approval reuses the existing decision endpoint and recor
 test('pagination requests a fresh authorized page', async () => {
   api.getNotificationCentre.mockResolvedValue({ data: { ...inbox([item()]), total: 21, filtered_total: 21 } }); await render(); await click('Next');
   expect(api.getNotificationCentre).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 20, limit: 20 }));
+});
+
+
+test('performance link opens the exact review only after read persistence succeeds', async () => {
+  api.getNotificationCentre.mockResolvedValue({data:inbox([item('review',{category:'Performance',link:'/performance?review=exact'})])});
+  await render();
+  let resolveRead;markRead.mockReturnValueOnce(new Promise(resolve=>{resolveRead=resolve;}));
+  await act(async()=>container.querySelector('a').click());
+  expect(mockNavigate).not.toHaveBeenCalled();
+  await act(async()=>resolveRead());
+  expect(mockNavigate).toHaveBeenCalledWith('/performance?review=exact');
+});
+
+test('failed read from a record link shows an error and does not navigate', async () => {
+  await render();markRead.mockRejectedValueOnce(new Error('offline'));
+  await act(async()=>container.querySelector('a').click());
+  expect(mockNavigate).not.toHaveBeenCalled();
+  expect(container.querySelector('[role="alert"]').textContent).toContain('could not be marked');
 });

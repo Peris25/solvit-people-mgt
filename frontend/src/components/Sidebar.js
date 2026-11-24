@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useNotifications } from '../context/NotificationContext';
 import * as api from '../services/api';
+import {readAndOpenNotification} from '../utils/notificationLinks';
 
 const ICON_SIZE = 17;
 
@@ -114,13 +115,9 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
   const panelNotifications = notifications.filter(item => !['hr_admin', 'hr_manager', 'general_manager'].includes(user?.role) || item.link || item.category === 'Announcements')
     .slice().sort((a, b) => Number(!!b.action) - Number(!!a.action));
   const openNotification = async item => {
-    await markRead(item.id);
-    if (item.link) { navigate(item.link); setShowNotif(false); }
-  };
-
-  const markRead = async (id) => {
     setReadError('');
-    try { await saveRead(id); } catch { setReadError('Could not mark the notification as read. Please retry.'); }
+    try { if(await readAndOpenNotification(item,{markRead:saveRead,navigate}))setShowNotif(false); }
+    catch { setReadError('Could not mark the notification as read. Please retry.'); }
   };
 
   const handleLogout = async () => {

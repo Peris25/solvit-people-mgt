@@ -1,18 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link,useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import * as api from '../services/api';
+import {safeNotificationLink,readAndOpenNotification} from '../utils/notificationLinks';
+export {safeNotificationLink} from '../utils/notificationLinks';
 
 const PAGE_SIZE = 20;
 const buttonStyle = { minHeight: '44px', padding: '10px 16px', border: '1px solid #D9D9D9', background: '#fff', cursor: 'pointer', color: '#191919' };
-export const safeNotificationLink = value => typeof value === 'string' && /^\/(leave|lnd|employees\/[^/?#]+|forms|policies|my-tasks)(?:[?#].*)?$/.test(value) ? value : null;
 const eatDay = value => {
   const date = new Date(value);
   return value && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }) : '';
 };
 
 export default function Notifications() {
+  const navigate=useNavigate();
   const { user } = useAuth();
   const { markRead, refresh } = useNotifications();
   const key = `${user?.id}:${user?.role}`;
@@ -59,6 +61,14 @@ export default function Notifications() {
       reload();
     } finally { setBusy(null); }
   };
+  const open=async(item,event)=>{
+    if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey){if(!item.is_read)read(item);return;}
+    event.preventDefault();if(busy!==null)return;
+    setBusy(item.id);setActionError('');
+    try{await readAndOpenNotification(item,{markRead,navigate});}
+    catch{setActionError('The notification could not be marked as read. Please retry.');}
+    finally{setBusy(null);}
+  };
   const data = state.key === key ? state.data : null;
   const loading = state.key !== key || state.loading;
   const items = data?.items || [];
@@ -93,7 +103,7 @@ export default function Notifications() {
             <small>{eatDay(item.created_at) ? new Date(item.created_at).toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' }) + ' EAT' : 'Time not recorded'} · {item.is_read ? 'Read' : 'Unread'}</small>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px', marginTop: '12px' }}>
               {!item.is_read && <button onClick={() => read(item)} disabled={busy != null} style={buttonStyle}>{busy === item.id ? 'Saving…' : 'Mark as read'}</button>}
-              {safeNotificationLink(item.link) && <Link to={item.link} onClick={() => { if (!item.is_read) read(item); }} style={{ ...buttonStyle, display: 'inline-flex', alignItems: 'center' }}>Open related record</Link>}
+              {safeNotificationLink(item.link) && <Link to={item.link} aria-disabled={busy!==null} onClick={event=>open(item,event)} style={{ ...buttonStyle, display: 'inline-flex', alignItems: 'center' }}>Open related record</Link>}
               {item.action?.kind === 'leave' && <>
                 <button disabled={busy != null} onClick={() => decide(item, 'Approve')} style={{ ...buttonStyle, color: '#166534' }}>Approve</button>
                 <button disabled={busy != null} onClick={() => decide(item, 'Reject')} style={{ ...buttonStyle, color: '#B91C1C' }}>Reject</button>
