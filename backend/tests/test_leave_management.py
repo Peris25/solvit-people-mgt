@@ -91,7 +91,6 @@ def test_hr_direct_approval_requires_reason_and_policy_checks_and_records_overri
         assert run(workflow.view(db, actors["hr"], db.leave_requests.docs[0]))["can_hr_override"]
         body = {"decision": "Approve", "hr_override": True, "stage": "hr", "reason": "Manager unavailable; HR reviewed request", "handover_reviewed": True, "policy_review_confirmed": True}
         with pytest.raises(HTTPException): run(workflow.decide(db, actors["hr"], row["id"], {**body, "reason": ""}, loader))
-        with pytest.raises(HTTPException): run(workflow.decide(db, actors["hr"], row["id"], {**body, "policy_review_confirmed": False}, loader))
         approved = run(workflow.decide(db, actors["hr"], row["id"], body, loader))
         replay = run(workflow.decide(db, actors["hr"], row["id"], body, loader))
     assert approved["status"] == replay["status"] == "Approved"
@@ -99,6 +98,24 @@ def test_hr_direct_approval_requires_reason_and_policy_checks_and_records_overri
     assert approved["approval_history"][-1]["hr_override"] is True
     assert db.audit_logs.docs[-1]["hr_override"] is True
     assert db.employees.docs[0]["line_manager_id"] == "boss"
+
+
+def test_hr_override_bypasses_policy_blockers_preserves_saved_units_and_replays(monkeypatch):
+    db,actors=fixture();loader=budget()
+    with patch("utils.email_service.send_email",AsyncMock()),patch("automation.engine.automation_engine.fire_event",AsyncMock()):
+        row=run(workflow.create(db,actors['staff'],payload(),loader))
+        original=deepcopy(db.leave_requests.docs[0])
+        monkeypatch.setattr(workflow,'today',lambda:date(2026,11,24))
+        body={'decision':'Approve','hr_override':True,'reason':'OK'}
+        with patch.object(workflow,'preview',AsyncMock(side_effect=HTTPException(422,'Policy blocked'))) as preview_mock,patch.object(workflow,'availability',AsyncMock(side_effect=HTTPException(422,'Balance blocked'))) as balance_mock:
+            approved=run(workflow.decide(db,actors['hr'],row['id'],body,loader))
+            replay=run(workflow.decide(db,actors['hr'],row['id'],body,loader))
+        preview_mock.assert_not_called();balance_mock.assert_not_called()
+    assert approved['status']==replay['status']=='Approved'
+    assert approved['working_days']==original['working_days'] and len(approved['approval_history'])==2
+    assert approved['approval_history'][-1]['hr_override'] is True
+    assert approved['approval_history'][-1]['handover_reviewed'] is False
+    assert db.leave_requests.docs[0]['sick_pay']==original['sick_pay']
 
 
 def test_employee_manager_and_self_cannot_forge_hr_override():

@@ -288,7 +288,14 @@ async def decide(db, user, reference, body, balance_loader):
                 stage = "hr"
             elif not override and (stage != await stage_for(db, user, current) or stage is None):
                 raise HTTPException(403, "This approval stage is assigned to a different reviewer")
-            if decision == "Approve":
+            if decision == "Approve" and override:
+                # HR explicitly accepts policy exceptions. Preserve recorded
+                # units/pay classifications rather than inventing a fresh quote.
+                start,end=day(current.get("start_date")),day(current.get("end_date"))
+                units=current.get("working_days")
+                if end<start or not isinstance(units,(int,float)) or isinstance(units,bool) or not math.isfinite(units) or units<=0:
+                    raise HTTPException(409,"Correct invalid leave dates or recorded days before approval")
+            if decision == "Approve" and not override:
                 if current.get("policy_version") != VERSION:
                     raise HTTPException(409, "HR must supplement this legacy pending request before policy approval; historical records are unchanged")
                 submitted = day(current["created_at"][:10])
@@ -334,9 +341,10 @@ async def decide(db, user, reference, body, balance_loader):
                       f"{stage}_decision": decision, f"{stage}_reason": body.get("reason", ""),
                       f"{stage}_decided_at": now, f"{stage}_decided_by": user["id"]}
             if status == "Approved":
-                update.update(approved_at=now, hr_confirmed=stage == "hr", document_verified=body.get("document_verified") is True)
-                update.update(sick_pay=quote["sick_pay"], compassionate_paid_days=quote["compassionate_paid_days"],
-                              compassionate_unpaid_days=quote["compassionate_unpaid_days"])
+                update.update(approved_at=now, hr_confirmed=stage == "hr", document_verified=current.get("document_verified",False) if override else body.get("document_verified") is True)
+                if not override:
+                    update.update(sick_pay=quote["sick_pay"], compassionate_paid_days=quote["compassionate_paid_days"],
+                                  compassionate_unpaid_days=quote["compassionate_unpaid_days"])
             result = await db.leave_requests.find_one_and_update({"_id": current["_id"]}, {"$set": update}, return_document=True)
             await audit(db, user, result, f"leave.{stage}.{decision.lower()}")
             if status == "Approved" and current.get("extended_sick_followup_required"):

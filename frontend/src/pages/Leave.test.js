@@ -216,16 +216,18 @@ test('HR final review includes contract, calendar and document confirmations', a
   expect(container.textContent).toContain('Approve leave');
 });
 
-test('HR can select direct approval with reason and policy confirmations while manager routing remains pending', async () => {
+test('HR can explicitly override policy blockers even when already assigned HR approval', async () => {
   useAuth.mockReturnValue({ user: { ...user, role: 'hr_admin' } });
-  api.getLeaveRequests.mockResolvedValue({ data: [{ ...row, employee_id: 'report', can_cancel: false, can_hr_override: true }] });
+  api.getLeaveRequests.mockResolvedValue({ data: [{ ...row, employee_id: 'report', approval_stage:'hr', can_cancel: false, can_hr_override: true }] });
   api.leaveDecision.mockResolvedValue({ data: { id: row.id, status: 'Approved' } });
   await render(); await act(async () => container.querySelector('[data-testid="leave-tab-team"]').click());
   await click('Review');
-  const override = [...container.querySelectorAll('label')].find(label => label.textContent.includes('overriding manager routing')).querySelector('input');
+  const override = container.querySelector('[aria-label="HR override policy checks"]');
+  expect(override.checked).toBe(false);
+  await act(async()=>override.click());
   expect(override.checked).toBe(true);
-  expect(container.textContent).toContain('Contract eligibility');
-  await click('Approve directly as HR');
+  expect(container.textContent).toContain('HR accepts exceptions');
+  await click('HR override and approve');
   expect(api.leaveDecision).toHaveBeenCalledWith(row.id, expect.objectContaining({ hr_override: true, stage: 'hr', decision: 'Approve' }));
 });
 

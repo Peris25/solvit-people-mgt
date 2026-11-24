@@ -190,7 +190,8 @@ export default function Leave() {
   const decide = async decision => {
     setSaving(true); setError('');
     try {
-      const response = await api.leaveDecision(review.id, { ...checks, decision, stage: checks.hr_override ? 'hr' : review.approval_stage || (isHR ? 'hr' : undefined) });
+      const override=decision==='Approve' && checks.hr_override===true;
+      const response = await api.leaveDecision(review.id, { ...checks, hr_override:override, decision, stage: override ? 'hr' : review.approval_stage || (isHR ? 'hr' : undefined) });
       if (!response.data?.id) throw new Error('The decision could not be confirmed. Refresh before retrying.');
       setReview(null); load(); notificationState?.refresh();
     } catch (err) { setError(message(err)); } finally { setSaving(false); }
@@ -435,8 +436,9 @@ export default function Leave() {
           {review.notes && <p style={{ whiteSpace: 'pre-wrap' }}>Handover: {review.notes}</p>}
           {review.supporting_document_id && <button style={btnGhost} onClick={() => downloadEvidence(review.supporting_document_id)}>Download restricted supporting document</button>}
           <label style={{ display: 'block', margin: '12px 0' }}><input type="checkbox" checked={checks.handover_reviewed} onChange={e => setChecks(p => ({ ...p, handover_reviewed: e.target.checked }))} /> Written handover reviewed and signed off (planned leave)</label>
-          {!review.approval_stage && review.can_hr_override && <label style={{ display: 'block', margin: '12px 0' }}><input type="checkbox" checked={!!checks.hr_override} onChange={event => setChecks(previous => ({ ...previous, hr_override: event.target.checked }))} /> Approve directly as HR, overriding manager routing (reason required)</label>}
-          {(review.approval_stage || checks.hr_override) && <>
+          {review.can_hr_override && <label style={{ display: 'block', margin: '12px 0' }}><input type="checkbox" aria-label="HR override policy checks" checked={!!checks.hr_override} onChange={event => setChecks(previous => ({ ...previous, hr_override: event.target.checked }))} /> HR override: approve despite policy blockers (reason required)</label>}
+          {checks.hr_override && <p>HR accepts exceptions to handover deadlines, eligibility, supporting documents, balance and cover rules. Your reason and approval are recorded. Existing dates and days are retained.</p>}
+          {review.approval_stage && !checks.hr_override && <>
             <label style={{ display: 'block', margin: '12px 0' }}><input type="checkbox" checked={checks.policy_review_confirmed} onChange={e => setChecks(p => ({ ...p, policy_review_confirmed: e.target.checked }))} /> Contract eligibility, recorded balance and gazetted holiday calendar verified</label>
             <label style={{ display: 'block', margin: '12px 0' }}><input type="checkbox" checked={checks.document_verified} onChange={e => setChecks(p => ({ ...p, document_verified: e.target.checked }))} /> Supporting document verified where required</label>
           </>}
@@ -445,7 +447,7 @@ export default function Leave() {
           {error && <p role="alert">{error}</p>}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '16px' }}>
             <LeaveActionButton onClick={() => setReview(null)}>Close</LeaveActionButton>
-            {(review.approval_stage || (review.can_hr_override && checks.hr_override)) && <LeaveActionButton icon={Check} variant="primary" disabled={saving} onClick={() => decide('Approve')}>{checks.hr_override ? 'Approve directly as HR' : 'Approve leave'}</LeaveActionButton>}
+            {(review.approval_stage || (review.can_hr_override && checks.hr_override)) && <LeaveActionButton icon={Check} variant="primary" disabled={saving} onClick={() => decide('Approve')}>{checks.hr_override ? 'HR override and approve' : 'Approve leave'}</LeaveActionButton>}
             {review.can_reject && <LeaveActionButton icon={X} variant="danger" disabled={saving} onClick={() => decide('Reject')}>Deny</LeaveActionButton>}
           </div>
         </div>

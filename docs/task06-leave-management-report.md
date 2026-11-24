@@ -84,3 +84,6 @@ Integration services used only `127.0.0.1:27089` and `127.0.0.1:18089` with synt
 7. Audit/notification failure after a saved request returns an explicit saved-state error; refresh and operator review are required. There is no transactional outbox or automatic repair of historical events. Review operational recovery before production use.
 
 No database migration is required to read existing records or exercise the local implementation. Production balance/index reconciliation and HR/staging acceptance remain separately approved work. This report does not claim production readiness or HR policy acceptance.
+
+## Explicit HR policy override
+HR can select HR override and approve on another employee's pending live leave request. A nonblank reason is required, without a character-count limit. This bypasses policy quoting, handover deadlines/sign-off, contract/eligibility/evidence, balance and department-cover blockers. Existing recorded dates, units and pay classifications are retained. Invalid dates or units, identity changes, self-approval, unauthorized callers and completed decisions remain protected. The approval history and audit log identify the HR override; no pending leave is approved automatically.
