@@ -217,6 +217,18 @@ export default function Leave() {
   const earliestDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const calcDays = () => quote?.working_days ?? 'Awaiting server calculation';
 
+  const openedLinkedRequest=useRef(null);
+  useEffect(()=>{
+    if(!linkedRequest){openedLinkedRequest.current=null;return;}
+    const key=accountKey+':'+linkedRequest;
+    if(loading||loadedFor!==accountKey||openedLinkedRequest.current===key)return;
+    const matches=relatedRecordRows(requests,linkedRequest);
+    if(matches.length!==1)return;
+    openedLinkedRequest.current=key;
+    setReview(matches[0]);setError('');
+    setChecks({handover_reviewed:false,policy_review_confirmed:false,document_verified:false,reason:'',hr_override:!matches[0].approval_stage&&matches[0].can_hr_override===true});
+  },[linkedRequest,accountKey,loadedFor,loading,requests]);
+
   // Filtered request lists
   const ownAliases = [myEmpId, user?.employee_id, ...(user?.employee_reference_ids || [])].filter(Boolean).map(String);
   const selectedRequests = relatedRecordRows(requests, linkedRequest);
@@ -455,7 +467,7 @@ export default function Leave() {
           <h3>Approval history</h3>{(review.approval_history || []).map((entry, index) => <p key={index}>{entry.stage} · {entry.decision || 'Recorded'} · {entry.actor_role} · {entry.at}</p>)}
           {error && <p role="alert">{error}</p>}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '16px' }}>
-            <LeaveActionButton onClick={() => setReview(null)}>Close</LeaveActionButton>
+            <LeaveActionButton onClick={() => {setReview(null);if(linkedRequest)setSearchParams({});}}>Close</LeaveActionButton>
             {(review.approval_stage || (review.can_hr_override && checks.hr_override)) && <LeaveActionButton icon={Check} variant="primary" disabled={saving} onClick={() => decide('Approve')}>{checks.hr_override ? 'HR override and approve' : review.approval_stage === 'manager' ? 'Approve and send to HR' : 'Approve leave'}</LeaveActionButton>}
             {review.can_reject && <LeaveActionButton icon={X} variant="danger" disabled={saving} onClick={() => decide('Reject')}>Deny</LeaveActionButton>}
           </div>

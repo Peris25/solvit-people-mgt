@@ -82,19 +82,19 @@ test('pagination requests a fresh authorized page', async () => {
 });
 
 
-test('performance link opens the exact review only after read persistence succeeds', async () => {
+test('performance link opens the exact review immediately while the read saves', async () => {
   api.getNotificationCentre.mockResolvedValue({data:inbox([item('review',{category:'Performance',link:'/performance?review=exact'})])});
   await render();
   let resolveRead;markRead.mockReturnValueOnce(new Promise(resolve=>{resolveRead=resolve;}));
   await act(async()=>container.querySelector('a').click());
-  expect(mockNavigate).not.toHaveBeenCalled();
+  expect(mockNavigate).toHaveBeenCalledWith('/performance?review=exact');
   await act(async()=>resolveRead());
   expect(mockNavigate).toHaveBeenCalledWith('/performance?review=exact');
 });
 
-test('failed read from a record link shows an error and does not navigate', async () => {
+test('failed read from a record link reports the error without blocking navigation', async () => {
   await render();markRead.mockRejectedValueOnce(new Error('offline'));
   await act(async()=>container.querySelector('a').click());
-  expect(mockNavigate).not.toHaveBeenCalled();
+  expect(mockNavigate).toHaveBeenCalledWith('/leave?request=record');
   expect(container.querySelector('[role="alert"]').textContent).toContain('could not be marked');
 });

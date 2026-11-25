@@ -116,8 +116,9 @@ export default function Sidebar({ collapsed, onToggle, onAIToggle, aiOpen }) {
     .slice().sort((a, b) => Number(!!b.action) - Number(!!a.action));
   const openNotification = async item => {
     setReadError('');
-    try { if(await readAndOpenNotification(item,{markRead:saveRead,navigate}))setShowNotif(false); }
-    catch { setReadError('Could not mark the notification as read. Please retry.'); }
+    setShowNotif(false);
+    try { await readAndOpenNotification(item,{markRead:saveRead,navigate}); }
+    catch { setReadError('Could not mark the notification as read. Please retry.');setShowNotif(true); }
   };
 
   const handleLogout = async () => {

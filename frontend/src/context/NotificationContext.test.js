@@ -46,3 +46,17 @@ test('confirmed read clears the badge before a slow background refresh finishes'
   expect(current.unreadCount).toBe(6);expect(current.items[0].is_read).toBe(true);
   await act(async()=>resolveRefresh({data:{items:[{id:'notice',is_read:true}],unread_count:6}}));
 });
+
+
+test('click clears the badge immediately, stale refresh cannot undo it, failed save restores it',async()=>{
+  await render();let rejectRead;
+  api.markNotificationRead.mockReturnValueOnce(new Promise((resolve,reject)=>{rejectRead=reject;}));
+  let operation;
+  await act(async()=>{operation=current.markRead('notice');operation.catch(()=>{});});
+  expect(current.unreadCount).toBe(6);expect(current.items[0].is_read).toBe(true);
+  await act(async()=>current.refresh());
+  expect(current.unreadCount).toBe(6);expect(current.items[0].is_read).toBe(true);
+  await act(async()=>{rejectRead(new Error('Offline'));await expect(operation).rejects.toThrow();});
+  expect(current.unreadCount).toBe(7);expect(current.items[0].is_read).toBe(false);
+  expect(current.error).toContain('Could not save');
+});

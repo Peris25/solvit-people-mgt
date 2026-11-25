@@ -8,13 +8,15 @@ jest.mock('../services/api');
 jest.mock('../context/AuthContext');
 const mockRefresh = jest.fn();
 jest.mock('../context/NotificationContext', () => ({ useNotifications: () => ({ refresh: mockRefresh }) }));
-jest.mock('react-router-dom', () => ({ useSearchParams: () => [new URLSearchParams(), jest.fn()] }));
+let mockLeaveSearch='';
+jest.mock('react-router-dom', () => ({ useSearchParams: () => [new URLSearchParams(mockLeaveSearch), jest.fn()] }));
 jest.mock('../components/EmployeePicker', () => () => <div>Covering colleague picker</div>);
 global.IS_REACT_ACT_ENVIRONMENT = true;
 let container, root;
 const user = { id: 'account', employee_id: 'staff', role: 'employee' };
 const row = { id: 'request', employee_id: 'staff', employee_name: 'Synthetic Ada', leave_type: 'Annual', start_date: '2026-11-05', end_date: '2026-11-06', working_days: 2, status: 'Pending_Manager', can_cancel: true };
 beforeEach(() => {
+  mockLeaveSearch='';
   container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container);
   useAuth.mockReturnValue({ user });
   api.getLeaveRequests.mockResolvedValue({ data: [row] });
@@ -329,4 +331,19 @@ test('HR can approve the pending imported row directly from Team Leave without c
   await act(async () => [...document.body.querySelectorAll('button')].find(button => button.textContent === 'Approve leave').click());
   expect(api.correctLeaveHistory).toHaveBeenCalledWith('imported', expect.objectContaining({ status: 'Approved', revision: 3, start_date: imported.start_date, end_date: imported.end_date, working_days: 2, reason: 'HR reviewed and approved source entry' }));
   expect(api.leaveDecision).not.toHaveBeenCalled();
+});
+
+
+test('notification link opens the exact authorized leave request dialog automatically',async()=>{
+  mockLeaveSearch='request=request&view=team';
+  useAuth.mockReturnValue({user:{...user,role:'hr_admin'}});
+  await render();
+  const dialog=container.querySelector('[role="dialog"][aria-label="Review leave request"]');
+  expect(dialog).toBeTruthy();expect(dialog.textContent).toContain('Synthetic Ada');
+});
+
+test('an unavailable notification target never opens another leave request',async()=>{
+  mockLeaveSearch='request=unavailable&view=team';
+  useAuth.mockReturnValue({user:{...user,role:'hr_admin'}});
+  await render();expect(container.querySelector('[role="dialog"]')).toBeNull();
 });

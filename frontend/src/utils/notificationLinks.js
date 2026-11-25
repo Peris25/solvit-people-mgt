@@ -4,8 +4,8 @@ export function safeNotificationLink(value){
 }
 
 export async function readAndOpenNotification(item,{markRead,navigate}){
-  if(!item.is_read)await markRead(item.id);
   const link=safeNotificationLink(item.link);
   if(link)navigate(link);
+  if(!item.is_read)await markRead(item.id);
   return Boolean(link);
 }
