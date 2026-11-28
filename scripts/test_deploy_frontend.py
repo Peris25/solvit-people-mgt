@@ -68,5 +68,37 @@ class DeploymentTests(unittest.TestCase):
         publish.assert_called_once()
 
 
+    @patch.object(deploy.time, 'sleep')
+    @patch.object(deploy, 'verify')
+    @patch.object(deploy.ftplib, 'FTP_TLS')
+    @patch.dict(deploy.os.environ, {'FTP_HOST': 'ftp.example.com', 'FTP_USER': 'test', 'FTP_PASSWORD': 'synthetic'})
+    @patch.object(deploy, 'build_files')
+    @patch.object(deploy, 'publish', return_value=2)
+    def test_temporary_connection_failure_retries_before_verified_publication(self, publish, files, factory, verify, sleep):
+        ftp = factory.return_value.__enter__.return_value
+        ftp.connect.side_effect = [ConnectionRefusedError(), None]
+        deploy.main()
+        self.assertEqual(ftp.connect.call_count, 2)
+        publish.assert_called_once()
+        verify.assert_called_once()
+        sleep.assert_called_once_with(5)
+
+    @patch.object(deploy.time, 'sleep')
+    @patch.object(deploy, 'verify')
+    @patch.object(deploy.ftplib, 'FTP_TLS')
+    @patch.dict(deploy.os.environ, {'FTP_HOST': 'ftp.example.com', 'FTP_USER': 'test', 'FTP_PASSWORD': 'synthetic'})
+    @patch.object(deploy, 'build_files')
+    @patch.object(deploy, 'publish')
+    def test_permanent_login_failure_is_not_retried_or_reported_as_success(self, publish, files, factory, verify, sleep):
+        ftp = factory.return_value.__enter__.return_value
+        ftp.login.side_effect = ftplib.error_perm('Authentication refused')
+        with self.assertRaises(ftplib.error_perm):
+            deploy.main()
+        self.assertEqual(ftp.connect.call_count, 1)
+        publish.assert_not_called()
+        verify.assert_not_called()
+        sleep.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main()

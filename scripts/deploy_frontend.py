@@ -83,11 +83,20 @@ def main():
     if not all(config.values()):
         raise ValueError('Missing FTPS configuration')
     context = ssl.create_default_context()
-    with ftplib.FTP_TLS(context=context, timeout=60) as ftp:
-        ftp.connect(config['FTP_HOST'], 21)
-        ftp.login(config['FTP_USER'], config['FTP_PASSWORD'])
-        ftp.prot_p()  # Encrypt data transfers as well as credentials.
-        count = publish(ftp, root)
+    for attempt in range(3):
+        try:
+            with ftplib.FTP_TLS(context=context, timeout=60) as ftp:
+                ftp.connect(config['FTP_HOST'], 21)
+                ftp.login(config['FTP_USER'], config['FTP_PASSWORD'])
+                ftp.prot_p()  # Encrypt data transfers as well as credentials.
+                count = publish(ftp, root)
+            break
+        except (OSError, EOFError, ftplib.error_temp):
+            if attempt == 2:
+                raise
+            print(f'Temporary FTPS connection failure; retrying upload ({attempt + 2}/3).', flush=True)
+            time.sleep(5 * (attempt + 1))
+    print('Upload completed. Verifying live HTML and JS/CSS.', flush=True)
     verify(root)
     print(f'Published {count} build files; live HTML and JS/CSS verified.')
 
@@ -97,5 +106,10 @@ if __name__ == '__main__':
         main()
     except Exception as error:
         # Server exceptions can include host/user details. Keep CI logs generic.
-        print(f'Deployment failed ({type(error).__name__}). Check configuration and hosting connectivity.', file=sys.stderr)
+        safe_messages = {'Missing frontend build/index.html', 'Build contains a symlink or external file',
+                         'Build contains a forbidden file', 'Build has no static JS/CSS references',
+                         'Live index does not match this release', 'Live asset does not match this release',
+                         'Missing FTPS configuration'}
+        detail = str(error) if isinstance(error, ValueError) and str(error) in safe_messages else 'Check configuration and hosting connectivity.'
+        print(f'Deployment failed ({type(error).__name__}): {detail}', file=sys.stderr)
         sys.exit(1)
