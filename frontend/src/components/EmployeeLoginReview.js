@@ -1,3 +1,4 @@
+import ActionButton from './ActionButton';
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../services/api';
@@ -23,10 +24,10 @@ export default function EmployeeLoginReview({ onPrepareAccounts, disabled = fals
   return <section aria-label="FTE login readiness" style={{ padding: 16, borderBottom: '1px solid #ddd' }}>
     <h3>FTE login readiness</h3>
     <p>Check saved employee records against login accounts. This review does not create accounts, change roles, reset passwords or send emails.</p>
-    <button type="button" disabled={busy || disabled} onClick={review}>{busy ? 'Checking logins...' : 'Check employee logins'}</button>
+    <ActionButton type="button" disabled={busy || disabled} onClick={review} disabledReason={disabled&&!busy ? 'Finish the current employee update before checking logins.' : ''}>{busy ? 'Checking logins...' : 'Check employee logins'}</ActionButton>
     {error && <p role="alert">{error}</p>}
     {rows && <>
-      {!!missing.length && onPrepareAccounts && <button type="button" disabled={disabled || busy} onClick={() => onPrepareAccounts(missing.map(row => ({ id: row.employee_id, full_name: row.full_name, work_email: row.work_email })))}>Prepare {missing.length} missing employee accounts</button>}
+      {!!missing.length && onPrepareAccounts && <ActionButton type="button" disabled={disabled || busy} onClick={() => onPrepareAccounts(missing.map(row => ({ id: row.employee_id, full_name: row.full_name, work_email: row.work_email })))} disabledReason={disabled&&!busy ? 'Finish the current employee update before preparing accounts.' : ''}>Prepare {missing.length} missing employee accounts</ActionButton>}
       <p>{rows.length} employee records checked; {rows.filter(row => row.status === 'Needs review').length} need review. “Linked” confirms identity linkage; users still need to satisfy password and MFA requirements where applicable.</p>
       <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', fontSize: 12, textAlign: 'left' }}>
         <thead><tr>{['Employee', 'Work email', 'Department', 'Account role', 'Link status', 'Required action'].map(label => <th key={label}>{label}</th>)}</tr></thead>

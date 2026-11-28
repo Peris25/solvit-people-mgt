@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton';
 import TalentDensityCard from '../components/TalentDensityCard';
 import React, { useState, useEffect, useCallback } from 'react';
 import StatusBadge from '../components/StatusBadge';
@@ -234,7 +235,7 @@ export default function Performance() {
 
       {isHR && <div style={{display:'flex',gap:12,alignItems:'center',marginBottom:16,flexWrap:'wrap'}}>
         <button type="button" onClick={()=>setSelected(reviews.filter(r=>r.can_delete).slice(0,100).map(r=>r.id))}>Select unsubmitted drafts</button>
-        <button type="button" disabled={!selected.length} onClick={()=>setDeleting(reviews.filter(r=>selected.includes(r.id)&&r.can_delete))}>Delete selected ({selected.length})</button>
+        <ActionButton type="button" disabled={!selected.length} onClick={()=>setDeleting(reviews.filter(r=>selected.includes(r.id)&&r.can_delete))} disabledReason={!selected.length ? 'Select the eligible draft reviews you want to delete.' : ''}>Delete selected ({selected.length})</ActionButton>
         {!!selected.length&&<button type="button" onClick={()=>setSelected([])}>Clear selection</button>}
       </div>}
       {/* Tabs */}

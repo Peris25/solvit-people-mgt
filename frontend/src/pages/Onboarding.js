@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import EmployeePicker from '../components/EmployeePicker';
@@ -58,7 +59,7 @@ export default function Onboarding() {
       {kind === 'offboarding' && <><label>Confirmed last working day <input type="date" required value={lastDay} onChange={e => setLastDay(e.target.value)} /></label>
         <label>HR authorization reference <input required maxLength={200} value={reference} onChange={e => setReference(e.target.value)} /></label>
         <p>Confirm contract notice, handover and exit authorization before initiating. This does not deactivate the account.</p></>}
-      <button style={button} disabled={busy || !employee}>Initiate workflow</button>
+      <ActionButton style={button} disabled={busy || !employee} disabledReason={!employee ? 'Choose an employee before starting their onboarding workflow.' : ''}>Initiate workflow</ActionButton>
       <p>Account creation uses the existing Access Control provisioning process and mandatory first-login password change.</p>
     </form>}
     <p>Current responsibilities from 23 November 2026. Older records are retained in history.</p>

@@ -36,7 +36,7 @@ export default function CreateReviewDialog({ employees, onClose, onCreated, prob
         <label><input type="checkbox" required checked={values.policy_confirmed} onChange={e=>change('policy_confirmed',e.target.checked)} /> I approve the selected scoring policy for this review.</label>
       </div>}
       {probation&&!eligible.length&&<p role="status">No employees currently recorded in onboarding or probation. HR must verify their status before creating a probation review.</p>}
-      <div style={{display:'flex',gap:12,justifyContent:'flex-end',marginTop:24}}><LeaveActionButton disabled={busy} onClick={onClose}>Cancel</LeaveActionButton><LeaveActionButton type="submit" variant="primary" disabled={busy||!eligible.length}>{busy?'Creating...':'Create Review'}</LeaveActionButton></div>
+      <div style={{display:'flex',gap:12,justifyContent:'flex-end',marginTop:24}}><LeaveActionButton disabled={busy} onClick={onClose}>Cancel</LeaveActionButton><LeaveActionButton type="submit" variant="primary" disabled={busy||!eligible.length} disabledReason={!eligible.length ? 'No eligible employees are available. Ask HR to check employee status and review assignments.' : ''}>{busy?'Creating...':'Create Review'}</LeaveActionButton></div>
     </form>
   </div>;
 }

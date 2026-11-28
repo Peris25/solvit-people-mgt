@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../services/api';
@@ -39,7 +40,7 @@ export default function Reporting(){
    <button style={button}>Apply filters</button><button type="button" style={button} onClick={()=>{setDraft(empty);setFilters(empty);setOffset(0);}}>Clear filters</button>
   </form>
   {error&&<p role="alert">{error} <button style={button} onClick={load}>Retry</button></p>}
-  {tab==='reports'&&<div style={{display:'flex',gap:8}}><button style={button} disabled={busy||!data} onClick={()=>download('xlsx')}>Download Excel</button><button style={button} disabled={busy||!data} onClick={()=>download('csv')}>Download CSV</button></div>}
+  {tab==='reports'&&<div style={{display:'flex',gap:8}}><ActionButton style={button} disabled={busy||!data} onClick={()=>download('xlsx')} disabledReason={!data ? 'Load a report successfully before downloading it.' : ''}>Download Excel</ActionButton><ActionButton style={button} disabled={busy||!data} onClick={()=>download('csv')} disabledReason={!data ? 'Load a report successfully before downloading it.' : ''}>Download CSV</ActionButton></div>}
   {!data&&!error?<p role="status">Loading authorized records...</p>:data&&<><p>{data.total} authorized records{data.summary_only?' / aggregate view':''}. {data.scope&&`Scope: ${data.scope.replaceAll('_',' ')}.`} {data.date_basis&&`Date filter uses ${data.date_basis.replaceAll('_',' ')}.`}</p><p>{data.notice}</p>{data.missing_dates>0&&<p>{data.missing_dates} authorized records have no usable historical date.</p>}{data.unresolved_records>0&&<p>{data.unresolved_records} records need employee identity reconciliation.</p>}
    {data.items.length===0?<p>No authorized records match these filters.</p>:<div style={{overflowX:'auto',background:'#fff'}}><table style={{borderCollapse:'collapse',width:'100%',fontSize:13}}><thead><tr>{fields.map(key=><th key={key} style={{textAlign:'left',padding:12,borderBottom:'2px solid #FF353F'}}>{key.replaceAll('_',' ')}</th>)}</tr></thead><tbody>{data.items.map((row,index)=><tr key={row.id||row.record_id||`${offset}:${index}`}>{fields.map(key=><td key={key} style={{padding:12,borderBottom:'1px solid #ddd'}}>{typeof row[key]==='string'||typeof row[key]==='number'?row[key]:'Not recorded'}</td>)}</tr>)}</tbody></table></div>}
    <div style={{display:'flex',gap:8,marginTop:16}}><button style={button} disabled={!offset} onClick={()=>setOffset(value=>Math.max(0,value-50))}>Previous</button><button style={button} disabled={offset+50>=data.total} onClick={()=>setOffset(value=>value+50)}>Next</button></div>

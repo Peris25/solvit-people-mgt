@@ -64,7 +64,7 @@ export function LegacyKpiTemplate({ reviews, onUpdated }) {
           {values.goals.length > 3 && <LeaveActionButton disabled={busy} onClick={() => setValues(v => ({ ...v, goals: v.goals.filter((_, i) => i !== index) }))}>Remove KPI {index + 1}</LeaveActionButton>}
         </fieldset>)}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-          <LeaveActionButton disabled={busy || values.goals.length >= MAX_REVIEW_KPIS} onClick={() => setValues(v => ({ ...v, goals: [...v.goals, blank()] }))}>Add KPI</LeaveActionButton>
+          <LeaveActionButton disabled={busy || values.goals.length >= MAX_REVIEW_KPIS} onClick={() => setValues(v => ({ ...v, goals: [...v.goals, blank()] }))} disabledReason={values.goals.length>=MAX_REVIEW_KPIS ? `The template already has the maximum of ${MAX_REVIEW_KPIS} KPIs.` : ''}>Add KPI</LeaveActionButton>
           <LeaveActionButton type="submit" variant="primary" disabled={busy}>Save KPI template</LeaveActionButton>
           {saved && !dirty && <span role="status">Template saved</span>}
         </div>
@@ -81,10 +81,10 @@ export function LegacyKpiTemplate({ reviews, onUpdated }) {
         <h3>Apply standard KPIs</h3><p>Only empty, unsubmitted mid-year and year-end reviews are listed. Create employee reviews first if none are listed. Probation uses its separate assessment.</p>
         {dirty && <p>Save your template before applying it.</p>}
         <label style={{ display: 'grid', gap: 6, maxWidth: 300 }}>KPI due date<input required type="date" style={control} value={due} onChange={e => setDue(e.target.value)} /></label>
-        <p><LeaveActionButton disabled={busy || !eligible.length} onClick={() => setSelection(eligible.slice(0, 100).map(r => r.id))}>Select all eligible reviews</LeaveActionButton> <LeaveActionButton disabled={busy} onClick={() => setSelection([])}>Clear selection</LeaveActionButton></p>
+        <p><LeaveActionButton disabled={busy || !eligible.length} onClick={() => setSelection(eligible.slice(0, 100).map(r => r.id))} disabledReason={!eligible.length ? 'Create an empty, unsubmitted annual review before applying this template.' : ''}>Select all eligible reviews</LeaveActionButton> <LeaveActionButton disabled={busy} onClick={() => setSelection([])}>Clear selection</LeaveActionButton></p>
         {!eligible.length && <p>No empty reviews are available for this template.</p>}
         <div style={{ display: 'grid', gap: 8, maxHeight: 280, overflowY: 'auto', marginBottom: 16 }}>{eligible.map(r => <label key={r.id}><input type="checkbox" disabled={busy} checked={ids.includes(r.id)} onChange={e => setSelection(v => e.target.checked ? [...v, r.id].slice(0, 100) : v.filter(id => id !== r.id))} /> {r.employee_name || 'Employee'} — {r.cycle_type?.replaceAll('_', ' ')} {r.cycle_year}</label>)}</div>
-        <LeaveActionButton type="submit" variant="primary" disabled={busy || dirty || !ids.length || !due}>{busy ? 'Working...' : `Apply KPIs to ${ids.length} reviews`}</LeaveActionButton>
+        <LeaveActionButton type="submit" variant="primary" disabled={busy || dirty || !ids.length || !due} disabledReason={dirty ? 'Save the KPI template changes first.' : !ids.length ? 'Select at least one eligible review.' : !due ? 'Choose a KPI due date above.' : ''}>{busy ? 'Working...' : `Apply KPIs to ${ids.length} reviews`}</LeaveActionButton>
         {result && <div role="status"><p>{result.applied.length} reviews updated; {result.skipped.length} skipped.</p><ul>{result.skipped.map(row => <li key={row.review_id}>{reviews.find(r => r.id === row.review_id)?.employee_name || 'Review'}: {row.reason}</li>)}</ul></div>}
       </form>
     </>}

@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton';
 import React, { useEffect, useState } from 'react';
 import * as api from '../services/api';
 
@@ -95,9 +96,9 @@ export default function SolverRequisitions() {
                       <button data-testid={`toggle-${r.code}`} onClick={() => toggleStatus(r)} style={{ marginRight: '6px', padding: '4px 8px', backgroundColor: 'transparent', border: '1px solid rgba(25,25,25,0.2)', cursor: 'pointer', fontSize: '11px', fontWeight: 700 }}>
                         {r.status === 'Open' ? 'Close' : 'Open'}
                       </button>
-                      <button data-testid={`copy-${r.code}`} onClick={() => copyLink(r)} disabled={r.status !== 'Open'} style={{ marginRight: '6px', padding: '4px 8px', backgroundColor: 'transparent', border: '1px solid rgba(25,25,25,0.2)', cursor: r.status === 'Open' ? 'pointer' : 'not-allowed', fontSize: '11px', fontWeight: 700, opacity: r.status === 'Open' ? 1 : 0.4 }}>
+                      <ActionButton data-testid={`copy-${r.code}`} onClick={() => copyLink(r)} disabled={r.status !== 'Open'} style={{ marginRight: '6px', padding: '4px 8px', backgroundColor: 'transparent', border: '1px solid rgba(25,25,25,0.2)', cursor: r.status === 'Open' ? 'pointer' : 'not-allowed', fontSize: '11px', fontWeight: 700, opacity: r.status === 'Open' ? 1 : 0.4 }} disabledReason={r.status!=='Open' ? 'Only open requisitions have an application link to copy.' : ''}>
                         Copy Link
-                      </button>
+                      </ActionButton>
                       <a data-testid={`qr-${r.code}`} href={api.requisitionQrUrl(r.id)} target="_blank" rel="noreferrer" style={{ display: 'inline-block', padding: '4px 8px', backgroundColor: 'transparent', border: '1px solid rgba(25,25,25,0.2)', cursor: 'pointer', fontSize: '11px', fontWeight: 700, textDecoration: 'none', color: '#191919' }}>
                         QR
                       </a>

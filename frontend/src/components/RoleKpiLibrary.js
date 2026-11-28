@@ -107,14 +107,14 @@ export default function RoleKpiLibrary() {
         <label style={{...field,marginTop:10}}>KPI notes<textarea aria-label={`KPI notes ${index+1}`} style={control} maxLength={1500} value={goal.notes} onChange={e=>goalChange(index,'notes',e.target.value)} /></label>
         <LeaveActionButton disabled={busy} onClick={()=>change('goals',values.goals.filter((_,i)=>i!==index))}>Remove KPI {index+1}</LeaveActionButton>
       </fieldset></details>)}
-      <LeaveActionButton disabled={busy || values.goals.length>=100} onClick={()=>change('goals',[...values.goals,{id:crypto.randomUUID(),objective:'',metric:'',target:'',target_value:null,weight:null,direction:'Unconfirmed',unit:'',data_source:'',owner:values.name,group:'',notes:''}])}>Add KPI</LeaveActionButton>
+      <LeaveActionButton disabled={busy || values.goals.length>=100} onClick={()=>change('goals',[...values.goals,{id:crypto.randomUUID(),objective:'',metric:'',target:'',target_value:null,weight:null,direction:'Unconfirmed',unit:'',data_source:'',owner:values.name,group:'',notes:''}])} disabledReason={values.goals.length>=100 ? 'This role already has the maximum of 100 KPIs.' : ''}>Add KPI</LeaveActionButton>
       <div style={{...grid,marginTop:16}}>
         <label style={field}>Reason for changes to an approved role<textarea aria-label="KPI change reason" style={control} maxLength={1500} value={reason} onChange={e=>{setReason(e.target.value);setError('');}} /></label>
       </div>
       {saved?.issues?.length>0 && <details style={{marginTop:14}}><summary>What needs completing before publishing ({saved.issues.length})</summary><ul>{saved.issues.map((issue,i)=><li key={i}>{issue}</li>)}</ul></details>}
       <div style={{display:'flex',gap:10,flexWrap:'wrap',marginTop:18}}>
-        <LeaveActionButton type="submit" variant="primary" disabled={busy || conflict}>Save draft</LeaveActionButton>
-        <LeaveActionButton disabled={busy || conflict} onClick={()=>save('publish')}>Publish approved KPIs</LeaveActionButton>
+        <LeaveActionButton type="submit" variant="primary" disabled={busy || conflict} disabledReason={conflict ? 'This role was changed elsewhere. Reload the latest version before saving or publishing.' : ''}>Save draft</LeaveActionButton>
+        <LeaveActionButton disabled={busy || conflict} onClick={()=>save('publish')} disabledReason={conflict ? 'This role was changed elsewhere. Reload the latest version before saving or publishing.' : ''}>Publish approved KPIs</LeaveActionButton>
       </div>
       <p style={{fontSize:12}}>Changes auto-save as a draft after you stop typing. Wait for the saved message before leaving. Source: {values.source_reference}</p>
     </form>

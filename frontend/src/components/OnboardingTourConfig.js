@@ -1,3 +1,4 @@
+import ActionButton from './ActionButton';
 /**
  * OnboardingTourConfig — IT Admin controls for the first-login walkthrough.
  * Headline/body text, enable/disable toggle, per-user reset, completion report.
@@ -73,7 +74,7 @@ export default function OnboardingTourConfig() {
             <option value="">Select user…</option>
             {emps.map(e => <option key={e.id} value={e.user_id || e.id}>{e.full_name} · {e.role_title}</option>)}
           </select>
-          <button data-testid="tour-reset-btn" onClick={resetUser} disabled={!resetTargetId} style={btnGhost}>Reset Tour</button>
+          <ActionButton data-testid="tour-reset-btn" onClick={resetUser} disabled={!resetTargetId} style={btnGhost} disabledReason={!resetTargetId ? 'Choose the user whose tour you want to reset.' : ''}>Reset Tour</ActionButton>
         </div>
       </div>
 

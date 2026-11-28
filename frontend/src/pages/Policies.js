@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import StatusBadge from '../components/StatusBadge';
 import * as api from '../services/api';
@@ -198,7 +199,7 @@ export default function Policies() {
                 <p style={{ fontSize: '12px', color: '#525252', margin: '0 0 8px 0' }}>By typing your full name below, you confirm that you have read and understood this document.</p>
                 {!canAcknowledge && <p role="status">This policy is not available for acknowledgement. HR must publish readable content or an approved document first.</p>}
                 <input disabled={!canAcknowledge} data-testid="ack-signature" placeholder="Type your full name" value={signature} onChange={e => setSignature(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '13px', fontFamily: 'cursive', boxSizing: 'border-box' }} />
-                <button disabled={!canAcknowledge || !signature.trim()} data-testid="acknowledge-btn" onClick={() => acknowledge(selected)} style={{ marginTop: '12px', padding: '10px 24px', backgroundColor: '#22C55E', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }}>Acknowledge</button>
+                <ActionButton disabled={!canAcknowledge || !signature.trim()} data-testid="acknowledge-btn" onClick={() => acknowledge(selected)} style={{ marginTop: '12px', padding: '10px 24px', backgroundColor: '#22C55E', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Arial' }} disabledReason={!canAcknowledge ? 'Read the available policy before acknowledging it. Ask HR if the document is unavailable.' : !signature.trim() ? 'Type your full name above to acknowledge this policy.' : ''}>Acknowledge</ActionButton>
               </div>
             </div>
           </div>

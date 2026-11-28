@@ -59,7 +59,7 @@ export default function PayrollFiles() {
       <label style={{ display: 'grid', gap: 8 }}>Excel workbook (.xlsx, up to 5 MB)
         <input ref={picker} type="file" aria-label="Payroll Excel workbook" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={busy} onChange={e => { setFile(e.target.files?.[0] || null); setNotice(''); }} />
       </label>
-      <LeaveActionButton type="submit" variant="primary" disabled={busy || !file}>{busy ? 'Working…' : 'Upload payroll Excel'}</LeaveActionButton>
+      <LeaveActionButton type="submit" variant="primary" disabled={busy || !file} disabledReason={!file ? 'Choose a payroll Excel file before uploading.' : ''}>{busy ? 'Working…' : 'Upload payroll Excel'}</LeaveActionButton>
       <LeaveActionButton disabled={busy || loading} onClick={load}>Refresh files</LeaveActionButton>
     </form>
     {notice && <p role="status">{notice}</p>}{error && <p role="alert">{error}</p>}
@@ -67,7 +67,7 @@ export default function PayrollFiles() {
       <p>Latest payroll files (up to 100)</p>
       <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 600 }}>
         <thead><tr>{['Workbook', 'Uploaded', 'Uploaded by', 'Status', 'Action'].map(title => <th style={{ textAlign: 'left', padding: 12 }} key={title}>{title}</th>)}</tr></thead>
-        <tbody>{rows.map(row => <tr key={row.id} style={{ borderTop: '1px solid #e5e7eb' }}><td style={{ padding: 12 }}>{row.file_name}</td><td>{new Date(row.uploaded_at).toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })} EAT</td><td>{row.uploaded_by_name}</td><td>{row.status}</td><td><LeaveActionButton disabled={busy || !row.download_allowed} onClick={() => download(row)}>Download</LeaveActionButton></td></tr>)}</tbody>
+        <tbody>{rows.map(row => <tr key={row.id} style={{ borderTop: '1px solid #e5e7eb' }}><td style={{ padding: 12 }}>{row.file_name}</td><td>{new Date(row.uploaded_at).toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })} EAT</td><td>{row.uploaded_by_name}</td><td>{row.status}</td><td><LeaveActionButton disabled={busy || !row.download_allowed} onClick={() => download(row)} disabledReason={!row.download_allowed ? 'This payroll file is not available to download. Ask HR to check the file status and your access.' : ''}>Download</LeaveActionButton></td></tr>)}</tbody>
       </table></div>
     </>}
   </section>;

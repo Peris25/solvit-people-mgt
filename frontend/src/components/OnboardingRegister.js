@@ -60,8 +60,8 @@ export default function OnboardingRegister({ onRecorded, onLoaded }) {
       <textarea style={{ ...control, display: 'block', width: '100%', boxSizing: 'border-box' }} aria-label="HR onboarding confirmation reason" maxLength={1000} value={reason} onChange={e => setReason(e.target.value)} />
     </label>
     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-      <LeaveActionButton variant="primary" disabled={busy || !selected.length || reason.trim().length < 10} onClick={() => record('Completed')}>Record completed onboarding ({selected.length})</LeaveActionButton>
-      <LeaveActionButton disabled={busy || !selected.length || reason.trim().length < 10} onClick={() => record('In_Progress')}>Record onboarding in progress ({selected.length})</LeaveActionButton>
+      <LeaveActionButton variant="primary" disabled={busy || !selected.length || reason.trim().length < 10} onClick={() => record('Completed')} disabledReason={!selected.length ? 'Select at least one eligible employee above.' : reason.trim().length<10 ? 'Enter a reason of at least 10 characters for the onboarding update.' : ''}>Record completed onboarding ({selected.length})</LeaveActionButton>
+      <LeaveActionButton disabled={busy || !selected.length || reason.trim().length < 10} onClick={() => record('In_Progress')} disabledReason={!selected.length ? 'Select at least one eligible employee above.' : reason.trim().length<10 ? 'Enter a reason of at least 10 characters for the onboarding update.' : ''}>Record onboarding in progress ({selected.length})</LeaveActionButton>
     </div>
   </section>;
 }

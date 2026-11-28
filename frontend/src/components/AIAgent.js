@@ -1,3 +1,4 @@
+import ActionButton from './ActionButton';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme, themeTokens } from '../context/ThemeContext';
@@ -224,10 +225,10 @@ export default function AIAgent({ onClose }) {
           style={{ flex: 1, padding: '8px 12px', border: '1px solid rgba(25,25,25,0.2)', fontSize: '12px', outline: 'none', fontFamily: 'Nunito Sans', backgroundColor: '#fff' }}
           onFocus={e => e.target.style.borderColor = '#FF353F'}
           onBlur={e => e.target.style.borderColor = 'rgba(25,25,25,0.2)'} />
-        <button data-testid="ai-chat-send" type="submit" disabled={loading || !input.trim()}
-          style={{ padding: '8px 14px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: loading || !input.trim() ? 'not-allowed' : 'pointer', opacity: loading || !input.trim() ? 0.6 : 1 }}>
+        <ActionButton data-testid="ai-chat-send" type="submit" disabled={loading || !input.trim()}
+          style={{ padding: '8px 14px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: loading || !input.trim() ? 'not-allowed' : 'pointer', opacity: loading || !input.trim() ? 0.6 : 1 }} disabledReason={!input.trim() ? 'Type your question before sending.' : ''}>
           <Send size={14} />
-        </button>
+        </ActionButton>
       </form>
     </div>
   );

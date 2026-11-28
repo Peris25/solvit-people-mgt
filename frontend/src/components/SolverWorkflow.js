@@ -1,3 +1,4 @@
+import ActionButton from './ActionButton';
 import React, { useEffect, useState } from 'react';
 import SolverCompetencies from './SolverCompetencies';
 import * as api from '../services/api';
@@ -71,7 +72,7 @@ export default function SolverWorkflow({ solverId, accountId }) {
         <label>Document category <select value={category} onChange={e => setCategory(e.target.value)}>{categories.map(value => <option key={value}>{value}</option>)}</select></label>
         <label>Sharing <select value={visibility} onChange={e => setVisibility(e.target.value)}><option value="hr_only">HR only (default)</option><option value="hr_manager">Explicitly share non-confidential evidence with Solvers Manager</option><option value="hr_assessment">Explicitly share non-confidential evidence with this Solver and assigned assessors</option><option value="hr_solver">Explicitly share non-confidential document with this Solver</option></select></label>
         <label>File (PDF, JPG, PNG, DOCX, XLSX; maximum 20 MB) <input required type="file" accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx" onChange={e => setFile(e.target.files[0])} /></label>
-        <button disabled={busy || !file}>Upload Solver document</button>
+        <ActionButton disabled={busy || !file} disabledReason={!file ? 'Choose a Solver document file before uploading.' : ''}>Upload Solver document</ActionButton>
       </form>}
     </>}
   </section>;

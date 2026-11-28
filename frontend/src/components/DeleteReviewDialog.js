@@ -13,7 +13,7 @@ export default function DeleteReviewDialog({reviews,onClose,onDeleted}) {
    {error&&<p role="alert" style={{color:'#b91c1c'}}>{error}</p>}
    <label style={{display:'grid',gap:8}}>Reason<textarea ref={first} aria-label="Review deletion reason" required minLength={10} maxLength={1500} value={reason} onChange={e=>setReason(e.target.value)} style={{padding:12,border:'1px solid #cbd5e1',borderRadius:8}}/></label>
    <label style={{display:'block',margin:'16px 0'}}><input type="checkbox" required checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/> I confirm deletion of the reviews listed above and their related portal alerts.</label>
-   <div style={{display:'flex',gap:12,justifyContent:'flex-end'}}><LeaveActionButton disabled={busy} onClick={onClose}>Cancel</LeaveActionButton><LeaveActionButton type="submit" variant="danger" disabled={busy||!confirmed||reason.trim().length<10}>{busy?'Deleting...':'Delete reviews'}</LeaveActionButton></div>
+   <div style={{display:'flex',gap:12,justifyContent:'flex-end'}}><LeaveActionButton disabled={busy} onClick={onClose}>Cancel</LeaveActionButton><LeaveActionButton type="submit" variant="danger" disabled={busy||!confirmed||reason.trim().length<10} disabledReason={!confirmed ? 'Tick the confirmation checkbox before deleting.' : reason.trim().length<10 ? 'Enter a deletion reason of at least 10 characters.' : ''}>{busy?'Deleting...':'Delete reviews'}</LeaveActionButton></div>
   </form>
  </div>;
 }

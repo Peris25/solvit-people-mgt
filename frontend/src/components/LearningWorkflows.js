@@ -1,3 +1,4 @@
+import ActionButton from './ActionButton';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import EmployeePicker from './EmployeePicker';
@@ -50,7 +51,7 @@ export function TrainingCatalogue({ user, onUpdated }) {
       <h3>{item.title} · {item.kind}</h3><p>{item.description}</p><p>{item.starts_on || 'Programme schedule pending'} to {item.ends_on || 'Awaiting HR'} · Due {item.due_on || 'Awaiting HR'}</p>
       <p>{item.completion_requirements}</p><p>{item.status} · {item.provider}</p>
       {hr ? <><button style={button} disabled={busy} onClick={() => { setEditing(item.id); setValues(Object.fromEntries(Object.keys(blank).map(key => [key,item[key] ?? blank[key]]))); }}>Edit catalogue item</button>
-        {item.kind !== 'Programme' && item.status === 'Published' && <button style={button} disabled={busy || !employee} onClick={() => perform(() => api.assignTrainingProgramme(item.id,{ employee_ids:[employee], business_justification:'HR training nomination' }))}>Assign to employee</button>}</> : item.kind !== 'Programme' && <button style={button} disabled={busy || !user?.employee_id} onClick={() => perform(() => api.createTrainingRequest({ employee_id:user.employee_id, programme_id:item.id, business_justification:'Requested participation in published training' }))}>Request this training</button>}
+        {item.kind !== 'Programme' && item.status === 'Published' && <ActionButton style={button} disabled={busy || !employee} onClick={() => perform(() => api.assignTrainingProgramme(item.id,{ employee_ids:[employee], business_justification:'HR training nomination' }))} disabledReason={!employee ? 'Choose the employee to assign this training to.' : ''}>Assign to employee</ActionButton>}</> : item.kind !== 'Programme' && <ActionButton style={button} disabled={busy || !user?.employee_id} onClick={() => perform(() => api.createTrainingRequest({ employee_id:user.employee_id, programme_id:item.id, business_justification:'Requested participation in published training' }))} disabledReason={!user?.employee_id ? 'Ask HR to link your login to an employee record before requesting training.' : ''}>Request this training</ActionButton>}
     </article>)}
   </section>;
 }
@@ -89,6 +90,6 @@ export function TrainingCompletion({ training, onUpdated }) {
     </form>}
     {training.can_verify_completion && <div><button style={button} disabled={busy} onClick={() => perform(() => api.completeTraining(training.id,{ action:'verify', requirements_met:true }))}>Verify requirements and completion</button>
       <label style={field}>Reason for returning<input value={reason} onChange={e => setReason(e.target.value)} /></label>
-      <button style={button} disabled={busy || !reason.trim()} onClick={() => perform(() => api.completeTraining(training.id,{ action:'return', reason }))}>Return completion evidence</button></div>}
+      <ActionButton style={button} disabled={busy || !reason.trim()} onClick={() => perform(() => api.completeTraining(training.id,{ action:'return', reason }))} disabledReason={!reason.trim() ? 'Enter the reason for returning this evidence first.' : ''}>Return completion evidence</ActionButton></div>}
   </details>;
 }

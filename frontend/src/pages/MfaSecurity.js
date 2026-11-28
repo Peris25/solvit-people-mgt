@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton';
 import PasswordInput from '../components/PasswordInput';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
@@ -72,7 +73,7 @@ export default function MfaSecurity({ required = false }) {
             <label htmlFor="mfa-password">Current password</label>
             <PasswordInput id="mfa-password" type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required style={input} />
             <button style={button} disabled={busy} type="submit">{status.mfa_enrolled ? 'Replace authenticator' : 'Set up authenticator'}</button>
-            {status.mfa_enrolled && <button type="button" disabled={busy || !password} onClick={() => run(async () => { setCodes((await rotateRecoveryCodes(password)).recovery_codes); })}>Replace recovery codes</button>}
+            {status.mfa_enrolled && <ActionButton type="button" disabled={busy || !password} onClick={() => run(async () => { setCodes((await rotateRecoveryCodes(password)).recovery_codes); })} disabledReason={!password ? 'Enter your current password before replacing recovery codes.' : ''}>Replace recovery codes</ActionButton>}
           </>}
         </form>}
         {!required && status.can_reset_other && status.mfa_verified && <details style={{ margin: '24px 0' }}>

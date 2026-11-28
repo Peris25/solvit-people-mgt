@@ -1,3 +1,4 @@
+import ActionButton from './ActionButton';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from '../services/api';
 
@@ -82,7 +83,7 @@ export default function ProfileChanges({ employee, user, selfService, onApplied 
           <input aria-label={`New ${name}`} maxLength={160} style={inputStyle} value={structured[name] || ''} onChange={event => setStructured(previous => ({ ...previous, [name]: event.target.value }))} />
         </label>) : <label>Requested value<input aria-label="Requested value" type={field === 'date_of_birth' ? 'date' : field === 'personal_email' ? 'email' : 'text'} maxLength={254} style={inputStyle} value={value} onChange={event => setValue(event.target.value)} /></label>}
         {field === 'education' && <p>This requests an additional education record. Existing entries are retained; ask HR to correct an existing entry.</p>}
-        <button style={buttonStyle} disabled={busy || rows.some(row => ['Pending_HR', 'Pending_Finance', 'Applying'].includes(row.status))}>Submit change request</button>
+        <ActionButton style={buttonStyle} disabled={busy || rows.some(row => ['Pending_HR', 'Pending_Finance', 'Applying'].includes(row.status))} disabledReason={rows.some(row=>['Pending_HR','Pending_Finance','Applying'].includes(row.status)) ? 'A profile change is already being reviewed. Wait for HR or Finance to finish it before submitting another.' : ''}>Submit change request</ActionButton>
       </form>}
       {canReview && <label>Review reason (required to reject)<textarea aria-label="Review reason" maxLength={2000} value={reason} onChange={event => setReason(event.target.value)} style={inputStyle} /></label>}
       <h3>Request history</h3>{rows.length ? renderRows(rows) : <p>No profile change requests.</p>}

@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton';
 import React, { useState, useEffect, useRef } from 'react';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -217,7 +218,7 @@ export default function Forms() {
                 )}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                   <button type="button" onClick={() => { setSelected(null); setSchema(null); }} style={{ padding: '10px 20px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '12px' }}>Cancel</button>
-                  <button data-testid="submit-form-btn" type="submit" disabled={submitting || !schemaReady} style={{ padding: '10px 24px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: submitting || !schemaReady ? 0.55 : 1 }}>{submitting ? 'Submitting...' : 'Submit Form'}</button>
+                  <ActionButton data-testid="submit-form-btn" type="submit" disabled={submitting || !schemaReady} style={{ padding: '10px 24px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: submitting || !schemaReady ? 0.55 : 1 }} disabledReason={!schemaReady ? 'This form is not ready yet. Wait for it to load, or contact HR if it stays unavailable.' : ''}>{submitting ? 'Submitting...' : 'Submit Form'}</ActionButton>
                 </div>
               </form>
             )}

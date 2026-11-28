@@ -1,3 +1,4 @@
+import ActionButton from './ActionButton';
 import PasswordInput from './PasswordInput';
 import React, { useState } from 'react';
 import EmployeePicker from './EmployeePicker';
@@ -70,10 +71,10 @@ export default function EmployeeAccountForm({ onSaved, selectedEmployees = [], o
           style={{ display: 'block', padding: '8px', marginTop: '4px', width: '100%', boxSizing: 'border-box' }} />
       </label>
       <div style={{ fontSize: '11px', margin: '8px 0', color: '#525252' }}>New accounts receive the Employee role. Existing accounts keep their password and role. Use at least 12 characters and avoid common passwords.</div>
-      <button data-testid="provision-account" type="submit" disabled={busy || (!employeeId && !batch.length)}
-        style={{ padding: '8px 14px', backgroundColor: '#191919', color: '#fff', border: 'none', cursor: 'pointer' }}>
+      <ActionButton data-testid="provision-account" type="submit" disabled={busy || (!employeeId && !batch.length)}
+        style={{ padding: '8px 14px', backgroundColor: '#191919', color: '#fff', border: 'none', cursor: 'pointer' }} disabledReason={!employeeId&&!batch.length ? 'Choose an employee or select employees for account setup first.' : ''}>
         {busy ? 'Saving...' : batch.length ? `Create or link ${batch.length} employee accounts` : 'Create or link account'}
-      </button>
+      </ActionButton>
       {message && <div role="status" style={{ marginTop: '8px', fontSize: '12px' }}>{message}</div>}
       {!!results.length && <ul aria-label="Account setup results">{results.map(row => <li key={row.id}>{row.name}: {row.status} — {row.detail}</li>)}</ul>}
     </form>

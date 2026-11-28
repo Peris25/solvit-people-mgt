@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton';
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Competencies from '../components/SolverCompetencies';
@@ -184,7 +185,7 @@ function Attempt({ row, isSolver, perform, busy }) {
       const values = Object.fromEntries(sections.flatMap(item => item.questions).filter(q => Object.prototype.hasOwnProperty.call(answers, q.id)).map(q => [q.id, answers[q.id] === '' ? null : answers[q.id]]));
       return <fieldset key={part} style={{ ...grid, marginBottom: 16 }}><legend>Part {part}</legend>
         <p>Approved time limit: {row.configuration.time_limits[part]} minutes. {ended && `Ends: ${new Date(ended).toLocaleString()}`}{info?.submitted_at && ` / Submitted ${new Date(info.submitted_at).toLocaleString()}`}</p>
-        {isSolver && !info && ['Assigned', 'InProgress'].includes(row.status) && <button disabled={busy || part === 'B' && !row.parts?.A?.submitted_at} onClick={() => perform(() => api.progressSolverAssessment(row.id, part, 'start', { revision: row.revision }))}>Start Part {part}</button>}
+        {isSolver && !info && ['Assigned', 'InProgress'].includes(row.status) && <ActionButton disabled={busy || part === 'B' && !row.parts?.A?.submitted_at} onClick={() => perform(() => api.progressSolverAssessment(row.id, part, 'start', { revision: row.revision }))} disabledReason={part==='B'&&!row.parts?.A?.submitted_at ? 'Complete and submit Part A before starting Part B.' : ''}>Start Part {part}</ActionButton>}
         {sections.map(section => <div key={section.id} style={grid}><h3>{section.title}</h3>{section.questions.map(q => <div key={q.id} style={grid}>
           <label>{q.label}{q.required ? ' (required)' : ''}
             {canAnswer ? q.type === 'choice' ? <select value={answers[q.id] ?? ''} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })}><option value="">Choose an answer</option>{q.options.map(value => <option key={value}>{value}</option>)}</select> : q.type === 'document' ? <select value={answers[q.id] ?? ''} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })}><option value="">Choose HR-shared assessment evidence</option>{documents.map(doc => <option key={doc.id} value={doc.id}>{doc.file_name}</option>)}</select> : q.type === 'number' ? <input type="number" step="any" value={answers[q.id] ?? ''} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value === '' ? '' : Number(e.target.value) })} /> : <textarea value={answers[q.id] ?? ''} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })} /> : <p>{row.answers?.[q.id] ?? 'No answer recorded'}</p>}

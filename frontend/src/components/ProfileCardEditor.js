@@ -1,3 +1,4 @@
+import ActionButton from './ActionButton';
 import React, { useEffect, useRef, useState } from 'react';
 import { Pencil, X, Plus, Trash2 } from 'lucide-react';
 import * as api from '../services/api';
@@ -104,7 +105,7 @@ export default function ProfileCardEditor({ employee, section, user, onSaved }) 
           value={entry[key] || ''} onChange={event => setField(field, entries.map((row, i) => i === index ? { ...row, [key]: event.target.value } : row))} /></label>)}
         <button className="profile-editor-icon" type="button" aria-label={`Remove education ${index + 1}`} onClick={() => setField(field, entries.filter((_, i) => i !== index))}><Trash2 size={16} /></button>
       </div>)}
-      <button type="button" className="profile-editor-secondary" disabled={entries.length >= 20} onClick={() => setField(field, [...entries, { institution: '', qualification: '', year: '' }])}><Plus size={16} /> Add education</button>
+      <ActionButton type="button" className="profile-editor-secondary" disabled={entries.length >= 20} onClick={() => setField(field, [...entries, { institution: '', qualification: '', year: '' }])} disabledReason={entries.length>=20 ? 'You can record up to 20 education entries. Edit or remove an existing entry first.' : ''}><Plus size={16} /> Add education</ActionButton>
     </fieldset>;
   };
   return <>

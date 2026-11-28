@@ -1,3 +1,4 @@
+import ActionButton from './ActionButton';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import * as api from '../services/api';
 
@@ -128,8 +129,8 @@ export default function EmployeeDocuments({ employeeId, user }) {
                 <td style={{ padding: '10px 14px', color: '#525252' }}>{d.uploaded_at ? new Date(d.uploaded_at).toLocaleDateString('en-GB') : '—'}</td>
                 <td style={{ padding: '10px 14px', color: '#525252' }}>{d.status || 'Available'}</td>
                 <td style={{ padding: '10px 14px' }}>
-                  <button data-testid={`view-doc-${d.id}`} disabled={d.download_allowed === false || downloading === d.id} onClick={() => download(d)} style={{ padding: '8px 12px', cursor: 'pointer' }}>{downloading === d.id ? 'Downloading…' : 'Download'}</button>
-                  {canWrite && <button disabled={d.download_allowed === false} onClick={() => { setEditing(d); setError(''); setEditForm({ title: d.title || d.file_name, category: d.category, visibility: d.visibility || 'hr_only', confidential: d.confidential !== false, issued_date: d.issued_date || null, effective_date: d.effective_date || null, expiry_date: d.expiry_date || null }); }} style={{ padding: '8px 12px', cursor: 'pointer' }}>Manage</button>}
+                  <ActionButton data-testid={`view-doc-${d.id}`} disabled={d.download_allowed === false || downloading === d.id} onClick={() => download(d)} style={{ padding: '8px 12px', cursor: 'pointer' }} disabledReason={d.download_allowed===false ? 'This document is not available to download. Ask HR to check its availability and your access.' : ''}>{downloading === d.id ? 'Downloading…' : 'Download'}</ActionButton>
+                  {canWrite && <ActionButton disabled={d.download_allowed === false} onClick={() => { setEditing(d); setError(''); setEditForm({ title: d.title || d.file_name, category: d.category, visibility: d.visibility || 'hr_only', confidential: d.confidential !== false, issued_date: d.issued_date || null, effective_date: d.effective_date || null, expiry_date: d.expiry_date || null }); }} style={{ padding: '8px 12px', cursor: 'pointer' }} disabledReason={d.download_allowed===false ? 'This document cannot be managed in its current state. Ask HR to check its availability.' : ''}>Manage</ActionButton>}
                   {canWrite && <button data-testid={`delete-doc-${d.id}`} onClick={() => setConfirmDelete(d)} style={{ marginLeft: '6px', padding: '4px 10px', fontSize: '10px', border: '1px solid #FF353F', color: '#FF353F', background: 'transparent', cursor: 'pointer', fontFamily: 'Barlow', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Delete</button>}
                 </td>
               </tr>
@@ -172,7 +173,7 @@ export default function EmployeeDocuments({ employeeId, user }) {
             </div>
             <div style={{ padding: '14px 22px', borderTop: '1px solid rgba(25,25,25,0.08)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button type="button" onClick={() => { setShowUpload(false); setFile(null); }} style={{ padding: '10px 20px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '12px' }}>Cancel</button>
-              <button data-testid="upload-submit-btn" type="submit" disabled={uploading || !file} style={{ padding: '10px 22px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Barlow', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{uploading ? 'Uploading…' : 'Upload'}</button>
+              <ActionButton data-testid="upload-submit-btn" type="submit" disabled={uploading || !file} style={{ padding: '10px 22px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Barlow', textTransform: 'uppercase', letterSpacing: '0.1em' }} disabledReason={!file ? 'Choose a document file before uploading.' : ''}>{uploading ? 'Uploading…' : 'Upload'}</ActionButton>
             </div>
           </form>
         </div>

@@ -64,3 +64,15 @@ test('MFA-required responses gate the current UI without treating verification a
     expect(dispatch.mock.calls[0][0].detail).toEqual(detail);
   } finally { dispatch.mockRestore(); }
 });
+
+
+test('blocked mutation reports the required next step while preserving rejection for local handling',async()=>{
+ const dispatch=jest.spyOn(window,'dispatchEvent');
+ const error={config:{url:'/leave/decision',method:'put'},response:{status:409,data:{detail:'Enter an approval reason first.'}}};
+ try{await expect(reject(error)).rejects.toBe(error);expect(dispatch.mock.calls[0][0].detail.message).toBe('Enter an approval reason first.');}finally{dispatch.mockRestore();}
+});
+test('uncertain server failure never exposes internal diagnostics as an action message',async()=>{
+ const dispatch=jest.spyOn(window,'dispatchEvent');
+ const error={config:{url:'/private/save',method:'post'},response:{status:500,data:{detail:'PRIVATE_DATABASE_TRACE'}}};
+ try{const result=await reject(error);expect(result.status).toBe(500);expect(dispatch.mock.calls[0][0].detail.message).toContain('could not be confirmed');expect(dispatch.mock.calls[0][0].detail.message).not.toContain('PRIVATE');}finally{dispatch.mockRestore();}
+});

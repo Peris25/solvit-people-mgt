@@ -1,4 +1,5 @@
 import axios from 'axios';
+import {actionErrorMessage} from '../utils/actionFeedback';
 import { refreshSession, expireSession } from './session';
 
 const API = process.env.REACT_APP_BACKEND_URL;
@@ -39,6 +40,11 @@ api.interceptors.response.use(
       expireSession();
       return Promise.resolve({ data: null, status: 401, _silentAuth: true });
     }
+    const mutation=['post','put','patch','delete'].includes(String(error?.config?.method||'').toLowerCase());
+    const sessionGate=['password_change_required','mfa_required'].includes(error?.response?.data?.detail?.code);
+    if(mutation&&error?.code!=='ERR_CANCELED'&&!sessionGate&&status!==401&&(!status||status<500)&&typeof window!=='undefined'){
+      window.dispatchEvent(new CustomEvent('solvit:server-error',{detail:{message:actionErrorMessage(error)}}));
+    }
     if (status >= 500) {
       // Server error — emit a custom event so a global toast/banner can show,
       // but don't bubble as an uncaught runtime error to React's overlay.
@@ -48,7 +54,7 @@ api.interceptors.response.use(
             detail: {
               url,
               status,
-              message: error?.response?.data?.detail || error?.message || 'Server error'
+              message: actionErrorMessage(error)
             }
           }));
         }

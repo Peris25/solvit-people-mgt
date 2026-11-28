@@ -36,6 +36,7 @@ const MyTasks = lazy(() => import('./pages/MyTasks'));
 const DataImport = lazy(() => import('./pages/DataImport'));
 const RolesPermissions = lazy(() => import('./pages/RolesPermissions'));
 import ErrorToast from './components/ErrorToast';
+import FormValidationFeedback from './components/FormValidationFeedback';
 import AccessGate from './components/AccessGate';
 import SolverIntakeAccess from './components/SolverIntakeAccess';
 const SolverRequisitions = lazy(() => import('./pages/SolverRequisitions'));
@@ -49,7 +50,7 @@ import { NotificationProvider } from './context/NotificationContext';
 const PublicSolverAssessment = lazy(() => import('./pages/PublicSolverAssessment'));
 
 export default function App() {
-  return <BrowserRouter><Routes>
+  return <BrowserRouter><FormValidationFeedback /><Routes>
     <Route path="/solver-assessments" element={<Suspense fallback={<div role="status">Loading assessment...</div>}><PublicSolverAssessment /></Suspense>} />
     <Route path="/*" element={<Portal />} />
   </Routes></BrowserRouter>;

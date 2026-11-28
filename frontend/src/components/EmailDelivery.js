@@ -1,3 +1,4 @@
+import ActionButton from './ActionButton';
 import PasswordInput from './PasswordInput';
 /**
  * EmailDelivery — Testing (Mailtrap) / Production (Office 365) toggle.
@@ -144,7 +145,7 @@ export default function EmailDelivery() {
       <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '20px' }}>
         <strong style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.15em', color: '#525252', fontFamily: 'Barlow' }}>Mode:</strong>
         {['testing', 'production'].map(m => (
-          <button key={m}
+          <ActionButton key={m}
             data-testid={`mode-${m}`}
             disabled={!canEdit || m === active}
             onClick={() => setSwitchTarget(m)}
@@ -154,7 +155,7 @@ export default function EmailDelivery() {
               border: m === active ? 'none' : '1px solid rgba(25,25,25,0.2)',
               cursor: (!canEdit || m === active) ? 'default' : 'pointer',
               fontSize: '11px', fontWeight: 700, fontFamily: 'Barlow', textTransform: 'uppercase', letterSpacing: '0.1em'
-            }}>{m === active ? `${m} (active)` : `Switch to ${m}`}</button>
+            }} disabledReason={!canEdit ? 'Only an authorized administrator can change email delivery settings.' : m===active ? 'This email delivery mode is already active.' : ''}>{m === active ? `${m} (active)` : `Switch to ${m}`}</ActionButton>
         ))}
       </div>
 

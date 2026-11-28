@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton';
 import EmployeeLeaveGroups from '../components/EmployeeLeaveGroups';
 import EmployeeLeaveBalances from '../components/EmployeeLeaveBalances';
 import LeaveActionButton from '../components/LeaveActionButton';
@@ -267,9 +268,9 @@ export default function Leave() {
           <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.05em', color: '#191919', margin: 0, fontFamily: 'Barlow' }}>Leave Management</h1>
           <p style={{ color: '#525252', fontSize: '13px', margin: '4px 0 0' }}>Handbook v2 · Contract terms take precedence · Manager and HR approval</p>
         </div>
-        <button data-testid="apply-leave-btn" onClick={() => openForm()} disabled={!myEmpId || loadedFor !== accountKey} style={{ padding: '10px 18px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Barlow', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+        <ActionButton data-testid="apply-leave-btn" onClick={() => openForm()} disabled={!myEmpId || loadedFor !== accountKey} style={{ padding: '10px 18px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Barlow', display: 'inline-flex', alignItems: 'center', gap: '8px' }} disabledReason={loadedFor!==accountKey ? 'Wait for your employee details to load.' : !myEmpId ? 'Ask HR to link your login to an employee record before applying for leave.' : ''}>
           <Plus size={14} /> Apply for Leave
-        </button>
+        </ActionButton>
       </div>
 
       {/* Rollover banner */}

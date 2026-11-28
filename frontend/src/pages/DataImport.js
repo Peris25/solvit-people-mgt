@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton';
 import React, { useEffect, useState } from 'react';
 import * as api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -125,7 +126,7 @@ export default function DataImport() {
               <label style={lbl}>Excel File (.xlsx)</label>
               <input data-testid="import-file" type="file" accept=".xlsx" required onChange={e => { setFile(e.target.files[0]); setValidation(null); }} style={{ ...inp, padding: '6px 4px' }} />
             </div>
-            <button data-testid="validate-btn" type="submit" disabled={busy || !file} style={btnRed}>{busy ? 'Validating…' : 'Validate'}</button>
+            <ActionButton data-testid="validate-btn" type="submit" disabled={busy || !file} style={btnRed} disabledReason={!file ? 'Choose an import file before validating it.' : ''}>{busy ? 'Validating…' : 'Validate'}</ActionButton>
           </form>
 
           {validation && (
@@ -161,7 +162,7 @@ export default function DataImport() {
                   <button data-testid="download-errors-btn" onClick={downloadErrors} style={btnGhost}>Download Error Report (.xlsx)</button>
                 )}
                 <button data-testid="cancel-import-btn" onClick={() => { setValidation(null); setFile(null); }} style={btnGhost}>Cancel</button>
-                <button data-testid="confirm-import-btn" onClick={runImport} disabled={busy || validation.valid_count === 0} style={btnRed}>{busy ? 'Importing…' : `Import ${onlyValid ? validation.valid_count : validation.total_rows} row(s)`}</button>
+                <ActionButton data-testid="confirm-import-btn" onClick={runImport} disabled={busy || validation.valid_count === 0} style={btnRed} disabledReason={validation.valid_count===0 ? 'No valid rows are ready to import. Correct the validation errors and upload the file again.' : ''}>{busy ? 'Importing…' : `Import ${onlyValid ? validation.valid_count : validation.total_rows} row(s)`}</ActionButton>
               </div>
             </div>
           )}

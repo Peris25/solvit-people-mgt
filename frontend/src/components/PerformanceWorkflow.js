@@ -1,3 +1,4 @@
+import ActionButton from './ActionButton';
 import { MAX_REVIEW_KPIS } from './performanceLimits';
 import React, { useState } from 'react';
 import * as api from '../services/api';
@@ -31,7 +32,7 @@ export function CycleConfiguration({ cycles, onUpdated, expanded = false }) {
       <label style={field}>Approved policy<select value={values.policy} onChange={e => change('policy', e.target.value)}><option value="handbook_frd">Handbook / FRD: 50 / 30 / 20</option><option value="developer_brief">Developer Brief: 60 / 25 / 15</option></select></label>
       <label style={field}>HR approval reference<input required maxLength={300} value={values.approval_reference} onChange={e => change('approval_reference', e.target.value)} /></label>
       <label style={field}><span><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} /> HR has approved this policy and the meaning of Section C for this cycle.</span></label>
-      <button style={button} disabled={busy || !confirmed}>Configure cycle</button>
+      <ActionButton style={button} disabled={busy || !confirmed} disabledReason={!confirmed ? 'Confirm the scoring policy above before configuring the cycle.' : ''}>Configure cycle</ActionButton>
     </form>
     <ul>{cycles.map(cycle => <li key={cycle.id} style={{ margin: '16px 0' }}>{cycle.cycle_type?.replaceAll('_', ' ')} {cycle.cycle_year}: {cycle.starts_on} to {cycle.ends_on}
       <button type="button" style={button} disabled={busy} onClick={() => setLaunchId(cycle.id)}>Send reviews to employees</button>
@@ -86,7 +87,7 @@ export default function PerformanceWorkflow({ review, onUpdated }) {
     </article>)}
     {(review.can_manage || review.can_hr_review) && ['Draft', 'Self_Draft'].includes(review.status) && !review.goals_acknowledged_at && <form onSubmit={e => { e.preventDefault(); perform(async () => { await api.updateReviewGoals(review.id, { action: 'assign', ...goal }); setGoal({ objective: '', metric: '', target: '', due_on: '' }); }); }}>
       <h4>Assign an agreed goal</h4>{[['objective','Objective'],['metric','Measurement'],['target','Target'],['due_on','Due date']].map(([key, label]) => <label key={key} style={field}>{label}<input required type={key === 'due_on' ? 'date' : 'text'} value={goal[key]} onChange={e => setGoal(previous => ({ ...previous, [key]: e.target.value }))} /></label>)}
-      <button style={button} disabled={busy || goals.length >= MAX_REVIEW_KPIS}>Assign goal</button>
+      <ActionButton style={button} disabled={busy || goals.length >= MAX_REVIEW_KPIS} disabledReason={goals.length>=MAX_REVIEW_KPIS ? `This review already has the maximum of ${MAX_REVIEW_KPIS} KPIs.` : ''}>Assign goal</ActionButton>
     </form>}
     {review.goals_acknowledged_at && <p>Goals acknowledged: {review.goals_acknowledged_at.slice(0, 10)}</p>}
     {review.can_self_assess && !review.goals_acknowledged_at && goals.length >= 3 && <button style={button} disabled={busy} onClick={() => perform(() => api.updateReviewGoals(review.id, { action: 'acknowledge' }))}>Acknowledge agreed goals</button>}
@@ -95,7 +96,7 @@ export default function PerformanceWorkflow({ review, onUpdated }) {
     {review.can_self_assess && <form onSubmit={e => { e.preventDefault(); perform(() => api.submitReviewAssessment(review.id, 'self', { ...self, submit: true })); }}>
       <h4>My self-assessment</h4>{[['summary','Summary'],['achievements','Achievements'],['support_needed','Support needed']].map(([key, label]) => <label key={key} style={field}>{label}<textarea required maxLength={4000} value={self[key]} onChange={e => setSelf(previous => ({ ...previous, [key]: e.target.value }))} /></label>)}
       <button style={button} type="button" disabled={busy} onClick={() => perform(() => api.submitReviewAssessment(review.id, 'self', { ...self, submit: false }))}>Save self-assessment draft</button>
-      <button style={button} disabled={busy || (!probation && (goals.length < 3 || !review.goals_acknowledged_at))}>Submit self-assessment</button>
+      <ActionButton style={button} disabled={busy || (!probation && (goals.length < 3 || !review.goals_acknowledged_at))} disabledReason={!probation&&goals.length<3 ? 'Ask HR or your manager to assign at least three KPIs first.' : !probation&&!review.goals_acknowledged_at ? 'Acknowledge your assigned KPIs above before submitting.' : ''}>Submit self-assessment</ActionButton>
     </form>}
     {!probation && review.can_manage && review.status === 'Self_Submitted' && <form onSubmit={e => { e.preventDefault(); perform(() => api.submitReviewAssessment(review.id, 'manager', { summary: managerSummary, kpi_scores: goals.map(item => ({ goal_id: item.id, score: Number(scores[item.id]?.score), evidence: scores[item.id]?.evidence })) })); }}>
       <h4>Manager assessment</h4><label style={field}>Assessment summary<textarea required value={managerSummary} onChange={e => setManagerSummary(e.target.value)} /></label>

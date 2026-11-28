@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton';
 import React, { useState, useEffect, useCallback } from 'react';
 import StatusBadge from '../components/StatusBadge';
 import EmployeePicker from '../components/EmployeePicker';
@@ -108,7 +109,7 @@ export default function LnD() {
                         <div style={{ display: 'flex', gap: '6px' }}>
                           <button onClick={() => decide(r.id, 'Approve')} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #22C55E', color: '#22C55E', background: 'transparent', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>Approve</button>
                           <input aria-label="Rejection reason" placeholder="Reason for rejection" value={reasons[r.id] || ''} onChange={e => setReasons(previous => ({ ...previous, [r.id]:e.target.value }))} />
-                          <button disabled={!reasons[r.id]?.trim()} onClick={() => decide(r.id, 'Reject')} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #FF353F', color: '#FF353F', background: 'transparent', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }}>Reject</button>
+                          <ActionButton disabled={!reasons[r.id]?.trim()} onClick={() => decide(r.id, 'Reject')} style={{ padding: '4px 10px', fontSize: '10px', border: '1px solid #FF353F', color: '#FF353F', background: 'transparent', cursor: 'pointer', fontFamily: 'Arial', fontWeight: 700 }} disabledReason={!reasons[r.id]?.trim() ? 'Enter a reason before rejecting this training request.' : ''}>Reject</ActionButton>
                         </div>
                       )}
                     </td>
@@ -165,7 +166,7 @@ export default function LnD() {
               ))}
               <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
                 <button type="button" onClick={() => setShowForm(false)} style={{ padding: '10px 20px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '12px', fontFamily: 'Arial' }}>Cancel</button>
-                <button data-testid="submit-training-btn" type="submit" disabled={saving || !form.employee_id} style={{ padding: '10px 24px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Arial' }}>{saving ? 'Submitting...' : 'Submit Request'}</button>
+                <ActionButton data-testid="submit-training-btn" type="submit" disabled={saving || !form.employee_id} style={{ padding: '10px 24px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Arial' }} disabledReason={!form.employee_id ? 'Select the employee requesting training first.' : ''}>{saving ? 'Submitting...' : 'Submit Request'}</ActionButton>
               </div>
             </form>
           </div>
@@ -285,7 +286,7 @@ function SkillsMatrixPanel({ user }) {
                   {LEVELS.map(L => <option key={L}>{L}</option>)}
                 </select>
               </div>
-              <button data-testid="add-skill-btn" onClick={addSkill} disabled={saving || !newSkill.trim()} style={{ padding: '9px 18px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Barlow', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{saving ? 'Saving…' : 'Add'}</button>
+              <ActionButton data-testid="add-skill-btn" onClick={addSkill} disabled={saving || !newSkill.trim()} style={{ padding: '9px 18px', backgroundColor: '#FF353F', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'Barlow', textTransform: 'uppercase', letterSpacing: '0.1em' }} disabledReason={!newSkill.trim() ? 'Enter a skill name before adding it.' : ''}>{saving ? 'Saving…' : 'Add'}</ActionButton>
             </div>
           )}
         </>

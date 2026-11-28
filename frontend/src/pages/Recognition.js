@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import StatusBadge from '../components/StatusBadge';
 import EmployeePicker from '../components/EmployeePicker';
@@ -150,7 +151,7 @@ export default function Recognition() {
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                 <button type="button" onClick={() => setShowForm(false)} style={{ padding: '10px 20px', border: '1px solid rgba(25,25,25,0.2)', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '12px' }}>Cancel</button>
-                <button type="submit" disabled={saving || !form.nominee_id} style={{ padding: '10px 24px', backgroundColor: (saving || !form.nominee_id) ? '#9CA3AF' : '#FF353F', color: '#fff', border: 'none', cursor: (saving || !form.nominee_id) ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 700 }}>{saving ? 'Submitting...' : 'Nominate'}</button>
+                <ActionButton type="submit" disabled={saving || !form.nominee_id} style={{ padding: '10px 24px', backgroundColor: (saving || !form.nominee_id) ? '#9CA3AF' : '#FF353F', color: '#fff', border: 'none', cursor: (saving || !form.nominee_id) ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 700 }} disabledReason={!form.nominee_id ? 'Choose the colleague you want to nominate first.' : ''}>{saving ? 'Submitting...' : 'Nominate'}</ActionButton>
               </div>
             </form>
           </div>

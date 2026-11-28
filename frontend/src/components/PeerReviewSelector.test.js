@@ -53,7 +53,9 @@ test('empty and failed loading states are explicit', async () => {
 test('fewer than five chosen colleagues blocks submission but allows a private draft', async () => {
   api.getPerformanceV3Tasks.mockResolvedValue(data([task('one','First colleague')]));await render();
   await change(container.querySelector('[aria-label="Colleague to review"]'),'one');
-  expect([...container.querySelectorAll('button')].find(button=>button.textContent==='Submit peer review').disabled).toBe(true);
+  const submitButton=[...container.querySelectorAll('button')].find(button=>button.textContent==='Submit peer review');
+  expect(submitButton.disabled).toBe(true);
+  expect(document.getElementById(submitButton.getAttribute('aria-describedby')).textContent).toContain('Add 4 more colleagues');
   await act(async()=>[...container.querySelectorAll('button')].find(button=>button.textContent==='Save draft').click());
   expect(api.performanceV3Action).toHaveBeenCalledWith('peers','one','draft',expect.objectContaining({scores:['','','','',''],strengthens_team:'',more_effective:''}));
   expect(container.textContent).toContain('Peer review draft saved.');

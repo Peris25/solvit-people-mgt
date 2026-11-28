@@ -1,0 +1,7 @@
+.action-feedback-control{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px;max-width:100%;vertical-align:top}
+.action-feedback-reason{display:block;max-width:36rem;font-size:13px;line-height:1.5;color:var(--portal-text,#253247);font-weight:400;text-transform:none;letter-spacing:normal;white-space:normal}
+.form-validation-summary{margin:16px 0;padding:16px;border:1px solid #b45309;border-radius:10px;background:var(--portal-card,#fff);color:var(--portal-text,#253247);font-size:14px;line-height:1.5}
+.form-validation-summary strong{display:block;margin-bottom:8px}
+.form-validation-summary ul{margin:0;padding-left:20px}
+.form-validation-summary button{border:0;background:transparent;text-decoration:underline;text-align:left;font:inherit;color:inherit;cursor:pointer;min-height:44px;padding:6px}
+form:has(>.form-validation-summary) :is(input,select,textarea):invalid{border-color:#b45309;outline:1px solid #b45309;outline-offset:1px}
